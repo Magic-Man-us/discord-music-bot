@@ -24,6 +24,7 @@ from discord.ext import commands
 from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
 from discord_music_player.infrastructure.discord.cogs.admin_cog import (
     AdminCog,
+    require_owner,
     require_owner_or_admin,
 )
 
@@ -220,6 +221,69 @@ class TestRequireOwnerOrAdmin:
         mock_ctx.bot.container = mock_container
 
         check = require_owner_or_admin()
+        result = await check.predicate(mock_ctx)
+
+        assert result is False
+
+
+class TestRequireOwner:
+    """Tests for require_owner decorator (owner-only, no guild admin fallback)."""
+
+    @pytest.mark.asyncio
+    async def test_allows_application_owner(self, mock_owner_ctx):
+        """Should allow the application owner."""
+        check = require_owner()
+        result = await check.predicate(mock_owner_ctx)
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_allows_container_owner(self, mock_ctx, mock_container):
+        """Should allow owner from container settings."""
+        mock_ctx.bot.container = mock_container
+        mock_ctx.author.id = 999999999
+
+        check = require_owner()
+        result = await check.predicate(mock_ctx)
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_denies_guild_administrator(self, mock_admin_ctx):
+        """Should deny guild administrator (owner-only)."""
+        check = require_owner()
+        result = await check.predicate(mock_admin_ctx)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_denies_manage_guild(self, mock_ctx, mock_container):
+        """Should deny user with manage_guild permission (owner-only)."""
+        mock_ctx.bot.container = mock_container
+        mock_ctx.author.guild_permissions.manage_guild = True
+
+        check = require_owner()
+        result = await check.predicate(mock_ctx)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_denies_regular_user(self, mock_ctx, mock_container):
+        """Should deny regular user."""
+        mock_ctx.bot.container = mock_container
+
+        check = require_owner()
+        result = await check.predicate(mock_ctx)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_denies_when_no_guild(self, mock_ctx, mock_container):
+        """Should deny when not in a guild."""
+        mock_ctx.guild = None
+        mock_ctx.bot.container = mock_container
+
+        check = require_owner()
         result = await check.predicate(mock_ctx)
 
         assert result is False
@@ -788,6 +852,28 @@ class TestDatabaseCommands:
         assert "sessions: 10" in tables_field.value
         assert "history: 100" in tables_field.value
         assert "votes: 5" in tables_field.value
+
+    @pytest.mark.asyncio
+    async def test_db_stats_shows_filename_only(self, admin_cog, mock_admin_ctx, mock_container):
+        """Should show only filename, not full filesystem path (security)."""
+        mock_container.database.get_stats = AsyncMock(
+            return_value={
+                "initialized": True,
+                "file_size_mb": 1.0,
+                "page_count": 100,
+                "db_path": "/home/user/secret/path/data/bot.db",
+                "tables": {},
+            }
+        )
+
+        await admin_cog.db_stats.callback(admin_cog, mock_admin_ctx)
+
+        call_kwargs = mock_admin_ctx.send.call_args.kwargs
+        embed = call_kwargs["embed"]
+
+        db_field = next(f for f in embed.fields if f.name == "Database")
+        assert db_field.value == "bot.db"
+        assert "/home" not in db_field.value
 
     @pytest.mark.asyncio
     async def test_db_stats_handles_exception(self, admin_cog, mock_admin_ctx, mock_container):

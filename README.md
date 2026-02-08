@@ -165,7 +165,6 @@ All settings use Pydantic nested delimiter format (`SECTION__KEY=value`).
 | `/sync` | Sync slash commands to Discord |
 | `/reload <cog>` | Hot-reload a cog |
 | `/shutdown` | Gracefully shut down the bot |
-| `/sql <query>` | Execute a raw SQL query |
 | `/db-stats` | Show database statistics |
 | `/db-cleanup` | Trigger manual cleanup |
 | `/cache-status` | Show AI recommendation cache stats |

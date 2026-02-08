@@ -20,21 +20,42 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _is_bot_owner(ctx: commands.Context) -> bool:
+    """Check if the user is a configured bot owner or the application owner."""
+    app_info = ctx.bot.application
+    if app_info and app_info.owner:
+        if ctx.author.id == app_info.owner.id:
+            return True
+
+    container = getattr(ctx.bot, "container", None)
+    if container:
+        owner_ids = container.settings.discord.owner_ids
+        if ctx.author.id in owner_ids:
+            return True
+
+    return False
+
+
+def require_owner():
+    """Restrict to bot owners only. For sensitive operations like shutdown, db access, reloads."""
+
+    async def predicate(ctx: commands.Context) -> bool:
+        if not ctx.guild:
+            return False
+        return _is_bot_owner(ctx)
+
+    return commands.check(predicate)
+
+
 def require_owner_or_admin():
+    """Allow bot owners and guild admins. For lighter operations like sync, status, cache viewing."""
+
     async def predicate(ctx: commands.Context) -> bool:
         if not ctx.guild:
             return False
 
-        app_info = ctx.bot.application
-        if app_info and app_info.owner:
-            if ctx.author.id == app_info.owner.id:
-                return True
-
-        container = getattr(ctx.bot, "container", None)
-        if container:
-            owner_ids = container.settings.discord.owner_ids
-            if ctx.author.id in owner_ids:
-                return True
+        if _is_bot_owner(ctx):
+            return True
 
         if isinstance(ctx.author, discord.Member):
             if ctx.author.guild_permissions.administrator:
@@ -151,7 +172,7 @@ class AdminCog(commands.Cog):
     # ─────────────────────────────────────────────────────────────────
 
     @commands.command(name="reload", description="Reload a cog.")
-    @require_owner_or_admin()
+    @require_owner()
     async def reload(self, ctx: commands.Context, extension: str) -> None:
         if extension.startswith("discord_music_player."):
             mod = extension
@@ -180,7 +201,7 @@ class AdminCog(commands.Cog):
             await self._reply(ctx, DiscordUIMessages.ERROR_RELOAD_FAILED.format(extension=mod))
 
     @commands.command(name="reload_all", description="Reload all cogs.")
-    @require_owner_or_admin()
+    @require_owner()
     async def reload_all(self, ctx: commands.Context) -> None:
         extensions = list(self.bot.extensions.keys())
 
@@ -227,7 +248,7 @@ class AdminCog(commands.Cog):
             await self._reply(ctx, DiscordUIMessages.ERROR_CACHE_STATUS_FAILED)
 
     @commands.command(name="cache_clear", description="Clear the AI cache.")
-    @require_owner_or_admin()
+    @require_owner()
     async def cache_clear(self, ctx: commands.Context) -> None:
         try:
             ai_client = self.container.ai_client
@@ -238,7 +259,7 @@ class AdminCog(commands.Cog):
             await self._reply(ctx, DiscordUIMessages.ERROR_CACHE_CLEAR_FAILED)
 
     @commands.command(name="cache_prune", description="Prune old cache entries.")
-    @require_owner_or_admin()
+    @require_owner()
     async def cache_prune(self, ctx: commands.Context, max_age_seconds: int = 3600) -> None:
         try:
             ai_client = self.container.ai_client
@@ -253,7 +274,7 @@ class AdminCog(commands.Cog):
     # ─────────────────────────────────────────────────────────────────
 
     @commands.command(name="db_cleanup", description="Run database cleanup.")
-    @require_owner_or_admin()
+    @require_owner()
     async def db_cleanup(self, ctx: commands.Context) -> None:
         try:
             cleanup_job = self.container.cleanup_job
@@ -274,7 +295,7 @@ class AdminCog(commands.Cog):
             await self._reply(ctx, DiscordUIMessages.ERROR_CLEANUP_FAILED)
 
     @commands.command(name="db_stats", description="Show database statistics.")
-    @require_owner_or_admin()
+    @require_owner()
     async def db_stats(self, ctx: commands.Context) -> None:
         try:
             db = self.container.database
@@ -290,9 +311,11 @@ class AdminCog(commands.Cog):
                 name="File Size", value=f"{stats.get('file_size_mb', 0)} MB", inline=True
             )
             embed.add_field(name="Page Count", value=str(stats.get("page_count", 0)), inline=True)
-            embed.add_field(
-                name="Database Path", value=str(stats.get("db_path", "Unknown")), inline=False
-            )
+            from pathlib import Path
+
+            db_path = stats.get("db_path", "Unknown")
+            db_name = Path(db_path).name if db_path != "Unknown" else "Unknown"
+            embed.add_field(name="Database", value=db_name, inline=True)
 
             tables = stats.get("tables", {})
             if tables:
@@ -325,7 +348,7 @@ class AdminCog(commands.Cog):
         await self._reply(ctx, embed=embed)
 
     @commands.command(name="shutdown", description="Gracefully shutdown the bot.")
-    @require_owner_or_admin()
+    @require_owner()
     async def shutdown(self, ctx: commands.Context) -> None:
         await self._reply(ctx, DiscordUIMessages.SUCCESS_SHUTTING_DOWN)
 
