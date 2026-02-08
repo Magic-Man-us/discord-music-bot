@@ -28,6 +28,7 @@ from discord_music_player.domain.recommendations.entities import (
 )
 from discord_music_player.domain.shared.messages import LogTemplates
 
+
 class AIRecommendationItem(BaseModel):
     title: str = Field(..., min_length=1)
     artist: str | None = None
@@ -135,14 +136,12 @@ class OpenAIRecommendationClient(AIClient):
     async def _handle_api_error(self, error: Exception, attempt: int) -> Exception:
         is_retryable = isinstance(
             error,
-            (
-                APITimeoutError,
-                APIConnectionError,
-                RateLimitError,
-                APIStatusError,
-                httpx.TimeoutException,
-                httpx.ConnectError,
-            ),
+            APITimeoutError
+            | APIConnectionError
+            | RateLimitError
+            | APIStatusError
+            | httpx.TimeoutException
+            | httpx.ConnectError,
         )
 
         if is_retryable:

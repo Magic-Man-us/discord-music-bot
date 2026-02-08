@@ -4,10 +4,12 @@
   "formatters": {
     "console": {
       "format": "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-      "class": "logger_config.ColoredFormatter"
+      "datefmt": "%Y-%m-%d %H:%M:%S",
+      "class": "discord_music_player.utils.logging.ColoredFormatter"
     },
     "file": {
-      "format": "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+      "format": "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+      "datefmt": "%Y-%m-%d %H:%M:%S"
     }
   },
   "handlers": {
@@ -19,32 +21,32 @@
     }
   },
   "loggers": {
-    "src": {
+    "discord_music_player": {
       "level": "INFO",
       "handlers": ["console"],
       "propagate": false
     },
-    "infrastructure": {
+    "discord_music_player.infrastructure": {
       "level": "DEBUG",
       "handlers": ["console"],
       "propagate": false
     },
-    "application": {
+    "discord_music_player.application": {
       "level": "DEBUG",
       "handlers": ["console"],
       "propagate": false
     },
-    "domain": {
+    "discord_music_player.domain": {
       "level": "DEBUG",
       "handlers": ["console"],
       "propagate": false
     },
-    "infrastructure.discord": {
+    "discord_music_player.infrastructure.discord": {
       "level": "INFO",
       "handlers": ["console"],
       "propagate": false
     },
-    "infrastructure.audio": {
+    "discord_music_player.infrastructure.audio": {
       "level": "DEBUG",
       "handlers": ["console"],
       "propagate": false
@@ -61,6 +63,15 @@
       "level": "WARNING"
     },
     "discord.http": {
+      "level": "WARNING"
+    },
+    "aiosqlite": {
+      "level": "WARNING"
+    },
+    "urllib3": {
+      "level": "WARNING"
+    },
+    "httpx": {
       "level": "WARNING"
     }
   },

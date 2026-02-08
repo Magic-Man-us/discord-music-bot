@@ -10,8 +10,9 @@ Tests for the main entry point including:
 - Graceful shutdown
 """
 
+import json
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 from pydantic import SecretStr
 
@@ -21,47 +22,82 @@ from discord_music_player.main import main, setup_logging
 class TestLoggingSetup:
     """Tests for logging configuration."""
 
-    def test_setup_logging_default_level(self):
-        """Should configure logging with default INFO level."""
-        with patch("logging.basicConfig") as mock_config:
+    def _make_valid_config(self) -> dict:
+        return {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "handlers": {},
+            "loggers": {
+                "aiosqlite": {"level": "WARNING"},
+                "urllib3": {"level": "WARNING"},
+                "httpx": {"level": "WARNING"},
+            },
+            "root": {"level": "INFO", "handlers": []},
+        }
+
+    def test_dictconfig_called_when_json_exists(self):
+        """Should call dictConfig when logging_config.json exists."""
+        config = self._make_valid_config()
+        m = mock_open(read_data=json.dumps(config))
+        with (
+            patch("builtins.open", m),
+            patch("logging.config.dictConfig") as mock_dc,
+        ):
             setup_logging()
 
-            mock_config.assert_called_once()
-            # Check that INFO level was used
-            assert mock_config.call_args[1]["level"] == logging.INFO
+            mock_dc.assert_called_once_with(config)
 
-    def test_setup_logging_custom_level(self):
-        """Should configure logging with custom level."""
-        with patch("logging.basicConfig") as mock_config:
-            setup_logging("DEBUG")
-
-            assert mock_config.call_args[1]["level"] == logging.DEBUG
-
-    def test_setup_logging_invalid_level_uses_info(self):
-        """Should fallback to INFO for invalid log levels."""
-        with patch("logging.basicConfig") as mock_config:
-            setup_logging("INVALID")
-
-            assert mock_config.call_args[1]["level"] == logging.INFO
-
-    def test_setup_logging_reduces_library_noise(self):
-        """Should set WARNING level for noisy libraries."""
+    def test_fallback_to_basicconfig_when_json_missing(self):
+        """Should fallback to basicConfig when logging_config.json is missing."""
         with (
-            patch("logging.basicConfig"),
+            patch("builtins.open", side_effect=FileNotFoundError),
+            patch("logging.basicConfig") as mock_bc,
+        ):
+            setup_logging()
+
+            mock_bc.assert_called_once()
+            assert mock_bc.call_args[1]["level"] == logging.INFO
+
+    def test_fallback_to_basicconfig_when_json_malformed(self):
+        """Should fallback to basicConfig when JSON is malformed."""
+        m = mock_open(read_data="{invalid json")
+        with (
+            patch("builtins.open", m),
+            patch("logging.basicConfig") as mock_bc,
+        ):
+            setup_logging()
+
+            mock_bc.assert_called_once()
+
+    def test_root_logger_level_overridden_by_settings(self):
+        """Should override root logger level with the provided log_level."""
+        config = self._make_valid_config()
+        m = mock_open(read_data=json.dumps(config))
+        with (
+            patch("builtins.open", m),
+            patch("logging.config.dictConfig"),
             patch("logging.getLogger") as mock_get_logger,
         ):
-            mock_logger = MagicMock()
-            mock_get_logger.return_value = mock_logger
+            mock_root = MagicMock()
+            mock_get_logger.return_value = mock_root
 
+            setup_logging("DEBUG")
+
+            mock_root.setLevel.assert_called_once_with(logging.DEBUG)
+
+    def test_noisy_library_loggers_suppressed_via_json(self):
+        """Should suppress noisy library loggers via the JSON config."""
+        config = self._make_valid_config()
+        m = mock_open(read_data=json.dumps(config))
+        with (
+            patch("builtins.open", m),
+            patch("logging.config.dictConfig") as mock_dc,
+        ):
             setup_logging()
 
-            # Verify that noisy loggers were set to WARNING
-            calls = mock_get_logger.call_args_list
-            logger_names = [call[0][0] for call in calls]
-
-            assert "discord" in logger_names
-            assert "discord.http" in logger_names
-            assert "discord.gateway" in logger_names
+            loaded = mock_dc.call_args[0][0]
+            for name in ("aiosqlite", "urllib3", "httpx"):
+                assert loaded["loggers"][name]["level"] == "WARNING"
 
 
 class TestMainFunction:

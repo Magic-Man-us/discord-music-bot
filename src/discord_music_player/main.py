@@ -3,25 +3,35 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import logging.config
 import sys
+from pathlib import Path
 
 from discord_music_player.domain.shared.messages import ErrorMessages, LogTemplates
 
+_LOGGING_CONFIG_PATH = Path(__file__).resolve().parents[2] / "logging_config.json"
+
 
 def setup_logging(log_level: str = "INFO") -> None:
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper(), logging.INFO),
-        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    resolved_level = getattr(logging, log_level.upper(), logging.INFO)
 
-    logging.getLogger("discord").setLevel(logging.WARNING)
-    logging.getLogger("discord.http").setLevel(logging.WARNING)
-    logging.getLogger("discord.gateway").setLevel(logging.WARNING)
-    logging.getLogger("aiosqlite").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    try:
+        with open(_LOGGING_CONFIG_PATH) as f:
+            config = json.load(f)
+        logging.config.dictConfig(config)
+    except (FileNotFoundError, json.JSONDecodeError, ValueError):
+        logging.warning(
+            "Could not load %s, falling back to basic config", _LOGGING_CONFIG_PATH
+        )
+        logging.basicConfig(
+            level=resolved_level,
+            format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+
+    logging.getLogger().setLevel(resolved_level)
 
 
 def main() -> int:
