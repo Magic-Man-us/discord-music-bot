@@ -189,6 +189,7 @@ class LogTemplates:
     ADMIN_CACHE_PRUNE_FAILED = "Failed to prune cache"
     ADMIN_CLEANUP_FAILED = "Failed to run cleanup"
     ADMIN_DB_STATS_FAILED = "Failed to get db stats"
+    ADMIN_DB_VALIDATE_FAILED = "Failed to validate database schema"
     MESSAGE_STATE_CLEANED = "Cleaned up message state for guild %s"
     MESSAGE_DELETED = "Message deleted %s by %s"
 
@@ -351,6 +352,7 @@ class DiscordUIMessages:
     ERROR_CACHE_PRUNE_FAILED = "❌ Failed to prune cache."
     ERROR_CLEANUP_FAILED = "❌ Failed to run cleanup."
     ERROR_DB_STATS_FAILED = "❌ Failed to get database stats."
+    ERROR_DB_VALIDATE_FAILED = "❌ Failed to validate database."
     ERROR_COMMAND_COOLDOWN = "⏳ Command on cooldown. Try again in {time_str}."
     ERROR_MISSING_PERMISSIONS = "❌ You don't have permission to use this command."
     ERROR_BOT_MISSING_PERMISSIONS = "❌ I need these permissions: {missing}"
@@ -427,6 +429,7 @@ class DiscordUIMessages:
     EMBED_CACHE_STATISTICS = "📊 Cache Statistics"
     EMBED_CLEANUP_RESULTS = "🧹 Cleanup Results"
     EMBED_DATABASE_STATISTICS = "🗄️ Database Statistics"
+    EMBED_DATABASE_VALIDATION = "🔍 Database Validation"
     EMBED_BOT_STATUS = "🤖 Bot Status"
     EMBED_SERVER_STATS = "📊 Server Music Stats"
     EMBED_TOP_TRACKS = "🏆 Top Tracks"

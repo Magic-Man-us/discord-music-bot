@@ -44,6 +44,7 @@ class DatabaseTables:
     VOTE_SESSIONS = "vote_sessions"
     VOTES = "votes"
     RECOMMENDATION_CACHE = "recommendation_cache"
+    TRACK_GENRES = "track_genres"
 
 
 class DatabaseColumns:
