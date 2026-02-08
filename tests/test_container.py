@@ -712,6 +712,7 @@ class TestAutoSkipOnRequesterLeave:
             MockSubscriber.assert_called_once_with(
                 session_repository=container.session_repository,
                 playback_service=container.playback_service,
+                voice_adapter=container.voice_adapter,
             )
             assert subscriber == MockSubscriber.return_value
 

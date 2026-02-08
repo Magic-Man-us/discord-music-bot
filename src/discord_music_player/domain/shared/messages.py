@@ -269,8 +269,17 @@ class LogTemplates:
     # Database Statistics
     DATABASE_STATS_FAILED = "Failed to get database stats: %s"
 
-    # Auto-skip
-    AUTOSKIP_ON_REQUESTER_LEAVE = "Requester left voice channel in guild %s, auto-skipping..."
+    # Auto-skip / Requester leave
+    REQUESTER_LEFT_PAUSING = (
+        "Requester left voice channel in guild %s (user_id=%s, track_id=%s), pausing playback"
+    )
+    REQUESTER_LEFT_NO_LISTENERS = (
+        "Requester left voice channel in guild %s, no listeners remain — auto-skipping"
+    )
+    REQUESTER_LEFT_PAUSE_FAILED = "Pause failed in guild %s after requester left, skipping silently"
+    REQUESTER_LEFT_CALLBACK_CHANNEL_FAILED = (
+        "Could not find text channel for requester-left prompt in guild %s, auto-skipping"
+    )
 
     # Radio
     RADIO_ENABLED = "Radio enabled in guild %s (seed='%s')"
@@ -359,6 +368,15 @@ class DiscordUIMessages:
     ACTION_DISCONNECTED = "👋 Disconnected from voice channel."
     ACTION_TRACK_REMOVED = "🗑️ Removed: **{track_title}**"
     ACTION_QUEUE_CLEARED = "🗑️ Cleared {count} tracks from the queue."
+
+    # Requester Left Messages
+    REQUESTER_LEFT_PROMPT = (
+        "**{requester_name}** has left the voice channel. "
+        "Do you want to continue playing **{track_title}**?"
+    )
+    REQUESTER_LEFT_RESUMED = "▶️ Playback resumed."
+    REQUESTER_LEFT_SKIPPED = "⏭️ Track skipped."
+    REQUESTER_LEFT_TIMEOUT = "⏭️ Track skipped (no response)."
 
     # Radio Messages
     RADIO_ENABLED = "📻 Radio enabled! Queued {count} similar tracks based on **{seed_title}**."

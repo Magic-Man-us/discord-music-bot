@@ -314,6 +314,7 @@ class Container:
             self._auto_skip_on_requester_leave = AutoSkipOnRequesterLeave(
                 session_repository=self.session_repository,
                 playback_service=self.playback_service,
+                voice_adapter=self.voice_adapter,
             )
         return self._auto_skip_on_requester_leave
 

@@ -2,9 +2,8 @@
 #
 # Installation:
 #   1. Copy this file:      sudo cp discord-music-bot.service /etc/systemd/system/
-#   2. Edit the file:       sudo systemctl edit discord-music-bot
-#      - Set WorkingDirectory to your project path
-#      - Set User to the user that owns the project
+#   2. Edit the file:       sudo systemctl edit --full discord-music-bot
+#      - Set WorkingDirectory, User, EnvironmentFile, ExecStart, and ReadWritePaths
 #   3. Reload systemd:      sudo systemctl daemon-reload
 #   4. Enable on boot:      sudo systemctl enable discord-music-bot
 #   5. Start the service:   sudo systemctl start discord-music-bot
@@ -13,19 +12,19 @@
 
 [Unit]
 Description=Discord Music Bot
-After=network-online.target docker.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-# --- EDIT THESE ---
+
+# --- EDIT THESE TO MATCH YOUR SETUP ---
 User=your-username
 WorkingDirectory=/path/to/DiscordMusicPlayer
-# ------------------
-
-# Load .env and start the bot via the virtual environment
-EnvironmentFile=%h/DiscordMusicPlayer/.env
+EnvironmentFile=/path/to/DiscordMusicPlayer/.env
 ExecStart=/path/to/DiscordMusicPlayer/.venv/bin/discord-music-player
+ReadWritePaths=/path/to/DiscordMusicPlayer/data /path/to/DiscordMusicPlayer/logs
+# ---------------------------------------
 
 Restart=on-failure
 RestartSec=5
@@ -40,7 +39,6 @@ KillSignal=SIGTERM
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/path/to/DiscordMusicPlayer/data /path/to/DiscordMusicPlayer/logs
 PrivateTmp=true
 
 [Install]

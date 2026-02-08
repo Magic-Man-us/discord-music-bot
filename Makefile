@@ -162,7 +162,7 @@ run:  ## Run the Discord bot
 		echo "$(YELLOW)Warning: .env file not found. Copy .env.example and configure it first.$(NC)"; \
 		exit 1; \
 	fi
-	python -m discord_music_player.main
+	python -m discord_music_player
 
 run-tmux:  ## Run the bot in tmux with auto-respawn
 	@echo "$(BLUE)Starting bot in tmux session...$(NC)"

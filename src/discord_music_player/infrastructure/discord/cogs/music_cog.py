@@ -90,6 +90,9 @@ class MusicCog(commands.Cog):
 
     async def cog_load(self) -> None:
         self.container.playback_service.set_track_finished_callback(self._on_track_finished)
+        self.container.auto_skip_on_requester_leave.set_on_requester_left_callback(
+            self._on_requester_left
+        )
 
     async def cog_unload(self) -> None:
         self._message_state_by_guild.clear()
@@ -267,6 +270,41 @@ class MusicCog(commands.Cog):
             await interaction.followup.send(
                 DiscordUIMessages.ERROR_OCCURRED.format(error=e), ephemeral=True
             )
+
+    async def _on_requester_left(self, guild_id: int, user_id: int, track: Track) -> None:
+        from ...domain.shared.messages import LogTemplates
+        from ..views.requester_left_view import RequesterLeftView
+
+        # Determine text channel from now-playing message state
+        channel: discord.abc.Messageable | None = None
+        state = self._message_state_by_guild.get(guild_id)
+        if state is not None and state.now_playing is not None:
+            channel = self.bot.get_channel(state.now_playing.channel_id)
+
+        # Fall back to guild system channel
+        if channel is None:
+            guild = self.bot.get_guild(guild_id)
+            if guild is not None:
+                channel = guild.system_channel
+
+        if channel is None:
+            logger.warning(LogTemplates.REQUESTER_LEFT_CALLBACK_CHANNEL_FAILED, guild_id)
+            await self.container.playback_service.skip_track(guild_id)
+            return
+
+        requester_name = f"<@{user_id}>"
+        view = RequesterLeftView(
+            guild_id=guild_id,
+            playback_service=self.container.playback_service,
+            track_title=track.title,
+            requester_name=requester_name,
+        )
+        content = DiscordUIMessages.REQUESTER_LEFT_PROMPT.format(
+            requester_name=requester_name,
+            track_title=truncate(track.title, 80),
+        )
+        message = await channel.send(content, view=view)
+        view.set_message(message)
 
     async def _on_track_finished(self, guild_id: int, track: Track) -> None:
         state = self._message_state_by_guild.get(guild_id)
