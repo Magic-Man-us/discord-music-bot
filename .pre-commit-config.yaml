@@ -1,0 +1,53 @@
+# Pre-commit hooks to maintain code quality and prevent magic strings
+# Install with: pip install pre-commit && pre-commit install
+
+repos:
+  # Ruff linter - catches magic strings and other issues
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      # Run the linter
+      - id: ruff
+        args: [--fix]
+        types_or: [python, pyi]
+
+      # Run the formatter
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  # Check for common issues
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-json
+      - id: detect-private-key
+
+  # Type checking with mypy (optional, commented out by default)
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.11.0
+  #   hooks:
+  #     - id: mypy
+  #       additional_dependencies: [types-all]
+
+# Global settings
+default_language_version:
+  python: python3.11
+
+# Skip certain files
+exclude: |
+  (?x)^(
+      \.venv/|
+      venv/|
+      __pycache__/|
+      \.git/|
+      \.pytest_cache/|
+      \.mypy_cache/|
+      \.ruff_cache/
+  )$

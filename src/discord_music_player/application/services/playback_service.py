@@ -1,0 +1,486 @@
+"""Playback Application Service - orchestrates audio playback operations."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
+
+from ...domain.music.entities import Track
+from ...domain.music.value_objects import PlaybackState
+from ...domain.shared.events import QueueExhausted, get_event_bus
+from ...domain.shared.messages import ErrorMessages, LogTemplates
+
+if TYPE_CHECKING:
+    from ...domain.music.repository import SessionRepository, TrackHistoryRepository
+    from ...domain.music.services import PlaybackDomainService
+    from ..interfaces.audio_resolver import AudioResolver
+    from ..interfaces.voice_adapter import VoiceAdapter
+
+logger = logging.getLogger(__name__)
+
+
+class PlaybackApplicationService:
+    """Orchestrates audio playback operations.
+
+    This service coordinates between the domain layer, voice adapter,
+    and audio resolver to manage the complete playback lifecycle.
+    """
+
+    def __init__(
+        self,
+        session_repository: SessionRepository,
+        history_repository: TrackHistoryRepository,
+        voice_adapter: VoiceAdapter,
+        audio_resolver: AudioResolver,
+        playback_domain_service: PlaybackDomainService,
+    ) -> None:
+        """Initialize the playback service.
+
+        Args:
+            session_repository: Repository for session persistence.
+            voice_adapter: Adapter for Discord voice operations.
+            audio_resolver: Resolver for audio stream URLs.
+            playback_domain_service: Domain service for playback rules.
+        """
+        self._session_repo = session_repository
+        self._history_repo = history_repository
+        self._voice_adapter = voice_adapter
+        self._audio_resolver = audio_resolver
+        self._playback_service = playback_domain_service
+
+        # Callback for track finished events
+        self._on_track_finished_callback: Callable[[int, Track], Any] | None = None
+
+        # When we intentionally stop audio (skip/stop), discord.py will still fire
+        # the "after" callback for the previous source. We suppress the next
+        # voice track-end event per guild to avoid double-advancing.
+        self._ignore_next_voice_track_end: set[int] = set()
+
+        # Set up track end callback on the voice adapter
+        self._voice_adapter.set_on_track_end_callback(self._on_voice_track_end)
+
+    async def _on_voice_track_end(self, guild_id: int) -> None:
+        """Handle when the voice adapter signals a track has ended.
+
+        Args:
+            guild_id: The guild where the track ended.
+        """
+        if guild_id in self._ignore_next_voice_track_end:
+            self._ignore_next_voice_track_end.discard(guild_id)
+            logger.debug(LogTemplates.PLAYBACK_IGNORING_CALLBACK, guild_id)
+            return
+
+        session = await self._session_repo.get(guild_id)
+        if session is None:
+            return
+
+        current_track = session.current_track
+        if current_track:
+            await self.handle_track_finished(guild_id, current_track)
+
+    def set_track_finished_callback(self, callback: Callable[[int, Track], Any]) -> None:
+        """Set callback for when a track finishes playing.
+
+        Args:
+            callback: Function called with (guild_id, track) when track finishes.
+        """
+        self._on_track_finished_callback = callback
+
+    async def start_playback(self, guild_id: int) -> bool:
+        """Start playback of the next track in queue.
+
+        Args:
+            guild_id: The guild to start playback for.
+
+        Returns:
+            True if playback started successfully.
+        """
+        logger.info(LogTemplates.PLAYBACK_START_CALLED, guild_id)
+
+        session = await self._session_repo.get(guild_id)
+        if session is None:
+            logger.warning(LogTemplates.SESSION_NOT_FOUND, guild_id)
+            return False
+
+        logger.info(
+            "Session state=%s is_playing=%s has_current=%s queue_length=%s",
+            session.state,
+            session.is_playing,
+            session.current_track is not None,
+            session.queue_length,
+        )
+
+        if session.is_playing:
+            logger.info(LogTemplates.PLAYBACK_ALREADY_PLAYING, guild_id)
+            return True
+
+        had_current = session.current_track is not None
+        track = await self._get_next_track(session)
+        if track is None:
+            logger.warning(LogTemplates.QUEUE_NO_TRACKS, guild_id)
+            return False
+
+        logger.info(LogTemplates.TRACK_GOT_TO_PLAY, track.title)
+
+        await self._persist_playback_state(
+            guild_id,
+            current_track=track,
+            state=PlaybackState.IDLE,
+            remove_from_queue=not had_current,
+        )
+
+        track = await self._ensure_stream_url(session, track, guild_id)
+        if track is None:
+            return False
+
+        return await self._start_voice_playback(session, track, guild_id)
+
+    async def _get_next_track(self, session: Any) -> Track | None:
+        """Get the next track to play from session.
+
+        Args:
+            session: The playback session.
+
+        Returns:
+            The next track, or None if queue is empty.
+        """
+        if session.current_track is not None:
+            return session.current_track
+
+        track = session.dequeue()
+        if track is not None:
+            session.set_current_track(track)
+        return track
+
+    async def _ensure_stream_url(self, session: Any, track: Track, guild_id: int) -> Track | None:
+        """Ensure track has a valid stream URL.
+
+        Args:
+            session: The playback session.
+            track: The track to resolve.
+            guild_id: The guild ID for retry on failure.
+
+        Returns:
+            Track with stream URL, or None if resolution failed and retry started.
+        """
+        if track.stream_url:
+            return track
+
+        try:
+            resolved = await self._audio_resolver.resolve(track.webpage_url)
+            if resolved is None:
+                raise ValueError(ErrorMessages.RESOLVER_RETURNED_NONE)
+
+            track = Track(
+                id=track.id,
+                title=resolved.title or track.title,
+                webpage_url=track.webpage_url,
+                stream_url=resolved.stream_url,
+                duration_seconds=resolved.duration_seconds or track.duration_seconds,
+                thumbnail_url=resolved.thumbnail_url or track.thumbnail_url,
+                artist=resolved.artist or track.artist,
+                uploader=resolved.uploader or track.uploader,
+                like_count=resolved.like_count or track.like_count,
+                view_count=resolved.view_count or track.view_count,
+                requested_by_id=track.requested_by_id,
+                requested_by_name=track.requested_by_name,
+                requested_at=track.requested_at,
+            )
+            session.set_current_track(track)
+            return track
+        except Exception:
+            logger.exception("Failed to resolve stream URL")
+            session.set_current_track(None)
+            await self._persist_playback_state(
+                guild_id,
+                current_track=None,
+                state=PlaybackState.IDLE,
+            )
+            await self.start_playback(guild_id)  # Retry with next track
+            return None
+
+    async def _start_voice_playback(self, session: Any, track: Track, guild_id: int) -> bool:
+        """Start voice playback for a track.
+
+        Args:
+            session: The playback session.
+            track: The track to play.
+            guild_id: The guild ID.
+
+        Returns:
+            True if playback started successfully.
+        """
+        try:
+            success = await self._voice_adapter.play(guild_id, track)
+            if not success:
+                logger.error(LogTemplates.VOICE_ADAPTER_FAILED, guild_id)
+                # Clear the stale current track so next play attempt works
+                session.set_current_track(None)
+                await self._persist_playback_state(
+                    guild_id,
+                    current_track=None,
+                    state=PlaybackState.IDLE,
+                )
+                return False
+
+            await self._persist_playback_state(
+                guild_id,
+                current_track=track,
+                state=PlaybackState.PLAYING,
+            )
+            await self._history_repo.record_play(guild_id=guild_id, track=track)
+            logger.info(LogTemplates.TRACK_STARTED, track.title, guild_id)
+            return True
+        except Exception:
+            logger.exception("Error starting playback")
+            # Clear the stale current track so next play attempt works
+            session.set_current_track(None)
+            await self._persist_playback_state(
+                guild_id,
+                current_track=None,
+                state=PlaybackState.IDLE,
+            )
+            return False
+
+    async def stop_playback(self, guild_id: int) -> bool:
+        """Stop playback in a guild.
+
+        Args:
+            guild_id: The guild to stop playback for.
+
+        Returns:
+            True if playback was stopped.
+        """
+        session = await self._session_repo.get(guild_id)
+        if session is None:
+            return False
+
+        try:
+            self._ignore_next_voice_track_end.add(guild_id)
+            await self._voice_adapter.stop(guild_id)
+            session.stop()
+            await self._persist_playback_state(
+                guild_id,
+                current_track=session.current_track,
+                state=session.state,
+            )
+            logger.info(LogTemplates.PLAYBACK_STOPPED, guild_id)
+            return True
+        except Exception:
+            logger.exception("Error stopping playback")
+            return False
+
+    async def pause_playback(self, guild_id: int) -> bool:
+        """Pause playback in a guild.
+
+        Args:
+            guild_id: The guild to pause playback for.
+
+        Returns:
+            True if playback was paused.
+        """
+        session = await self._session_repo.get(guild_id)
+        if session is None or not session.is_playing:
+            return False
+
+        try:
+            await self._voice_adapter.pause(guild_id)
+            session.pause()
+            await self._persist_playback_state(
+                guild_id,
+                current_track=session.current_track,
+                state=session.state,
+            )
+            logger.debug(LogTemplates.PLAYBACK_PAUSED, guild_id)
+            return True
+        except Exception:
+            logger.exception("Error pausing playback")
+            return False
+
+    async def resume_playback(self, guild_id: int) -> bool:
+        """Resume playback in a guild.
+
+        Args:
+            guild_id: The guild to resume playback for.
+
+        Returns:
+            True if playback was resumed.
+        """
+        session = await self._session_repo.get(guild_id)
+        if session is None or not session.is_paused:
+            return False
+
+        try:
+            await self._voice_adapter.resume(guild_id)
+            session.resume()
+            await self._persist_playback_state(
+                guild_id,
+                current_track=session.current_track,
+                state=session.state,
+            )
+            logger.debug(LogTemplates.PLAYBACK_RESUMED, guild_id)
+            return True
+        except Exception:
+            logger.exception("Error resuming playback")
+            return False
+
+    async def skip_track(self, guild_id: int) -> Track | None:
+        """Skip the current track.
+
+        Args:
+            guild_id: The guild to skip in.
+
+        Returns:
+            The skipped track, or None if nothing was playing.
+        """
+        session = await self._session_repo.get(guild_id)
+        if session is None or session.current_track is None:
+            return None
+
+        skipped_track = session.current_track
+
+        # Stop current playback
+        self._ignore_next_voice_track_end.add(guild_id)
+        await self._voice_adapter.stop(guild_id)
+
+        # Advance to next track
+        next_track = session.advance_to_next_track()
+        if next_track:
+            session.state = PlaybackState.IDLE
+        await self._session_repo.save(session)
+
+        # Start playing next track if available
+        if next_track:
+            await self.start_playback(guild_id)
+
+        await self._history_repo.mark_finished(
+            guild_id=guild_id,
+            track_id=skipped_track.id.value,
+            skipped=True,
+        )
+
+        logger.info(LogTemplates.TRACK_SKIPPED, skipped_track.title, guild_id)
+        return skipped_track
+
+    async def handle_track_finished(self, guild_id: int, track: Track) -> None:
+        """Handle when a track finishes playing.
+
+        Args:
+            guild_id: The guild where the track finished.
+            track: The track that finished.
+        """
+        logger.debug(LogTemplates.TRACK_FINISHED, track.title, guild_id)
+
+        session = await self._session_repo.get(guild_id)
+        if session is None:
+            return
+
+        # Advance to next track
+        next_track = session.advance_to_next_track()
+        if next_track:
+            session.state = PlaybackState.IDLE
+        await self._session_repo.save(session)
+
+        # Start playing next track if available
+        if next_track:
+            await self.start_playback(guild_id)
+        else:
+            logger.info(LogTemplates.QUEUE_EMPTY, guild_id)
+            await get_event_bus().publish(
+                QueueExhausted(
+                    guild_id=guild_id,
+                    last_track_id=track.id.value,
+                    last_track_title=track.title,
+                )
+            )
+
+        await self._history_repo.mark_finished(
+            guild_id=guild_id,
+            track_id=track.id.value,
+            skipped=False,
+        )
+
+        # Call external callback if set
+        if self._on_track_finished_callback:
+            try:
+                result = self._on_track_finished_callback(guild_id, track)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception:
+                logger.exception("Error in track finished callback")
+
+    def _handle_track_finished(self, guild_id: int, track: Track) -> None:
+        """Internal handler for track finished - schedules async handling.
+
+        Args:
+            guild_id: The guild where the track finished.
+            track: The track that finished.
+        """
+        # Schedule the async handler
+        asyncio.create_task(self.handle_track_finished(guild_id, track))
+
+    def _tracks_match(self, left: Track, right: Track) -> bool:
+        """Check whether two tracks refer to the same queued entry."""
+        if left.requested_at and right.requested_at:
+            return left.id == right.id and left.requested_at == right.requested_at
+        return (
+            left.id == right.id
+            and left.webpage_url == right.webpage_url
+            and left.requested_by_id == right.requested_by_id
+        )
+
+    def _remove_first_matching_track(self, queue: list[Track], target: Track) -> bool:
+        """Remove the first matching track from the queue."""
+        for index, track in enumerate(queue):
+            if self._tracks_match(track, target):
+                queue.pop(index)
+                return True
+        return False
+
+    async def _persist_playback_state(
+        self,
+        guild_id: int,
+        *,
+        current_track: Track | None,
+        state: PlaybackState | None = None,
+        remove_from_queue: bool = False,
+    ) -> None:
+        """Persist playback state without discarding concurrent queue updates."""
+        session = await self._session_repo.get(guild_id)
+        if session is None:
+            return
+
+        if remove_from_queue and current_track is not None:
+            removed = self._remove_first_matching_track(session.queue, current_track)
+            if not removed:
+                logger.warning(
+                    "Expected track not found in queue for guild %s during playback start",
+                    guild_id,
+                )
+
+        session.current_track = current_track
+        if state is not None:
+            session.state = state
+        session.touch()
+        await self._session_repo.save(session)
+
+    async def cleanup_guild(self, guild_id: int) -> None:
+        """Clean up all resources for a guild.
+
+        This should be called when the bot leaves a guild.
+
+        Args:
+            guild_id: The guild to clean up.
+        """
+        try:
+            # Stop playback
+            await self._voice_adapter.stop(guild_id)
+            await self._voice_adapter.disconnect(guild_id)
+        except Exception:
+            logger.debug(LogTemplates.VOICE_CLEANUP_ERROR)
+
+        # Delete session
+        await self._session_repo.delete(guild_id)
+        logger.info(LogTemplates.SESSION_CLEANED_UP, guild_id)

@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # bgutil-ytdlp-pot-provider: Generates PO Tokens to bypass YouTube bot detection
+  # This service provides fresh poTokens that yt-dlp uses to access YouTube content
+  bgutil-provider:
+    image: ghcr.io/brainicism/bgutil-ytdlp-pot-provider:latest
+    container_name: bgutil-provider
+    restart: unless-stopped
+    ports:
+      - "4416:4416"
+    environment:
+      # Optional: Configure visitor data for POT generation
+      # VISITOR_DATA: your_visitor_data_here
+
+      # Optional: Port to run the server on (default: 4416)
+      # PORT: 4416
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4416/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - music-bot
+
+  # Discord Music Bot (optional - for running the bot in Docker)
+  # music-bot:
+  #   build: .
+  #   container_name: discord-music-bot
+  #   restart: unless-stopped
+  #   depends_on:
+  #     bgutil-provider:
+  #       condition: service_healthy
+  #   environment:
+  #     DISCORD_TOKEN: ${DISCORD_TOKEN}
+  #     POT_SERVER_URL: http://bgutil-provider:4416
+  #   volumes:
+  #     - ./data:/app/data
+  #     - ./logs:/app/logs
+  #   networks:
+  #     - music-bot
+
+networks:
+  music-bot:
+    driver: bridge

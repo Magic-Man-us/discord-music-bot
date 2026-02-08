@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "console": {
+      "format": "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+      "class": "logger_config.ColoredFormatter"
+    },
+    "file": {
+      "format": "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+    }
+  },
+  "handlers": {
+    "console": {
+      "class": "logging.StreamHandler",
+      "level": "DEBUG",
+      "formatter": "console",
+      "stream": "ext://sys.stdout"
+    }
+  },
+  "loggers": {
+    "src": {
+      "level": "INFO",
+      "handlers": ["console"],
+      "propagate": false
+    },
+    "infrastructure": {
+      "level": "DEBUG",
+      "handlers": ["console"],
+      "propagate": false
+    },
+    "application": {
+      "level": "DEBUG",
+      "handlers": ["console"],
+      "propagate": false
+    },
+    "domain": {
+      "level": "DEBUG",
+      "handlers": ["console"],
+      "propagate": false
+    },
+    "infrastructure.discord": {
+      "level": "INFO",
+      "handlers": ["console"],
+      "propagate": false
+    },
+    "infrastructure.audio": {
+      "level": "DEBUG",
+      "handlers": ["console"],
+      "propagate": false
+    },
+    "discord": {
+      "level": "INFO",
+      "handlers": ["console"],
+      "propagate": false
+    },
+    "discord.client": {
+      "level": "WARNING"
+    },
+    "discord.gateway": {
+      "level": "WARNING"
+    },
+    "discord.http": {
+      "level": "WARNING"
+    }
+  },
+  "root": {
+    "level": "INFO",
+    "handlers": ["console"]
+  }
+}
