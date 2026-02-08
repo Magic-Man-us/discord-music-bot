@@ -8,7 +8,7 @@ A Discord music bot with AI-powered radio, built with clean architecture. Plays 
 - **Queue Management** - Add, remove, shuffle, reorder, and loop tracks
 - **AI Radio** - `/radio` auto-queues similar songs using OpenAI recommendations
 - **Vote Skip** - Democratic skip voting with configurable thresholds
-- **Auto-Skip** - Skips tracks when the requester leaves the voice channel
+- **Requester Leave Protection** - Pauses and asks listeners to continue or skip when the requester leaves
 - **Slash Commands** - Modern Discord slash commands with rich embeds
 - **Persistent State** - SQLite-backed queue, history, and session persistence
 - **Health Monitoring** - Built-in health checks, uptime tracking, and statistics
@@ -282,71 +282,7 @@ The service file includes security hardening (`NoNewPrivileges`, `ProtectSystem`
 
 ## Development
 
-### Makefile Commands
-
-Run `make help` to see all available targets. Below is the full reference:
-
-#### Setup
-
-| Command | Description |
-|---------|-------------|
-| `make setup` | Full first-time setup: checks prereqs, creates `.venv`, installs deps, creates `.env`, starts POT provider |
-| `make prereqs` | Check that Python 3.12+, ffmpeg, Docker, and docker-compose are installed |
-| `make install` | Install production dependencies (`pip install -e .`) |
-| `make dev` | Install with dev and test dependencies (`pip install -e ".[dev,test]"`) |
-| `make setup-env` | Create `.env` from `.env.example` (skips if `.env` exists) |
-
-#### Quality
-
-| Command | Description |
-|---------|-------------|
-| `make test` | Run tests with pytest |
-| `make test-cov` | Run tests with coverage report (HTML output in `htmlcov/`) |
-| `make lint` | Lint with ruff |
-| `make format` | Auto-format code with ruff |
-| `make check` | Run lint + tests together |
-
-#### Running
-
-| Command | Description |
-|---------|-------------|
-| `make run` | Run the bot directly (requires `.env` file) |
-| `make run-tmux` | Run the bot in tmux with auto-respawn (uses `music_start.py`) |
-
-#### Database
-
-| Command | Description |
-|---------|-------------|
-| `make db-reset` | Delete the SQLite database files (interactive confirmation) |
-
-#### YouTube POT Provider
-
-The POT (Proof of Origin Token) provider is a Docker container that generates tokens to prevent YouTube 403 errors. It must be running for YouTube playback to work reliably.
-
-| Command | Description |
-|---------|-------------|
-| `make pot-start` | Start the bgutil POT provider container |
-| `make pot-stop` | Stop the POT provider container |
-| `make pot-logs` | Tail the POT provider logs |
-| `make pot-status` | Check if the POT provider is running |
-
-#### Utilities
-
-| Command | Description |
-|---------|-------------|
-| `make clean` | Remove `__pycache__`, `.egg-info`, `.pytest_cache`, `.ruff_cache`, coverage files |
-| `make info` | Show Python version and installed dependency versions |
-| `make help` | Show all available make targets |
-
-### Project Structure
-
-```
-src/discord_music_player/
-  domain/             # Business logic (entities, value objects, services)
-  application/        # Use cases (commands, queries, services)
-  infrastructure/     # External adapters (Discord, yt-dlp, FFmpeg, SQLite, OpenAI)
-  config/             # Settings and dependency injection container
-```
+See [DEVELOPMENT.md](DEVELOPMENT.md) for Makefile commands, project structure, and architecture patterns.
 
 ## Troubleshooting
 
