@@ -279,12 +279,14 @@ class MusicCog(commands.Cog):
         channel: discord.abc.Messageable | None = None
         state = self._message_state_by_guild.get(guild_id)
         if state is not None and state.now_playing is not None:
-            channel = self.bot.get_channel(state.now_playing.channel_id)
+            candidate = self.bot.get_channel(state.now_playing.channel_id)
+            if isinstance(candidate, discord.abc.Messageable):
+                channel = candidate
 
         # Fall back to guild system channel
         if channel is None:
             guild = self.bot.get_guild(guild_id)
-            if guild is not None:
+            if guild is not None and isinstance(guild.system_channel, discord.abc.Messageable):
                 channel = guild.system_channel
 
         if channel is None:

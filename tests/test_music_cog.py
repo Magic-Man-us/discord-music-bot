@@ -15,7 +15,7 @@ Uses pytest with async/await patterns and proper mocking.
 """
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -1154,6 +1154,18 @@ class TestMessageStateManagement:
         mock_message.edit.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_on_track_finished_no_state_returns_early(
+        self, music_cog, mock_container, sample_track
+    ):
+        """Should return early without querying session when no message state exists."""
+        # Ensure no message state for guild
+        assert 999 not in music_cog._message_state_by_guild
+
+        await music_cog._on_track_finished(999, sample_track)
+
+        mock_container.session_repository.get.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_on_track_finished_promotes_queued_message(
         self, music_cog, mock_bot, mock_container, sample_track
     ):
@@ -1334,3 +1346,115 @@ class TestIntegration:
         assert mock_container.queue_service.shuffle.called
         assert mock_container.queue_service.remove.called
         assert mock_container.queue_service.clear.called
+
+
+# =============================================================================
+# _on_requester_left Tests
+# =============================================================================
+
+
+class TestOnRequesterLeft:
+    """Tests for _on_requester_left callback."""
+
+    GUILD_ID = 111111111
+    USER_ID = 333333333
+    VIEW_PATH = "discord_music_player.infrastructure.discord.views.requester_left_view.RequesterLeftView"
+
+    @pytest.mark.asyncio
+    @patch(VIEW_PATH)
+    async def test_sends_view_via_now_playing_channel(
+        self, MockView, music_cog, mock_bot, mock_container, sample_track
+    ):
+        """Should send view to the now-playing channel when message state exists."""
+        # Setup now-playing message state
+        music_cog._track_now_playing_message(
+            guild_id=self.GUILD_ID, track=sample_track, channel_id=222, message_id=333
+        )
+
+        # Mock channel returned by bot.get_channel
+        mock_channel = MagicMock(spec=discord.abc.Messageable)
+        mock_message = MagicMock()
+        mock_channel.send = AsyncMock(return_value=mock_message)
+        mock_bot.get_channel.return_value = mock_channel
+
+        # Mock the view instance
+        mock_view_instance = MagicMock()
+        MockView.return_value = mock_view_instance
+
+        await music_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
+
+        mock_channel.send.assert_called_once()
+        call_kwargs = mock_channel.send.call_args
+        assert call_kwargs[1]["view"] is mock_view_instance
+        mock_view_instance.set_message.assert_called_once_with(mock_message)
+
+    @pytest.mark.asyncio
+    @patch(VIEW_PATH)
+    async def test_falls_back_to_system_channel(
+        self, MockView, music_cog, mock_bot, mock_container, sample_track
+    ):
+        """Should fall back to guild system_channel when no message state."""
+        # No message state — bot.get_channel returns None (default)
+        mock_system_channel = MagicMock(spec=discord.abc.Messageable)
+        mock_message = MagicMock()
+        mock_system_channel.send = AsyncMock(return_value=mock_message)
+
+        mock_guild = MagicMock()
+        mock_guild.system_channel = mock_system_channel
+        mock_bot.get_guild = MagicMock(return_value=mock_guild)
+
+        MockView.return_value = MagicMock()
+
+        await music_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
+
+        mock_system_channel.send.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch(VIEW_PATH)
+    async def test_no_channel_auto_skips(
+        self, MockView, music_cog, mock_bot, mock_container, sample_track
+    ):
+        """Should auto-skip when no channel can be found (guild is None)."""
+        mock_bot.get_guild = MagicMock(return_value=None)
+
+        await music_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
+
+        mock_container.playback_service.skip_track.assert_called_once_with(self.GUILD_ID)
+        MockView.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch(VIEW_PATH)
+    async def test_guild_without_system_channel_auto_skips(
+        self, MockView, music_cog, mock_bot, mock_container, sample_track
+    ):
+        """Should auto-skip when guild exists but has no system_channel."""
+        mock_guild = MagicMock()
+        mock_guild.system_channel = None
+        mock_bot.get_guild = MagicMock(return_value=mock_guild)
+
+        await music_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
+
+        mock_container.playback_service.skip_track.assert_called_once_with(self.GUILD_ID)
+        MockView.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch(VIEW_PATH)
+    async def test_content_format(
+        self, MockView, music_cog, mock_bot, mock_container, sample_track
+    ):
+        """Should format content with user mention and truncated track title."""
+        # Setup now-playing message state
+        music_cog._track_now_playing_message(
+            guild_id=self.GUILD_ID, track=sample_track, channel_id=222, message_id=333
+        )
+
+        mock_channel = MagicMock(spec=discord.abc.Messageable)
+        mock_channel.send = AsyncMock(return_value=MagicMock())
+        mock_bot.get_channel.return_value = mock_channel
+        MockView.return_value = MagicMock()
+
+        await music_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
+
+        content = mock_channel.send.call_args[0][0]
+        assert f"<@{self.USER_ID}>" in content
+        assert sample_track.title in content
