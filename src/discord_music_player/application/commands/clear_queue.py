@@ -58,7 +58,7 @@ class ClearResult:
 
 class ClearQueueHandler:
 
-    def __init__(self, session_repository: SessionRepository) -> None:
+    def __init__(self, *, session_repository: SessionRepository) -> None:
         self._session_repo = session_repository
 
     async def handle(self, command: ClearQueueCommand) -> ClearResult:

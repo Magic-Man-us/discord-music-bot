@@ -60,6 +60,7 @@ class VoteSkipHandler:
 
     def __init__(
         self,
+        *,
         session_repository: SessionRepository,
         vote_repository: VoteSessionRepository,
         voice_adapter: VoiceAdapter,

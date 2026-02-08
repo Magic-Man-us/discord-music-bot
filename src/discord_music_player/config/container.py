@@ -47,7 +47,7 @@ class Container:
 
     # Persistence layer
     _database: Database | None = None
-    _session_repository: SessionRepository | None = None
+    _session_repo: SessionRepository | None = None
     _history_repository: TrackHistoryRepository | None = None
     _vote_repository: VoteSessionRepository | None = None
     _cache_repository: RecommendationCacheRepository | None = None
@@ -111,13 +111,13 @@ class Container:
 
     @property
     def session_repository(self) -> SessionRepository:
-        if self._session_repository is None:
+        if self._session_repo is None:
             from ..infrastructure.persistence.repositories.session_repository import (
                 SQLiteSessionRepository,
             )
 
-            self._session_repository = SQLiteSessionRepository(self.database)
-        return self._session_repository
+            self._session_repo = SQLiteSessionRepository(self.database)
+        return self._session_repo
 
     @property
     def history_repository(self) -> TrackHistoryRepository:

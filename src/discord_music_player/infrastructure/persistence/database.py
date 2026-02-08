@@ -1,16 +1,4 @@
-"""SQLite database connection management.
-
-This module intentionally stays lightweight: it uses `aiosqlite` directly
-rather than an ORM. For a single-process Discord bot this is typically the
-most efficient and reliable approach.
-
-Design notes:
-- Uses **per-operation / per-transaction connections** to avoid a global lock
-  and allow concurrent reads.
-- Applies SQLite pragmas (WAL, foreign_keys, busy_timeout) on every connection
-  to keep behavior consistent.
-- Keeps `initialize()` idempotent.
-"""
+"""SQLite database with per-operation connections and WAL mode."""
 
 from __future__ import annotations
 
@@ -32,27 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class Database:
-    """SQLite database connection manager.
-
-    Provides:
-    - A consistent way to open connections with required pragmas
-    - Simple transaction management
-    - Convenience helpers for common query patterns
-
-    Notes:
-        This class does not implement connection pooling. For SQLite, opening
-        a connection is relatively cheap, and using per-operation connections
-        avoids needing a global asyncio lock.
-    """
-
     def __init__(self, url: str, settings: DatabaseSettings | None = None) -> None:
-        """Initialize database manager.
-
-        Args:
-            url: SQLite connection URL (format: sqlite:///path/to/db.db)
-            settings: Optional database settings for connection pooling configuration.
-        """
-        # Parse SQLite URL
         if url.startswith("sqlite:///"):
             self._db_path = url[10:]  # Remove "sqlite:///"
         else:
@@ -60,35 +28,23 @@ class Database:
 
         self._initialized = False
         self._keepalive_conn: aiosqlite.Connection | None = None
-
-        # Connection configuration
         self._busy_timeout = settings.busy_timeout_ms if settings else 5000
         self._connection_timeout = settings.connection_timeout_s if settings else 10
 
     @property
     def db_path(self) -> str:
-        """Get the database file path."""
         return self._db_path
 
     async def initialize(self) -> None:
-        """Initialize the database.
-
-        Currently this ensures the database directory exists, the database can
-        be opened, and required tables exist.
-
-        If you later add migrations, this is the correct place to run them.
-        """
         if self._initialized:
             return
 
-        # Ensure data directory exists (skip for in-memory DB).
         if self._db_path != ":memory:":
             db_dir = Path(self._db_path).parent
             db_dir.mkdir(parents=True, exist_ok=True)
 
-        # For in-memory databases, keep one connection open for the lifetime of
-        # this Database instance; otherwise the shared in-memory DB is destroyed
-        # once the last connection closes.
+        # Keep one connection alive for in-memory DBs; otherwise the shared
+        # in-memory DB is destroyed once the last connection closes.
         if self._db_path == ":memory:" and self._keepalive_conn is None:
             self._keepalive_conn = await self._connect()
 
@@ -104,12 +60,6 @@ class Database:
         logger.info(LogTemplates.DATABASE_INITIALIZED, self._db_path)
 
     async def _ensure_schema(self, conn: aiosqlite.Connection) -> None:
-        """Create required tables if they don't exist.
-
-        This is a minimal schema initializer for the repositories in
-        `src/infrastructure/persistence/repositories/`.
-        """
-        # Sessions
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS guild_sessions (
@@ -122,7 +72,6 @@ class Database:
             """
         )
 
-        # Queue tracks
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS queue_tracks (
@@ -154,7 +103,6 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_queue_tracks_guild_current ON queue_tracks(guild_id, is_current)"
         )
 
-        # Track history
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS track_history (
@@ -193,7 +141,6 @@ class Database:
         await self._ensure_column(conn, "track_history", "like_count", "INTEGER")
         await self._ensure_column(conn, "track_history", "view_count", "INTEGER")
 
-        # Vote sessions + votes
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS vote_sessions (
@@ -229,7 +176,6 @@ class Database:
             """
         )
 
-        # Recommendation cache
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS recommendation_cache (
@@ -255,7 +201,6 @@ class Database:
         column: str,
         column_type_sql: str,
     ) -> None:
-        """Ensure a column exists, adding it if needed."""
         rows = await conn.execute_fetchall(SQLPragmas.TABLE_INFO.format(table=table))
         existing_columns = {r[1] for r in rows}
         if column in existing_columns:
@@ -265,13 +210,8 @@ class Database:
         logger.info(LogTemplates.TABLE_MIGRATED, table, column)
 
     async def _connect(self) -> aiosqlite.Connection:
-        """Create a new connection configured for this application."""
-        # Special-case in-memory databases used by tests.
-        #
-        # SQLite ":memory:" databases are per-connection, which breaks the
-        # per-operation connection strategy. To preserve the performance design
-        # while keeping tests (and any in-memory usage) working, we use a shared
-        # in-memory URI.
+        # SQLite ":memory:" is per-connection, so use a shared URI to allow
+        # multiple connections to see the same in-memory database.
         if self._db_path == ":memory:":
             db_path = "file:discord-music-player?mode=memory&cache=shared"
             uri = True
@@ -281,16 +221,14 @@ class Database:
 
         conn = await aiosqlite.connect(
             db_path,
-            # NOTE: detect_types disabled because we use ISO 8601 timestamps
-            # with 'T' separator, but SQLite's built-in converter expects
-            # space-separated format. We handle parsing via UtcDateTime.
+            # detect_types=0 because our ISO 8601 timestamps use 'T' separator,
+            # but SQLite's built-in converter expects space-separated format.
             detect_types=0,
             uri=uri,
             timeout=self._connection_timeout,
         )
         conn.row_factory = aiosqlite.Row
 
-        # Pragmas: apply for every new connection.
         # WAL improves concurrent read behavior and reduces writer blocking.
         await conn.execute(SQLPragmas.JOURNAL_MODE_WAL)
         await conn.execute(SQLPragmas.FOREIGN_KEYS_ON)
@@ -300,16 +238,10 @@ class Database:
 
     @asynccontextmanager
     async def connection(self) -> AsyncGenerator[aiosqlite.Connection, None]:
-        """Get a database connection context manager.
-
-        A new connection is opened for the context and always closed.
-        """
         conn = await self._connect()
         try:
             yield conn
         except Exception:
-            # If caller used this context for write operations but forgot to
-            # explicitly use `transaction()`, try to roll back.
             try:
                 await conn.rollback()
             except Exception:

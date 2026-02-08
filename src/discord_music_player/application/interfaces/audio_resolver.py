@@ -1,5 +1,7 @@
 """Port interface for resolving audio tracks from queries and URLs."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 

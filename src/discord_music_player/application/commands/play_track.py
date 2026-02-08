@@ -114,6 +114,7 @@ class PlayTrackHandler:
 
     def __init__(
         self,
+        *,
         session_repository: SessionRepository,
         audio_resolver: AudioResolver,
         voice_adapter: VoiceAdapter,

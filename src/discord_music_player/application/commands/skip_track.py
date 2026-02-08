@@ -81,6 +81,7 @@ class SkipTrackHandler:
 
     def __init__(
         self,
+        *,
         session_repository: SessionRepository,
         voice_adapter: VoiceAdapter,
     ) -> None:

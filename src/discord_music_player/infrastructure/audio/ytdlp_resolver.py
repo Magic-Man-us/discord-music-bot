@@ -239,14 +239,6 @@ class YtDlpResolver(AudioResolver):
             return None
 
     async def resolve_many(self, queries: list[str]) -> list[Track]:
-        """Resolve multiple queries to tracks.
-
-        Args:
-            queries: List of URLs or search queries.
-
-        Returns:
-            List of successfully resolved tracks.
-        """
         tracks: list[Track] = []
 
         # Process in batches to avoid overwhelming yt-dlp
@@ -258,7 +250,6 @@ class YtDlpResolver(AudioResolver):
                 async with asyncio.TaskGroup() as tg:
                     batch_tasks = [tg.create_task(self.resolve(q)) for q in batch]
 
-                # Collect results after TaskGroup completes
                 for task in batch_tasks:
                     try:
                         result = task.result()
@@ -267,26 +258,15 @@ class YtDlpResolver(AudioResolver):
                     except Exception as e:
                         logger.warning(LogTemplates.RESOLUTION_FAILED.format(error=e))
             except* Exception as eg:
-                # Handle exception group from TaskGroup
                 for exc in eg.exceptions:
                     logger.warning(LogTemplates.RESOLUTION_FAILED.format(error=exc))
 
-            # Small delay between batches
             if i + batch_size < len(queries):
                 await asyncio.sleep(0.5)
 
         return tracks
 
     async def search(self, query: str, limit: int = 5) -> list[Track]:
-        """Search for tracks matching a query.
-
-        Args:
-            query: Search query string.
-            limit: Maximum number of results.
-
-        Returns:
-            List of matching tracks.
-        """
         try:
             results = await asyncio.to_thread(self._search_sync, query, limit)
 
@@ -302,18 +282,10 @@ class YtDlpResolver(AudioResolver):
             return []
 
     async def extract_playlist(self, url: str) -> list[Track]:
-        """Extract all tracks from a playlist URL.
-
-        Args:
-            url: Playlist URL.
-
-        Returns:
-            List of tracks in the playlist.
-        """
         try:
             entries = await asyncio.to_thread(self._extract_playlist_sync, url)
 
-            # For flat extraction, we need to resolve each entry
+            # Flat extraction returns metadata only, so resolve each entry individually
             tracks: list[Track] = []
             for entry in entries:
                 entry_url = entry.get("url") or entry.get("webpage_url")
@@ -328,23 +300,7 @@ class YtDlpResolver(AudioResolver):
             return []
 
     def is_url(self, query: str) -> bool:
-        """Check if a query is a URL.
-
-        Args:
-            query: Query string to check.
-
-        Returns:
-            True if the query appears to be a URL.
-        """
         return any(pattern.search(query) for pattern in URL_PATTERNS)
 
     def is_playlist(self, url: str) -> bool:
-        """Check if a URL is a playlist.
-
-        Args:
-            url: URL to check.
-
-        Returns:
-            True if the URL appears to be a playlist.
-        """
         return any(pattern.search(url) for pattern in PLAYLIST_PATTERNS)

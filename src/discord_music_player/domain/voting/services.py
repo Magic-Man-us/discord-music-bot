@@ -1,5 +1,7 @@
 """Domain services containing voting business logic."""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from discord_music_player.domain.music.value_objects import TrackId

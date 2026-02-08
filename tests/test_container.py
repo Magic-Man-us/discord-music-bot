@@ -83,7 +83,7 @@ class TestContainerInitialization:
         """Should initialize with all private attributes as None."""
         assert container._bot is None
         assert container._database is None
-        assert container._session_repository is None
+        assert container._session_repo is None
         assert container._history_repository is None
         assert container._vote_repository is None
         assert container._cache_repository is None
@@ -895,7 +895,7 @@ class TestContainerIntegration:
             service = container.playback_service
 
             # All dependencies should be created
-            assert container._session_repository is not None
+            assert container._session_repo is not None
             assert container._history_repository is not None
             assert container._voice_adapter is not None
             assert container._audio_resolver is not None
@@ -916,6 +916,6 @@ class TestContainerIntegration:
             _ = container.vote_skip_handler
 
             # All should share the same session_repository instance
-            assert container._session_repository is not None
+            assert container._session_repo is not None
             # The repository should only be created once
             # (Verified by caching tests above)
