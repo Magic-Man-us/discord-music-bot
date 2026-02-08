@@ -166,6 +166,159 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             (UtcDateTime.now().iso, skipped, guild_id, track_id.value),
         )
 
+    # === Analytics Methods ===
+
+    async def get_total_tracks(self, guild_id: int) -> int:
+        row = await self._db.fetch_one(
+            "SELECT COUNT(*) as count FROM track_history WHERE guild_id = ?",
+            (guild_id,),
+        )
+        return row["count"] if row else 0
+
+    async def get_unique_tracks(self, guild_id: int) -> int:
+        row = await self._db.fetch_one(
+            "SELECT COUNT(DISTINCT track_id) as count FROM track_history WHERE guild_id = ?",
+            (guild_id,),
+        )
+        return row["count"] if row else 0
+
+    async def get_total_listen_time(self, guild_id: int) -> int:
+        row = await self._db.fetch_one(
+            "SELECT COALESCE(SUM(duration_seconds), 0) as total FROM track_history WHERE guild_id = ?",
+            (guild_id,),
+        )
+        return row["total"] if row else 0
+
+    async def get_top_requesters(
+        self, guild_id: int, limit: int = 10
+    ) -> list[tuple[int, str, int]]:
+        rows = await self._db.fetch_all(
+            """
+            SELECT requested_by_id, requested_by_name, COUNT(*) as count
+            FROM track_history
+            WHERE guild_id = ? AND requested_by_id IS NOT NULL
+            GROUP BY requested_by_id
+            ORDER BY count DESC
+            LIMIT ?
+            """,
+            (guild_id, limit),
+        )
+        return [
+            (row["requested_by_id"], row["requested_by_name"] or "Unknown", row["count"])
+            for row in rows
+        ]
+
+    async def get_skip_rate(self, guild_id: int) -> float:
+        row = await self._db.fetch_one(
+            """
+            SELECT
+                COUNT(*) as total,
+                COALESCE(SUM(skipped), 0) as skipped
+            FROM track_history
+            WHERE guild_id = ?
+            """,
+            (guild_id,),
+        )
+        if not row or row["total"] == 0:
+            return 0.0
+        return row["skipped"] / row["total"]
+
+    async def get_most_skipped(self, guild_id: int, limit: int = 10) -> list[tuple[str, int]]:
+        rows = await self._db.fetch_all(
+            """
+            SELECT title, COUNT(*) as count
+            FROM track_history
+            WHERE guild_id = ? AND skipped = 1
+            GROUP BY track_id
+            ORDER BY count DESC
+            LIMIT ?
+            """,
+            (guild_id, limit),
+        )
+        return [(row["title"], row["count"]) for row in rows]
+
+    async def get_user_stats(self, guild_id: int, user_id: int) -> dict:
+        row = await self._db.fetch_one(
+            """
+            SELECT
+                COUNT(*) as total_tracks,
+                COUNT(DISTINCT track_id) as unique_tracks,
+                COALESCE(SUM(duration_seconds), 0) as total_listen_time,
+                COALESCE(SUM(skipped), 0) as skipped_count
+            FROM track_history
+            WHERE guild_id = ? AND requested_by_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        if not row or row["total_tracks"] == 0:
+            return {
+                "total_tracks": 0,
+                "unique_tracks": 0,
+                "total_listen_time": 0,
+                "skip_rate": 0.0,
+            }
+        return {
+            "total_tracks": row["total_tracks"],
+            "unique_tracks": row["unique_tracks"],
+            "total_listen_time": row["total_listen_time"],
+            "skip_rate": row["skipped_count"] / row["total_tracks"],
+        }
+
+    async def get_user_top_tracks(
+        self, guild_id: int, user_id: int, limit: int = 10
+    ) -> list[tuple[str, int]]:
+        rows = await self._db.fetch_all(
+            """
+            SELECT title, COUNT(*) as count
+            FROM track_history
+            WHERE guild_id = ? AND requested_by_id = ?
+            GROUP BY track_id
+            ORDER BY count DESC
+            LIMIT ?
+            """,
+            (guild_id, user_id, limit),
+        )
+        return [(row["title"], row["count"]) for row in rows]
+
+    async def get_activity_by_day(self, guild_id: int, days: int = 30) -> list[tuple[str, int]]:
+        rows = await self._db.fetch_all(
+            """
+            SELECT DATE(played_at) as day, COUNT(*) as count
+            FROM track_history
+            WHERE guild_id = ? AND played_at >= DATE('now', ?)
+            GROUP BY day
+            ORDER BY day ASC
+            """,
+            (guild_id, f"-{days} days"),
+        )
+        return [(row["day"], row["count"]) for row in rows]
+
+    async def get_activity_by_hour(self, guild_id: int) -> list[tuple[int, int]]:
+        rows = await self._db.fetch_all(
+            """
+            SELECT CAST(strftime('%H', played_at) AS INTEGER) as hour, COUNT(*) as count
+            FROM track_history
+            WHERE guild_id = ?
+            GROUP BY hour
+            ORDER BY hour ASC
+            """,
+            (guild_id,),
+        )
+        return [(row["hour"], row["count"]) for row in rows]
+
+    async def get_activity_by_weekday(self, guild_id: int) -> list[tuple[int, int]]:
+        rows = await self._db.fetch_all(
+            """
+            SELECT CAST(strftime('%w', played_at) AS INTEGER) as weekday, COUNT(*) as count
+            FROM track_history
+            WHERE guild_id = ?
+            GROUP BY weekday
+            ORDER BY weekday ASC
+            """,
+            (guild_id,),
+        )
+        return [(row["weekday"], row["count"]) for row in rows]
+
     def _row_to_track(self, row: dict) -> Track:
         requested_at = None
         if row.get("requested_at"):

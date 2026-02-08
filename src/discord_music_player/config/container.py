@@ -33,8 +33,13 @@ if TYPE_CHECKING:
     from ..domain.recommendations.repository import RecommendationCacheRepository
     from ..domain.voting.repository import VoteSessionRepository
     from ..domain.voting.services import VotingDomainService
+    from ..infrastructure.ai.genre_classifier import OpenAIGenreClassifier
+    from ..infrastructure.charts.chart_generator import ChartGenerator
     from ..infrastructure.discord.services.voice_warmup import VoiceWarmupTracker
     from ..infrastructure.persistence.database import Database
+    from ..infrastructure.persistence.repositories.genre_repository import (
+        SQLiteGenreCacheRepository,
+    )
     from .settings import Settings
 
 
@@ -51,6 +56,11 @@ class Container:
     _history_repository: TrackHistoryRepository | None = None
     _vote_repository: VoteSessionRepository | None = None
     _cache_repository: RecommendationCacheRepository | None = None
+
+    # Analytics
+    _genre_repository: SQLiteGenreCacheRepository | None = None
+    _genre_classifier: OpenAIGenreClassifier | None = None
+    _chart_generator: ChartGenerator | None = None
 
     # Infrastructure adapters
     _audio_resolver: AudioResolver | None = None
@@ -148,6 +158,34 @@ class Container:
 
             self._cache_repository = SQLiteCacheRepository(self.database)
         return self._cache_repository
+
+    # === Analytics ===
+
+    @property
+    def genre_repository(self) -> SQLiteGenreCacheRepository:
+        if self._genre_repository is None:
+            from ..infrastructure.persistence.repositories.genre_repository import (
+                SQLiteGenreCacheRepository,
+            )
+
+            self._genre_repository = SQLiteGenreCacheRepository(self.database)
+        return self._genre_repository
+
+    @property
+    def genre_classifier(self) -> OpenAIGenreClassifier:
+        if self._genre_classifier is None:
+            from ..infrastructure.ai.genre_classifier import OpenAIGenreClassifier
+
+            self._genre_classifier = OpenAIGenreClassifier(self.settings.ai)
+        return self._genre_classifier
+
+    @property
+    def chart_generator(self) -> ChartGenerator:
+        if self._chart_generator is None:
+            from ..infrastructure.charts.chart_generator import ChartGenerator
+
+            self._chart_generator = ChartGenerator()
+        return self._chart_generator
 
     # === Infrastructure Adapters ===
 

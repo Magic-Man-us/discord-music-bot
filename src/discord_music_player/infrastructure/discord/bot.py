@@ -103,6 +103,7 @@ class MusicBot(commands.Bot):
             "discord_music_player.infrastructure.discord.cogs.health_cog",
             "discord_music_player.infrastructure.discord.cogs.info_cog",
             "discord_music_player.infrastructure.discord.cogs.event_cog",
+            "discord_music_player.infrastructure.discord.cogs.analytics_cog",
         ]
 
         loaded = 0

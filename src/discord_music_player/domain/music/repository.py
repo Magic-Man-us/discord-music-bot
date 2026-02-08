@@ -97,3 +97,60 @@ class TrackHistoryRepository(ABC):
     async def cleanup_old(self, older_than: datetime) -> int:
         """Remove history entries older than the given time."""
         ...
+
+    # === Analytics Methods ===
+
+    @abstractmethod
+    async def get_total_tracks(self, guild_id: int) -> int:
+        """Get total number of tracks played in a guild."""
+        ...
+
+    @abstractmethod
+    async def get_unique_tracks(self, guild_id: int) -> int:
+        """Get number of unique tracks played in a guild."""
+        ...
+
+    @abstractmethod
+    async def get_total_listen_time(self, guild_id: int) -> int:
+        """Get total listen time in seconds for a guild."""
+        ...
+
+    @abstractmethod
+    async def get_top_requesters(self, guild_id: int, limit: int = 10) -> list[tuple[int, str, int]]:
+        """Get top requesters by play count. Returns (user_id, name, count)."""
+        ...
+
+    @abstractmethod
+    async def get_skip_rate(self, guild_id: int) -> float:
+        """Get the skip rate (0.0–1.0) for a guild."""
+        ...
+
+    @abstractmethod
+    async def get_most_skipped(self, guild_id: int, limit: int = 10) -> list[tuple[str, int]]:
+        """Get most skipped tracks. Returns (title, skip_count)."""
+        ...
+
+    @abstractmethod
+    async def get_user_stats(self, guild_id: int, user_id: int) -> dict:
+        """Get personal stats for a user in a guild."""
+        ...
+
+    @abstractmethod
+    async def get_user_top_tracks(self, guild_id: int, user_id: int, limit: int = 10) -> list[tuple[str, int]]:
+        """Get a user's most played tracks. Returns (title, count)."""
+        ...
+
+    @abstractmethod
+    async def get_activity_by_day(self, guild_id: int, days: int = 30) -> list[tuple[str, int]]:
+        """Get daily play counts. Returns (date_str, count)."""
+        ...
+
+    @abstractmethod
+    async def get_activity_by_hour(self, guild_id: int) -> list[tuple[int, int]]:
+        """Get hourly play distribution. Returns (hour_0_23, count)."""
+        ...
+
+    @abstractmethod
+    async def get_activity_by_weekday(self, guild_id: int) -> list[tuple[int, int]]:
+        """Get weekly play distribution. Returns (weekday_0_sun, count)."""
+        ...

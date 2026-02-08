@@ -256,6 +256,11 @@ class LogTemplates:
     BOT_CLEANUP_START_FAILED = "Failed to start cleanup job: %s"
     BOT_CLEANUP_STOP_ERROR = "Error stopping cleanup job: %s"
 
+    # Analytics
+    ANALYTICS_CHART_GENERATED = "Generated %s chart for guild %s"
+    ANALYTICS_GENRE_CLASSIFIED = "Classified %d tracks into genres"
+    ANALYTICS_GENRE_CLASSIFICATION_FAILED = "Genre classification failed: %s"
+
     # AI/Recommendations
     AI_CLIENT_INITIALIZED = "AI client initialized (model=%s, timeout=%ss)"
     AI_RESPONSE_PARSE_ERROR = "AI response parse error: %s"
@@ -385,6 +390,10 @@ class DiscordUIMessages:
     RADIO_AI_FAILED = "📻 Couldn't get recommendations right now. Try again later."
     RADIO_SESSION_LIMIT = "📻 Radio session limit reached ({limit} tracks). Use `/radio` to start a new session."
 
+    # Analytics Messages
+    ANALYTICS_NO_DATA = "No music has been played yet in this server."
+    ANALYTICS_GENRE_UNAVAILABLE = "Genre data unavailable (AI service not configured)."
+
     # State Messages
     STATE_NOTHING_PLAYING = "Nothing is playing."
     STATE_NOTHING_PLAYING_OR_PAUSED = "Nothing is playing or already paused."
@@ -419,6 +428,12 @@ class DiscordUIMessages:
     EMBED_CLEANUP_RESULTS = "🧹 Cleanup Results"
     EMBED_DATABASE_STATISTICS = "🗄️ Database Statistics"
     EMBED_BOT_STATUS = "🤖 Bot Status"
+    EMBED_SERVER_STATS = "📊 Server Music Stats"
+    EMBED_TOP_TRACKS = "🏆 Top Tracks"
+    EMBED_TOP_USERS = "🏆 Top Listeners"
+    EMBED_TOP_SKIPPED = "⏭️ Most Skipped"
+    EMBED_USER_STATS = "🎵 Your Music Stats"
+    EMBED_ACTIVITY = "📈 Listening Activity"
 
 
 class EmojiConstants:

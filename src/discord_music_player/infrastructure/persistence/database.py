@@ -194,6 +194,19 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_reco_cache_expires ON recommendation_cache(expires_at)"
         )
 
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS track_genres (
+                track_id TEXT PRIMARY KEY,
+                genre TEXT NOT NULL,
+                classified_at TEXT NOT NULL
+            )
+            """
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_track_genres_genre ON track_genres(genre)"
+        )
+
     async def _ensure_column(
         self,
         conn: aiosqlite.Connection,
