@@ -1,5 +1,5 @@
 """
-Tests for OpenAI Recommendation Client.
+Tests for AI Recommendation Client.
 
 Demonstrates how Pydantic models make AI response testing trivial:
 - No API mocking required for parsing logic
@@ -12,18 +12,16 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai import RateLimitError
-from pydantic import SecretStr
 
 from discord_music_player.config.settings import AISettings
 from discord_music_player.domain.recommendations.entities import (
     Recommendation,
     RecommendationRequest,
 )
-from discord_music_player.infrastructure.ai.openai_client import (
+from discord_music_player.infrastructure.ai.recommendation_client import (
+    AIRecommendationClient,
     AIRecommendationItem,
     AIRecommendationResponse,
-    OpenAIRecommendationClient,
 )
 
 # ============================================================================
@@ -228,16 +226,15 @@ class TestRecommendationRequest:
 
 
 # ============================================================================
-# OpenAIRecommendationClient Tests
+# AIRecommendationClient Tests
 # ============================================================================
 
 
 @pytest.fixture
 def mock_settings():
-    """Create mock AI settings with fake API key."""
+    """Create mock AI settings."""
     return AISettings(
-        api_key=SecretStr("sk-test-fake-key-123"),
-        model="gpt-4o-mini",
+        model="openai:gpt-4o-mini",
         max_tokens=500,
         temperature=0.7,
         cache_ttl_seconds=300,
@@ -246,8 +243,8 @@ def mock_settings():
 
 @pytest.fixture
 def client(mock_settings):
-    """Create OpenAI client with mock settings."""
-    return OpenAIRecommendationClient(mock_settings)
+    """Create AI client with mock settings."""
+    return AIRecommendationClient(mock_settings)
 
 
 @pytest.fixture
@@ -265,34 +262,26 @@ class TestClientInitialization:
 
     def test_init_with_settings(self, mock_settings):
         """Should initialize with provided settings."""
-        client = OpenAIRecommendationClient(mock_settings)
+        client = AIRecommendationClient(mock_settings)
         assert client._settings == mock_settings
-        assert client._client is None  # Lazy initialization
+        assert client._agent is None  # Lazy initialization
 
     def test_init_without_settings(self):
         """Should initialize with default settings."""
         with patch(
-            "discord_music_player.infrastructure.ai.openai_client.AISettings"
+            "discord_music_player.infrastructure.ai.recommendation_client.AISettings"
         ) as mock_ai_settings:
-            client = OpenAIRecommendationClient()
+            client = AIRecommendationClient()
             mock_ai_settings.assert_called_once()
 
-    def test_lazy_client_creation(self, client):
-        """Should create OpenAI client lazily on first access."""
-        assert client._client is None
+    def test_lazy_agent_creation(self, client):
+        """Should create Agent lazily on first access."""
+        assert client._agent is None
         with patch(
-            "discord_music_player.infrastructure.ai.openai_client.AsyncOpenAI"
-        ) as mock_openai:
-            client._get_client()
-            mock_openai.assert_called_once()
-
-    def test_get_client_raises_without_api_key(self):
-        """Should raise error when API key is not set."""
-        settings = AISettings(api_key=SecretStr(""))
-        client = OpenAIRecommendationClient(settings)
-
-        with pytest.raises(RuntimeError, match="OPENAI_API_KEY is not set"):
-            client._get_client()
+            "discord_music_player.infrastructure.ai.recommendation_client.Agent"
+        ) as mock_agent:
+            client._get_agent()
+            mock_agent.assert_called_once()
 
 
 class TestCacheKey:
@@ -337,10 +326,12 @@ class TestCaching:
     @pytest.mark.asyncio
     async def test_cache_hit(self, client, sample_request):
         """Should use cached result on second call."""
-        mock_raw_recs = [{"title": "Song 1", "artist": "Artist 1"}]
+        mock_response = AIRecommendationResponse(
+            recs=[AIRecommendationItem(title="Song 1", artist="Artist 1")]
+        )
 
         # First call - cache miss
-        with patch.object(client, "_call_api", return_value={"recs": mock_raw_recs}):
+        with patch.object(client, "_call_api", return_value=mock_response):
             result1 = await client._fetch_recommendations_raw(sample_request)
 
         # Second call - cache hit (no API call)
@@ -355,11 +346,15 @@ class TestCaching:
     @pytest.mark.asyncio
     async def test_cache_expiry(self, client, sample_request):
         """Should refetch after cache expiry."""
-        mock_raw_recs1 = [{"title": "Song 1"}]
-        mock_raw_recs2 = [{"title": "Song 2"}]
+        mock_response1 = AIRecommendationResponse(
+            recs=[AIRecommendationItem(title="Song 1")]
+        )
+        mock_response2 = AIRecommendationResponse(
+            recs=[AIRecommendationItem(title="Song 2")]
+        )
 
         # First call
-        with patch.object(client, "_call_api", return_value={"recs": mock_raw_recs1}):
+        with patch.object(client, "_call_api", return_value=mock_response1):
             await client._fetch_recommendations_raw(sample_request)
 
         # Expire the cache entry
@@ -367,22 +362,24 @@ class TestCaching:
         client._cache[cache_key].created_at = time.time() - client._settings.cache_ttl_seconds - 1
 
         # Second call - should refetch
-        with patch.object(client, "_call_api", return_value={"recs": mock_raw_recs2}):
+        with patch.object(client, "_call_api", return_value=mock_response2):
             result = await client._fetch_recommendations_raw(sample_request)
 
-        assert result == mock_raw_recs2
+        assert result == [{"title": "Song 2", "artist": None, "query": "", "url": None}]
 
     @pytest.mark.asyncio
     async def test_singleflight_deduplication(self, client, sample_request):
         """Should deduplicate concurrent requests for same cache key."""
-        mock_raw_recs = [{"title": "Song 1"}]
+        mock_response = AIRecommendationResponse(
+            recs=[AIRecommendationItem(title="Song 1")]
+        )
         api_call_count = 0
 
-        async def mock_api_call(messages):
+        async def mock_api_call(user_prompt):
             nonlocal api_call_count
             api_call_count += 1
             await asyncio.sleep(0.1)  # Simulate API delay
-            return {"recs": mock_raw_recs}
+            return mock_response
 
         with patch.object(client, "_call_api", side_effect=mock_api_call):
             # Make 3 concurrent requests
@@ -394,65 +391,45 @@ class TestCaching:
 
         # Should only call API once
         assert api_call_count == 1
-        assert all(r == mock_raw_recs for r in results)
+        assert all(r == results[0] for r in results)
 
 
 class TestAPICallHandling:
     """Tests for API call and error handling."""
 
     @pytest.mark.asyncio
-    async def test_execute_api_call_success(self, client):
-        """Should execute API call and parse response."""
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = '{"recs": [{"title": "Test"}]}'
-
-        mock_client = MagicMock()
-        mock_client.with_options.return_value.chat.completions.create = AsyncMock(
-            return_value=mock_response
+    async def test_call_api_success(self, client):
+        """Should execute API call and return structured response."""
+        mock_response = AIRecommendationResponse(
+            recs=[AIRecommendationItem(title="Test")]
         )
+        mock_result = MagicMock()
+        mock_result.output = mock_response
 
-        result = await client._execute_api_call(mock_client, [])
+        mock_agent = MagicMock()
+        mock_agent.run = AsyncMock(return_value=mock_result)
 
-        assert result == {"recs": [{"title": "Test"}]}
+        with patch.object(client, "_get_agent", return_value=mock_agent):
+            result = await client._call_api("test prompt")
+
+        assert result == mock_response
 
     @pytest.mark.asyncio
-    async def test_execute_api_call_empty_response(self, client):
-        """Should raise error on empty response."""
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = None
+    async def test_call_api_error_raises(self, client):
+        """Should raise error after logging."""
+        mock_agent = MagicMock()
+        mock_agent.run = AsyncMock(side_effect=RuntimeError("API down"))
 
-        mock_client = MagicMock()
-        mock_client.with_options.return_value.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
+        with patch.object(client, "_get_agent", return_value=mock_agent):
+            with pytest.raises(RuntimeError, match="API down"):
+                await client._call_api("test prompt")
 
-        with pytest.raises(ValueError, match="Empty response"):
-            await client._execute_api_call(mock_client, [])
+    def test_handle_api_error_logs_warning(self, client):
+        """Should log warning for errors."""
+        error = RuntimeError("some error")
 
-    @pytest.mark.asyncio
-    async def test_handle_retryable_error(self, client):
-        """Should handle retryable errors with backoff."""
-        mock_response = MagicMock()
-        mock_response.status_code = 429
-        error = RateLimitError(
-            "Rate limit exceeded",
-            response=mock_response,
-            body={"error": "rate_limit"},
-        )
-
-        result = await client._handle_api_error(error, attempt=1)
-
-        assert result == error
-
-    @pytest.mark.asyncio
-    async def test_handle_non_retryable_error(self, client):
-        """Should raise non-retryable errors immediately."""
-        error = ValueError("Invalid request")
-
-        with pytest.raises(ValueError):
-            await client._handle_api_error(error, attempt=1)
+        # Should not raise — just logs
+        client._handle_api_error(error)
 
 
 class TestGetRecommendations:
@@ -498,27 +475,17 @@ class TestIsAvailable:
     """Tests for is_available method."""
 
     @pytest.mark.asyncio
-    async def test_is_available_with_api_key(self, client):
-        """Should return True when API key is set."""
-        with patch.object(client, "_get_client"):
+    async def test_is_available_success(self, client):
+        """Should return True when agent can be created."""
+        with patch.object(client, "_get_agent"):
             available = await client.is_available()
 
         assert available is True
 
     @pytest.mark.asyncio
-    async def test_is_available_without_api_key(self):
-        """Should return False when API key is not set."""
-        settings = AISettings(api_key=SecretStr(""))
-        client = OpenAIRecommendationClient(settings)
-
-        available = await client.is_available()
-
-        assert available is False
-
-    @pytest.mark.asyncio
     async def test_is_available_handles_exception(self, client):
-        """Should return False when client creation fails."""
-        with patch.object(client, "_get_client", side_effect=Exception("Error")):
+        """Should return False when agent creation fails."""
+        with patch.object(client, "_get_agent", side_effect=Exception("Error")):
             available = await client.is_available()
 
         assert available is False
@@ -544,7 +511,7 @@ class TestCacheManagement:
 
     def test_prune_cache_removes_old_entries(self, client):
         """Should remove entries older than specified age."""
-        from discord_music_player.infrastructure.ai.openai_client import CacheEntry
+        from discord_music_player.infrastructure.ai.recommendation_client import CacheEntry
 
         # Add entries with different ages
         client._cache["old1"] = CacheEntry(data=[], created_at=time.time() - 400)
@@ -572,3 +539,55 @@ class TestCacheManagement:
         assert stats["misses"] == 2
         assert stats["hit_rate"] == 80
         assert "inflight" in stats
+
+    def test_prune_cache_nothing_expired(self, client):
+        """Should return 0 when no entries are expired."""
+        from discord_music_player.infrastructure.ai.recommendation_client import CacheEntry
+
+        client._cache["fresh"] = CacheEntry(data=[], created_at=time.time())
+
+        count = client.prune_cache(max_age_seconds=300)
+
+        assert count == 0
+        assert "fresh" in client._cache
+
+
+# ============================================================================
+# Coverage Gap Tests
+# ============================================================================
+
+
+class TestGetAgentCaching:
+    """Tests for _get_agent caching behavior."""
+
+    def test_get_agent_returns_cached(self, client):
+        """Should return cached agent on subsequent calls."""
+        mock_agent = MagicMock()
+        client._agent = mock_agent
+
+        result = client._get_agent()
+
+        assert result is mock_agent
+
+
+class TestFetchRecommendationsRawEdgeCases:
+    """Tests for _fetch_recommendations_raw edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_exception_propagates_to_singleflight_future(self, client, sample_request):
+        """Should propagate exception to waiting singleflight futures."""
+
+        async def slow_failing_api(user_prompt):
+            await asyncio.sleep(0.05)
+            raise RuntimeError("API down")
+
+        with patch.object(client, "_call_api", side_effect=slow_failing_api):
+            results = await asyncio.gather(
+                client._fetch_recommendations_raw(sample_request),
+                client._fetch_recommendations_raw(sample_request),
+                return_exceptions=True,
+            )
+
+        assert all(isinstance(r, RuntimeError) for r in results)
+        # Inflight should be cleaned up
+        assert len(client._inflight) == 0

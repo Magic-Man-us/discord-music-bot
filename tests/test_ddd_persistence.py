@@ -153,6 +153,53 @@ class TestDatabase:
 
         assert len(rows) == 0
 
+    @pytest.mark.asyncio
+    async def test_validate_schema_healthy(self, in_memory_database):
+        """Test that a freshly initialized DB passes validation."""
+        result = await in_memory_database.validate_schema()
+
+        assert result["tables"]["expected"] == 7
+        assert result["tables"]["found"] == 7
+        assert result["tables"]["missing"] == []
+
+        assert result["columns"]["expected"] == result["columns"]["found"]
+        assert result["columns"]["missing"] == {}
+
+        assert result["indexes"]["expected"] == 9
+        assert result["indexes"]["found"] == 9
+        assert result["indexes"]["missing"] == []
+
+        # In-memory SQLite uses journal_mode=memory instead of wal
+        assert result["pragmas"]["journal_mode"] in ("wal", "memory")
+        assert result["pragmas"]["foreign_keys"] == 1
+
+        # Pragma issue for journal_mode is expected with in-memory DBs
+        non_pragma_issues = [i for i in result["issues"] if "journal_mode" not in i]
+        assert non_pragma_issues == []
+
+    @pytest.mark.asyncio
+    async def test_validate_schema_missing_table(self, in_memory_database):
+        """Test validation detects a dropped table."""
+        await in_memory_database.execute("DROP TABLE IF EXISTS track_genres")
+
+        result = await in_memory_database.validate_schema()
+
+        assert "track_genres" in result["tables"]["missing"]
+        assert result["tables"]["found"] == 6
+        assert len(result["issues"]) > 0
+        assert any("track_genres" in issue for issue in result["issues"])
+
+    @pytest.mark.asyncio
+    async def test_validate_schema_missing_index(self, in_memory_database):
+        """Test validation detects a dropped index."""
+        await in_memory_database.execute("DROP INDEX IF EXISTS idx_track_genres_genre")
+
+        result = await in_memory_database.validate_schema()
+
+        assert "idx_track_genres_genre" in result["indexes"]["missing"]
+        assert result["indexes"]["found"] == 8
+        assert any("idx_track_genres_genre" in issue for issue in result["issues"])
+
 
 # === Session Repository Tests ===
 

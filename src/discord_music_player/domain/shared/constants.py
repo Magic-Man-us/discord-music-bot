@@ -20,10 +20,11 @@ class ConfigKeys:
     GUILD_IDS = "GUILD_IDS"
     TEST_GUILD_IDS = "TEST_GUILD_IDS"
 
-    # AI/OpenAI Settings
+    # AI Settings (provider:model format, e.g. "openai:gpt-5-mini")
     OPENAI_API_KEY = "OPENAI_API_KEY"
+    ANTHROPIC_API_KEY = "ANTHROPIC_API_KEY"
+    GOOGLE_API_KEY = "GOOGLE_API_KEY"
     AI_MODEL = "AI_MODEL"
-    OPENAI_MODEL = "OPENAI_MODEL"
 
     # Database Settings
     DATABASE_PATH = "DATABASE_PATH"

@@ -57,7 +57,7 @@ class ErrorMessages:
     RADIO_AI_UNAVAILABLE = "AI recommendation service is unavailable"
 
     # Authentication/Security Errors
-    OPENAI_API_KEY_NOT_SET = "OPENAI_API_KEY is not set; AI recommender is disabled."
+    AI_API_KEY_NOT_SET = "AI API key is not set; AI recommender is disabled."
     DISCORD_TOKEN_REQUIRED = "DISCORD_TOKEN environment variable is required"
     BOT_NOT_INITIALIZED = "Bot not initialized. Call set_bot() first."
     CONTAINER_NOT_FOUND = "Container not found on bot instance"

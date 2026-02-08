@@ -99,18 +99,25 @@ class AISettings(BaseModel):
 
     model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
 
-    api_key: SecretStr = Field(
-        default=SecretStr(""),
-        validation_alias=AliasChoices("api_key", "openai_api_key", "openai_key"),
-    )
     model: str = Field(
-        default="gpt-5-mini", validation_alias=AliasChoices("model", "ai_model", "openai_model")
+        default="openai:gpt-5-mini", validation_alias=AliasChoices("model", "ai_model")
     )
     max_tokens: int = Field(default=500, ge=1, le=4096)
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     cache_ttl_seconds: int = Field(
         default=3600, ge=0, validation_alias=AliasChoices("cache_ttl_seconds", "cache_ttl")
     )
+
+    @field_validator("model")
+    @classmethod
+    def validate_model_format(cls, v: str) -> str:
+        if ":" not in v:
+            msg = (
+                "AI model must be in 'provider:model' format "
+                "(e.g. 'openai:gpt-5-mini', 'anthropic:claude-sonnet-4-5-20250929', 'google-gla:gemini-2.0-flash')"
+            )
+            raise ValueError(msg)
+        return v
 
 
 class VotingSettings(BaseModel):

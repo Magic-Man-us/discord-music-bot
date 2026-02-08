@@ -327,6 +327,59 @@ class AdminCog(commands.Cog):
             logger.exception(LogTemplates.ADMIN_DB_STATS_FAILED)
             await self._reply(ctx, DiscordUIMessages.ERROR_DB_STATS_FAILED)
 
+    @commands.command(name="db_validate", description="Validate database schema.")
+    @require_owner()
+    async def db_validate(self, ctx: commands.Context) -> None:
+        try:
+            db = self.container.database
+            result = await db.validate_schema()
+
+            issues = result.get("issues", [])
+            color = discord.Color.green() if not issues else discord.Color.orange()
+
+            embed = discord.Embed(
+                title=DiscordUIMessages.EMBED_DATABASE_VALIDATION, color=color
+            )
+
+            tables = result["tables"]
+            embed.add_field(
+                name="Tables",
+                value=f"{tables['found']}/{tables['expected']}",
+                inline=True,
+            )
+
+            columns = result["columns"]
+            embed.add_field(
+                name="Columns",
+                value=f"{columns['found']}/{columns['expected']}",
+                inline=True,
+            )
+
+            indexes = result["indexes"]
+            embed.add_field(
+                name="Indexes",
+                value=f"{indexes['found']}/{indexes['expected']}",
+                inline=True,
+            )
+
+            pragmas = result["pragmas"]
+            wal_ok = pragmas["journal_mode"] == "wal"
+            fk_ok = pragmas["foreign_keys"] == 1
+            pragma_text = f"WAL: {'✅' if wal_ok else '❌'}  FK: {'✅' if fk_ok else '❌'}"
+            embed.add_field(name="Pragmas", value=pragma_text, inline=True)
+
+            if issues:
+                embed.add_field(
+                    name="Issues",
+                    value="\n".join(f"• {i}" for i in issues)[:1024],
+                    inline=False,
+                )
+
+            await self._reply(ctx, embed=embed)
+        except Exception:
+            logger.exception(LogTemplates.ADMIN_DB_VALIDATE_FAILED)
+            await self._reply(ctx, DiscordUIMessages.ERROR_DB_VALIDATE_FAILED)
+
     # ─────────────────────────────────────────────────────────────────
     # System Info
     # ─────────────────────────────────────────────────────────────────

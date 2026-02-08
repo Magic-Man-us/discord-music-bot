@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from ..domain.recommendations.repository import RecommendationCacheRepository
     from ..domain.voting.repository import VoteSessionRepository
     from ..domain.voting.services import VotingDomainService
-    from ..infrastructure.ai.genre_classifier import OpenAIGenreClassifier
+    from ..infrastructure.ai.genre_classifier import AIGenreClassifier
     from ..infrastructure.charts.chart_generator import ChartGenerator
     from ..infrastructure.discord.services.voice_warmup import VoiceWarmupTracker
     from ..infrastructure.persistence.database import Database
@@ -59,7 +59,7 @@ class Container:
 
     # Analytics
     _genre_repository: SQLiteGenreCacheRepository | None = None
-    _genre_classifier: OpenAIGenreClassifier | None = None
+    _genre_classifier: AIGenreClassifier | None = None
     _chart_generator: ChartGenerator | None = None
 
     # Infrastructure adapters
@@ -172,11 +172,11 @@ class Container:
         return self._genre_repository
 
     @property
-    def genre_classifier(self) -> OpenAIGenreClassifier:
+    def genre_classifier(self) -> AIGenreClassifier:
         if self._genre_classifier is None:
-            from ..infrastructure.ai.genre_classifier import OpenAIGenreClassifier
+            from ..infrastructure.ai.genre_classifier import AIGenreClassifier
 
-            self._genre_classifier = OpenAIGenreClassifier(self.settings.ai)
+            self._genre_classifier = AIGenreClassifier(self.settings.ai)
         return self._genre_classifier
 
     @property
@@ -210,9 +210,9 @@ class Container:
     @property
     def ai_client(self) -> AIClient:
         if self._ai_client is None:
-            from ..infrastructure.ai.openai_client import OpenAIRecommendationClient
+            from ..infrastructure.ai.recommendation_client import AIRecommendationClient
 
-            self._ai_client = OpenAIRecommendationClient(self.settings.ai)
+            self._ai_client = AIRecommendationClient(self.settings.ai)
         return self._ai_client
 
     # === Domain Services ===

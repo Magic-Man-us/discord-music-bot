@@ -1,24 +1,15 @@
-"""OpenAI-based AI recommendation client with caching and singleflight."""
+"""AI recommendation client with caching and singleflight, powered by pydantic-ai."""
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import random
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
-import httpx
-from openai import (
-    APIConnectionError,
-    APIStatusError,
-    APITimeoutError,
-    AsyncOpenAI,
-    RateLimitError,
-)
 from pydantic import BaseModel, Field
+from pydantic_ai import Agent
 
 from discord_music_player.application.interfaces.ai_client import AIClient
 from discord_music_player.config.settings import AISettings
@@ -46,7 +37,7 @@ class AIRecommendationItem(BaseModel):
 
 
 class AIRecommendationResponse(BaseModel):
-    """OpenAI returns this structure via response_format=json_object."""
+    """Structured output returned by the AI agent."""
 
     recs: list[AIRecommendationItem] = Field(default_factory=list)
 
@@ -56,9 +47,17 @@ class AIRecommendationResponse(BaseModel):
 
 logger = logging.getLogger(__name__)
 
-OPENAI_TIMEOUT: float = 20.0
-MAX_ATTEMPTS: int = 1
-BACKOFF_BASE: float = 0.35
+AI_TIMEOUT: float = 20.0
+
+SYSTEM_PROMPT = (
+    "You are a music recommender. "
+    "Rules:\n"
+    "- Return EXACTLY the requested number of items.\n"
+    "- Similar vibe/genre/era/energy to the base track.\n"
+    "- Avoid recommending the same track as the base.\n"
+    "- Prefer queries that uniquely resolve on YouTube.\n"
+    "- If unsure about a URL, set url to null.\n"
+)
 
 
 @dataclass
@@ -70,92 +69,57 @@ class CacheEntry:
         return (time.time() - self.created_at) > ttl_seconds
 
 
-def _jitter(n: int) -> float:
-    return BACKOFF_BASE * (2 ** (n - 1)) + random.random() * 0.2
-
-
-class OpenAIRecommendationClient(AIClient):
+class AIRecommendationClient(AIClient):
     def __init__(self, settings: AISettings | None = None) -> None:
         self._settings = settings or AISettings()
-        self._client: AsyncOpenAI | None = None
+        self._agent: Agent[None, AIRecommendationResponse] | None = None
 
         self._cache: dict[str, CacheEntry] = {}
         self._cache_hits: int = 0
         self._cache_misses: int = 0
         self._inflight: dict[str, asyncio.Future[list[dict[str, Any]]]] = {}
 
-    def _get_client(self) -> AsyncOpenAI:
-        if self._client is not None:
-            return self._client
+    def _get_agent(self) -> Agent[None, AIRecommendationResponse]:
+        if self._agent is not None:
+            return self._agent
 
-        api_key_value = self._settings.api_key.get_secret_value()
-        if not api_key_value:
-            raise RuntimeError("OPENAI_API_KEY is not set; AI recommender is disabled.")
-
-        self._client = AsyncOpenAI(api_key=api_key_value, max_retries=0)
-        logger.info(LogTemplates.AI_CLIENT_INITIALIZED, self._settings.model, OPENAI_TIMEOUT)
-        return self._client
+        self._agent = Agent(
+            self._settings.model,
+            output_type=AIRecommendationResponse,
+            system_prompt=SYSTEM_PROMPT,
+        )
+        logger.info(LogTemplates.AI_CLIENT_INITIALIZED, self._settings.model, AI_TIMEOUT)
+        return self._agent
 
     def _cache_key(self, request: RecommendationRequest) -> str:
         title = request.base_track_title.strip().lower()
         artist = (request.base_track_artist or "").strip().lower()
         return f"{title}|{artist}|{request.count}|{self._settings.model}"
 
-    async def _call_api(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
-        client = self._get_client()
-        last_exc: Exception | None = None
+    async def _call_api(self, user_prompt: str) -> AIRecommendationResponse:
+        agent = self._get_agent()
 
-        for attempt in range(1, MAX_ATTEMPTS + 1):
-            try:
-                return await self._execute_api_call(client, messages)
-            except (json.JSONDecodeError, ValueError) as e:
-                logger.error(LogTemplates.AI_RESPONSE_PARSE_ERROR, e)
-                raise
-            except Exception as e:
-                last_exc = await self._handle_api_error(e, attempt)
-
-        raise last_exc or RuntimeError("Unknown AI failure")
-
-    async def _execute_api_call(
-        self, client: AsyncOpenAI, messages: list[dict[str, Any]]
-    ) -> dict[str, Any]:
-        response = await client.with_options(timeout=OPENAI_TIMEOUT).chat.completions.create(
-            model=self._settings.model,
-            messages=messages,  # type: ignore
-            max_tokens=self._settings.max_tokens,
-            temperature=self._settings.temperature,
-            response_format={"type": "json_object"},
-        )
-
-        content = response.choices[0].message.content
-        if not content:
-            raise ValueError("Empty response from API")
-
-        return json.loads(content)
-
-    async def _handle_api_error(self, error: Exception, attempt: int) -> Exception:
-        is_retryable = isinstance(
-            error,
-            APITimeoutError
-            | APIConnectionError
-            | RateLimitError
-            | APIStatusError
-            | httpx.TimeoutException
-            | httpx.ConnectError,
-        )
-
-        if is_retryable:
-            logger.warning(
-                LogTemplates.AI_API_ERROR_RETRY,
-                attempt,
-                MAX_ATTEMPTS,
-                error.__class__.__name__,
+        try:
+            result = await agent.run(
+                user_prompt,
+                model_settings={
+                    "max_tokens": self._settings.max_tokens,
+                    "temperature": self._settings.temperature,
+                    "timeout": AI_TIMEOUT,
+                },
             )
-            if attempt < MAX_ATTEMPTS:
-                await asyncio.sleep(_jitter(attempt))
-            return error
+            return result.output
+        except Exception as e:
+            self._handle_api_error(e)
+            raise
 
-        raise error
+    def _handle_api_error(self, error: Exception) -> None:
+        logger.warning(
+            LogTemplates.AI_API_ERROR_RETRY,
+            1,
+            1,
+            error.__class__.__name__,
+        )
 
     async def _fetch_recommendations_raw(
         self, request: RecommendationRequest
@@ -182,40 +146,19 @@ class OpenAIRecommendationClient(AIClient):
         self._inflight[cache_key] = future
 
         try:
-            system = (
-                "You are a music recommender. Respond with STRICT JSON (no markdown). "
-                'Schema: {"recs": [{"title": string, "artist": string, '
-                '"query": string, "url": string|null}]}. '
-                "Rules:\n"
-                "- Return EXACTLY the requested number of items.\n"
-                "- Similar vibe/genre/era/energy to the base track.\n"
-                "- Avoid recommending the same track as the base.\n"
-                "- Prefer queries that uniquely resolve on YouTube.\n"
-                "- If unsure about a URL, set url to null.\n"
-                "- No extra text outside the JSON object."
-            )
-
-            user = (
+            user_prompt = (
                 f"Count: {request.count}\n"
                 f"Base title: {request.base_track_title}\n"
                 f"Base artist: {request.base_track_artist or ''}\n"
-                "Return only the JSON object."
             )
-
-            messages = [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ]
 
             logger.debug(
                 LogTemplates.AI_FETCHING_RECOMMENDATIONS, request.base_track_title, request.count
             )
 
-            data = await self._call_api(messages)
+            response = await self._call_api(user_prompt)
 
-            recs = data.get("recs", [])
-            if not isinstance(recs, list):
-                recs = []
+            recs = [item.model_dump() for item in response.recs]
 
             self._cache[cache_key] = CacheEntry(data=recs)
             future.set_result(recs)
@@ -245,11 +188,8 @@ class OpenAIRecommendationClient(AIClient):
             return []
 
     async def is_available(self) -> bool:
-        if not self._settings.api_key.get_secret_value():
-            return False
-
         try:
-            self._get_client()
+            self._get_agent()
             return True
         except Exception:
             return False

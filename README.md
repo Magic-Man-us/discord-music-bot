@@ -6,7 +6,7 @@ A Discord music bot with AI-powered radio, built with clean architecture. Plays 
 
 - **Music Playback** - Stream from YouTube, SoundCloud, and other platforms via URL or search
 - **Queue Management** - Add, remove, shuffle, reorder, and loop tracks
-- **AI Radio** - `/radio` auto-queues similar songs using OpenAI recommendations
+- **AI Radio** - `/radio` auto-queues similar songs using AI recommendations (OpenAI, Anthropic, or Gemini)
 - **Vote Skip** - Democratic skip voting with configurable thresholds
 - **Requester Leave Protection** - Pauses and asks listeners to continue or skip when the requester leaves
 - **Slash Commands** - Modern Discord slash commands with rich embeds
@@ -106,15 +106,17 @@ All settings use Pydantic nested delimiter format (`SECTION__KEY=value`).
 | `AUDIO__MAX_QUEUE_SIZE` | `50` | Maximum tracks per queue (1-1000) |
 | `AUDIO__POT_SERVER_URL` | `http://127.0.0.1:4416` | URL of the bgutil POT provider for bypassing YouTube bot detection |
 
-#### AI (Optional - powers `/radio`)
+#### AI (Optional - powers `/radio` and genre charts)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AI__API_KEY` | *(empty)* | OpenAI API key. Radio feature is disabled without this |
-| `AI__MODEL` | `gpt-5-mini` | Model to use for recommendations |
+| `AI__MODEL` | `openai:gpt-5-mini` | Model in `provider:model` format (supports `openai:`, `anthropic:`, `google-gla:`) |
 | `AI__MAX_TOKENS` | `500` | Max response tokens (1-4096) |
 | `AI__TEMPERATURE` | `0.7` | Response randomness (0.0-2.0) |
 | `AI__CACHE_TTL_SECONDS` | `3600` | How long to cache recommendations in seconds |
+| `OPENAI_API_KEY` | *(none)* | API key for OpenAI models |
+| `ANTHROPIC_API_KEY` | *(none)* | API key for Anthropic models |
+| `GOOGLE_API_KEY` | *(none)* | API key for Google Gemini models |
 
 #### Voting
 

@@ -18,6 +18,46 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+EXPECTED_SCHEMA: dict[str, dict[str, Any]] = {
+    "tables": {
+        "guild_sessions": [
+            "guild_id", "state", "loop_mode", "created_at", "last_activity",
+        ],
+        "queue_tracks": [
+            "id", "guild_id", "track_id", "title", "webpage_url", "stream_url",
+            "duration_seconds", "thumbnail_url", "artist", "uploader", "like_count",
+            "view_count", "requested_by_id", "requested_by_name", "requested_at",
+            "position", "is_current",
+        ],
+        "track_history": [
+            "id", "guild_id", "track_id", "title", "webpage_url", "duration_seconds",
+            "artist", "uploader", "like_count", "view_count", "requested_by_id",
+            "requested_by_name", "played_at", "finished_at", "skipped",
+        ],
+        "vote_sessions": [
+            "id", "guild_id", "track_id", "vote_type", "threshold",
+            "started_at", "completed_at", "result",
+        ],
+        "votes": ["vote_session_id", "user_id"],
+        "recommendation_cache": [
+            "id", "cache_key", "base_track_id", "base_track_title",
+            "base_track_artist", "recommendations_json", "generated_at", "expires_at",
+        ],
+        "track_genres": ["track_id", "genre", "classified_at"],
+    },
+    "indexes": [
+        "idx_queue_tracks_guild_pos",
+        "idx_queue_tracks_guild_current",
+        "idx_track_history_guild_played",
+        "idx_track_history_guild_track",
+        "idx_vote_sessions_guild",
+        "idx_vote_sessions_guild_type",
+        "idx_vote_sessions_completed",
+        "idx_reco_cache_expires",
+        "idx_track_genres_genre",
+    ],
+}
+
 
 class Database:
     def __init__(self, url: str, settings: DatabaseSettings | None = None) -> None:
@@ -347,6 +387,101 @@ class Database:
             stats["error"] = str(e)
 
         return stats
+
+    async def validate_schema(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "tables": {"expected": 0, "found": 0, "missing": []},
+            "columns": {"expected": 0, "found": 0, "missing": {}},
+            "indexes": {"expected": 0, "found": 0, "missing": []},
+            "pragmas": {"journal_mode": None, "foreign_keys": None},
+            "issues": [],
+        }
+
+        expected_tables = EXPECTED_SCHEMA["tables"]
+        expected_indexes = EXPECTED_SCHEMA["indexes"]
+
+        result["tables"]["expected"] = len(expected_tables)
+        result["indexes"]["expected"] = len(expected_indexes)
+
+        total_expected_cols = sum(len(cols) for cols in expected_tables.values())
+        result["columns"]["expected"] = total_expected_cols
+
+        async with self.connection() as conn:
+            # Check tables
+            cursor = await conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+            rows = await cursor.fetchall()
+            existing_tables = {row[0] for row in rows}
+
+            found_tables = [t for t in expected_tables if t in existing_tables]
+            missing_tables = [t for t in expected_tables if t not in existing_tables]
+            result["tables"]["found"] = len(found_tables)
+            result["tables"]["missing"] = missing_tables
+
+            if missing_tables:
+                result["issues"].append(f"Missing tables: {', '.join(missing_tables)}")
+
+            # Check columns per table
+            total_found_cols = 0
+            for table, expected_cols in expected_tables.items():
+                if table not in existing_tables:
+                    result["columns"]["missing"][table] = expected_cols
+                    continue
+
+                col_rows = await conn.execute_fetchall(
+                    SQLPragmas.TABLE_INFO.format(table=table)
+                )
+                existing_cols = {r[1] for r in col_rows}
+                total_found_cols += len(existing_cols & set(expected_cols))
+
+                missing_cols = [c for c in expected_cols if c not in existing_cols]
+                if missing_cols:
+                    result["columns"]["missing"][table] = missing_cols
+                    result["issues"].append(
+                        f"Missing columns in {table}: {', '.join(missing_cols)}"
+                    )
+
+            result["columns"]["found"] = total_found_cols
+
+            # Check indexes
+            idx_cursor = await conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+            )
+            idx_rows = await idx_cursor.fetchall()
+            existing_indexes = {row[0] for row in idx_rows}
+
+            found_indexes = [i for i in expected_indexes if i in existing_indexes]
+            missing_indexes = [i for i in expected_indexes if i not in existing_indexes]
+            result["indexes"]["found"] = len(found_indexes)
+            result["indexes"]["missing"] = missing_indexes
+
+            if missing_indexes:
+                result["issues"].append(
+                    f"Missing indexes: {', '.join(missing_indexes)}"
+                )
+
+            # Check pragmas
+            jm_cursor = await conn.execute("PRAGMA journal_mode")
+            jm_row = await jm_cursor.fetchone()
+            journal_mode = jm_row[0] if jm_row else None
+            result["pragmas"]["journal_mode"] = journal_mode
+
+            fk_cursor = await conn.execute("PRAGMA foreign_keys")
+            fk_row = await fk_cursor.fetchone()
+            foreign_keys = fk_row[0] if fk_row else None
+            result["pragmas"]["foreign_keys"] = foreign_keys
+
+            if journal_mode != "wal":
+                result["issues"].append(
+                    f"journal_mode is '{journal_mode}', expected 'wal'"
+                )
+            if foreign_keys != 1:
+                result["issues"].append(
+                    f"foreign_keys is {foreign_keys}, expected 1"
+                )
+
+        return result
 
     async def close(self) -> None:
         if self._keepalive_conn is not None:

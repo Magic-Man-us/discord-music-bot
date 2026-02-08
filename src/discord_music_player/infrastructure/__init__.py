@@ -4,7 +4,7 @@ This layer contains implementations for:
 - Persistence (SQLite repositories)
 - Discord (bot, cogs, adapters)
 - Audio (yt-dlp, FFmpeg)
-- AI (OpenAI client)
+- AI (pydantic-ai multi-provider)
 - Logging configuration
 """
 

@@ -62,7 +62,7 @@ The POT (Proof of Origin Token) provider is a Docker container that generates to
 src/discord_music_player/
   domain/             # Business logic (entities, value objects, services)
   application/        # Use cases (commands, queries, services)
-  infrastructure/     # External adapters (Discord, yt-dlp, FFmpeg, SQLite, OpenAI)
+  infrastructure/     # External adapters (Discord, yt-dlp, FFmpeg, SQLite, AI via pydantic-ai)
   config/             # Settings and dependency injection container
 ```
 

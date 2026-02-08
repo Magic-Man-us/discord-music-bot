@@ -318,7 +318,7 @@ class TestAIClient:
     def test_lazy_initialization(self, container):
         """Should create client on first access."""
         with patch(
-            "discord_music_player.infrastructure.ai.openai_client.OpenAIRecommendationClient"
+            "discord_music_player.infrastructure.ai.recommendation_client.AIRecommendationClient"
         ) as MockClient:
             client = container.ai_client
             MockClient.assert_called_once_with(container.settings.ai)
@@ -327,7 +327,7 @@ class TestAIClient:
     def test_caching(self, container):
         """Should return same instance on subsequent calls."""
         with patch(
-            "discord_music_player.infrastructure.ai.openai_client.OpenAIRecommendationClient"
+            "discord_music_player.infrastructure.ai.recommendation_client.AIRecommendationClient"
         ) as MockClient:
             client1 = container.ai_client
             client2 = container.ai_client

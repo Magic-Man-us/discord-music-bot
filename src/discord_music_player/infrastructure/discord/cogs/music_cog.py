@@ -272,7 +272,7 @@ class MusicCog(commands.Cog):
             )
 
     async def _on_requester_left(self, guild_id: int, user_id: int, track: Track) -> None:
-        from ...domain.shared.messages import LogTemplates
+        from ....domain.shared.messages import LogTemplates
         from ..views.requester_left_view import RequesterLeftView
 
         # Determine text channel from now-playing message state

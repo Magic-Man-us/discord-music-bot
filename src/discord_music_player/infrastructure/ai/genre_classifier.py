@@ -1,12 +1,12 @@
-"""OpenAI-based genre classifier for track analytics."""
+"""AI-powered genre classifier for track analytics, using pydantic-ai."""
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import TYPE_CHECKING
 
-from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
+from pydantic_ai import Agent
 
 from discord_music_player.domain.shared.messages import LogTemplates
 
@@ -24,30 +24,47 @@ GENRE_VOCABULARY = [
 BATCH_SIZE = 20
 
 
-class OpenAIGenreClassifier:
+class GenreClassificationResponse(BaseModel):
+    genres: dict[str, str] = Field(default_factory=dict)
+
+
+class AIGenreClassifier:
     def __init__(self, settings: AISettings) -> None:
         self._settings = settings
-        self._client: AsyncOpenAI | None = None
+        self._agent: Agent[None, GenreClassificationResponse] | None = None
 
     def is_available(self) -> bool:
-        return bool(self._settings.api_key.get_secret_value())
+        try:
+            self._get_agent()
+            return True
+        except Exception:
+            return False
 
-    def _get_client(self) -> AsyncOpenAI:
-        if self._client is not None:
-            return self._client
+    def _get_agent(self) -> Agent[None, GenreClassificationResponse]:
+        if self._agent is not None:
+            return self._agent
 
-        api_key_value = self._settings.api_key.get_secret_value()
-        if not api_key_value:
-            msg = "OPENAI_API_KEY is not set"
-            raise RuntimeError(msg)
+        genres_text = ", ".join(GENRE_VOCABULARY)
+        system_prompt = (
+            "You are a music genre classifier. "
+            f"Allowed genres: {genres_text}. "
+            "Rules:\n"
+            "- Classify each track into exactly one genre from the allowed list.\n"
+            "- Use the track title and artist to determine genre.\n"
+            "- If unsure, use 'Other'.\n"
+        )
 
-        self._client = AsyncOpenAI(api_key=api_key_value, max_retries=0)
-        return self._client
+        self._agent = Agent(
+            self._settings.model,
+            output_type=GenreClassificationResponse,
+            system_prompt=system_prompt,
+        )
+        return self._agent
 
     async def classify_tracks(
         self, tracks: list[tuple[str, str | None]]
     ) -> dict[str, str]:
-        """Classify tracks by genre using OpenAI.
+        """Classify tracks by genre using AI.
 
         Args:
             tracks: List of (track_id, "title - artist" or just "title") tuples.
@@ -71,45 +88,24 @@ class OpenAIGenreClassifier:
         self, batch: list[tuple[str, str | None]]
     ) -> dict[str, str]:
         try:
-            client = self._get_client()
+            agent = self._get_agent()
 
             track_lines = []
             for track_id, description in batch:
                 track_lines.append(f"- id:{track_id} | {description or 'Unknown'}")
 
             tracks_text = "\n".join(track_lines)
-            genres_text = ", ".join(GENRE_VOCABULARY)
+            user_prompt = f"Classify these tracks:\n{tracks_text}"
 
-            system = (
-                "You are a music genre classifier. Respond with STRICT JSON (no markdown). "
-                f"Allowed genres: {genres_text}. "
-                'Schema: {{"genres": {{"<track_id>": "<genre>", ...}}}}. '
-                "Rules:\n"
-                "- Classify each track into exactly one genre from the allowed list.\n"
-                "- Use the track title and artist to determine genre.\n"
-                "- If unsure, use 'Other'.\n"
-                "- No extra text outside the JSON object."
+            ai_result = await agent.run(
+                user_prompt,
+                model_settings={
+                    "max_tokens": self._settings.max_tokens,
+                    "temperature": 0.3,
+                },
             )
 
-            user = f"Classify these tracks:\n{tracks_text}"
-
-            response = await client.with_options(timeout=20.0).chat.completions.create(
-                model=self._settings.model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                max_tokens=self._settings.max_tokens,
-                temperature=0.3,
-                response_format={"type": "json_object"},
-            )
-
-            content = response.choices[0].message.content
-            if not content:
-                return {tid: "Unknown" for tid, _ in batch}
-
-            data = json.loads(content)
-            genres = data.get("genres", {})
+            genres = ai_result.output.genres
 
             result = {}
             for track_id, _ in batch:

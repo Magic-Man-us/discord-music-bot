@@ -5,7 +5,7 @@ Tests for all prefix commands and functionality in the admin cog:
 - /sync, /slash_status - Slash command synchronization
 - /reload, /reload_all - Cog management
 - /cache_status, /cache_clear, /cache_prune - Cache operations
-- /db_cleanup, /db_stats - Database operations
+- /db_cleanup, /db_stats, /db_validate - Database operations
 - /status, /shutdown - System info and lifecycle
 - Permission checking (owner/admin only)
 - Error handling and validation
@@ -91,6 +91,16 @@ def mock_container():
                 "history": 100,
                 "votes": 5,
             },
+        }
+    )
+
+    container.database.validate_schema = AsyncMock(
+        return_value={
+            "tables": {"expected": 7, "found": 7, "missing": []},
+            "columns": {"expected": 47, "found": 47, "missing": {}},
+            "indexes": {"expected": 9, "found": 9, "missing": []},
+            "pragmas": {"journal_mode": "wal", "foreign_keys": 1},
+            "issues": [],
         }
     )
 
@@ -885,6 +895,90 @@ class TestDatabaseCommands:
         call_args = mock_admin_ctx.send.call_args[0][0]
         assert "failed" in call_args.lower()
 
+    @pytest.mark.asyncio
+    async def test_db_validate_success_no_issues(self, admin_cog, mock_admin_ctx):
+        """Should display green embed when schema is valid."""
+        await admin_cog.db_validate.callback(admin_cog, mock_admin_ctx)
+
+        call_kwargs = mock_admin_ctx.send.call_args.kwargs
+        assert "embed" in call_kwargs
+        embed = call_kwargs["embed"]
+        assert "Database Validation" in embed.title
+        assert embed.color == discord.Color.green()
+
+        field_values = {f.name: f.value for f in embed.fields}
+        assert field_values["Tables"] == "7/7"
+        assert field_values["Columns"] == "47/47"
+        assert field_values["Indexes"] == "9/9"
+        assert "✅" in field_values["Pragmas"]
+
+        # No Issues field when everything is fine
+        assert "Issues" not in field_values
+
+    @pytest.mark.asyncio
+    async def test_db_validate_with_issues(self, admin_cog, mock_admin_ctx, mock_container):
+        """Should display orange embed when issues are found."""
+        mock_container.database.validate_schema = AsyncMock(
+            return_value={
+                "tables": {"expected": 7, "found": 6, "missing": ["track_genres"]},
+                "columns": {"expected": 47, "found": 44, "missing": {"track_genres": ["track_id", "genre", "classified_at"]}},
+                "indexes": {"expected": 9, "found": 8, "missing": ["idx_track_genres_genre"]},
+                "pragmas": {"journal_mode": "wal", "foreign_keys": 1},
+                "issues": [
+                    "Missing tables: track_genres",
+                    "Missing columns in track_genres: track_id, genre, classified_at",
+                    "Missing indexes: idx_track_genres_genre",
+                ],
+            }
+        )
+
+        await admin_cog.db_validate.callback(admin_cog, mock_admin_ctx)
+
+        call_kwargs = mock_admin_ctx.send.call_args.kwargs
+        embed = call_kwargs["embed"]
+        assert embed.color == discord.Color.orange()
+
+        field_values = {f.name: f.value for f in embed.fields}
+        assert field_values["Tables"] == "6/7"
+        assert field_values["Indexes"] == "8/9"
+        assert "Issues" in field_values
+        assert "track_genres" in field_values["Issues"]
+
+    @pytest.mark.asyncio
+    async def test_db_validate_pragma_failures(self, admin_cog, mock_admin_ctx, mock_container):
+        """Should show failed pragmas."""
+        mock_container.database.validate_schema = AsyncMock(
+            return_value={
+                "tables": {"expected": 7, "found": 7, "missing": []},
+                "columns": {"expected": 47, "found": 47, "missing": {}},
+                "indexes": {"expected": 9, "found": 9, "missing": []},
+                "pragmas": {"journal_mode": "delete", "foreign_keys": 0},
+                "issues": [
+                    "journal_mode is 'delete', expected 'wal'",
+                    "foreign_keys is 0, expected 1",
+                ],
+            }
+        )
+
+        await admin_cog.db_validate.callback(admin_cog, mock_admin_ctx)
+
+        call_kwargs = mock_admin_ctx.send.call_args.kwargs
+        embed = call_kwargs["embed"]
+        assert embed.color == discord.Color.orange()
+
+        field_values = {f.name: f.value for f in embed.fields}
+        assert "❌" in field_values["Pragmas"]
+
+    @pytest.mark.asyncio
+    async def test_db_validate_handles_exception(self, admin_cog, mock_admin_ctx, mock_container):
+        """Should handle validation exceptions."""
+        mock_container.database.validate_schema.side_effect = Exception("DB error")
+
+        await admin_cog.db_validate.callback(admin_cog, mock_admin_ctx)
+
+        call_args = mock_admin_ctx.send.call_args[0][0]
+        assert "failed" in call_args.lower()
+
 
 # =============================================================================
 # System Info Command Tests
@@ -1133,8 +1227,12 @@ class TestIntegration:
         await admin_cog.db_stats.callback(admin_cog, mock_admin_ctx)
         assert mock_container.database.get_stats.called
 
+        # Validate schema
+        await admin_cog.db_validate.callback(admin_cog, mock_admin_ctx)
+        assert mock_container.database.validate_schema.called
+
         # All should succeed
-        assert mock_admin_ctx.send.call_count >= 6
+        assert mock_admin_ctx.send.call_count >= 7
 
     @pytest.mark.asyncio
     async def test_cache_management_workflow(self, admin_cog, mock_admin_ctx, mock_container):

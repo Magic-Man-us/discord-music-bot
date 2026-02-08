@@ -276,23 +276,33 @@ class TestAISettings:
         """Should create AISettings with default values."""
         ai = AISettings()
 
-        assert ai.api_key.get_secret_value() == ""
-        assert ai.model == "gpt-5-mini"
+        assert ai.model == "openai:gpt-5-mini"
         assert ai.max_tokens == 500
         assert ai.temperature == 0.7
         assert ai.cache_ttl_seconds == 3600
 
-    def test_create_with_custom_api_key(self):
-        """Should accept custom API key."""
-        ai = AISettings(api_key=SecretStr("sk-test-key"))
-
-        assert ai.api_key.get_secret_value() == "sk-test-key"
-
     def test_create_with_custom_model(self):
-        """Should accept custom model name."""
-        ai = AISettings(model="gpt-4o")
+        """Should accept custom model name in provider:model format."""
+        ai = AISettings(model="openai:gpt-4o")
 
-        assert ai.model == "gpt-4o"
+        assert ai.model == "openai:gpt-4o"
+
+    def test_model_requires_provider_prefix(self):
+        """Should reject model strings without provider prefix."""
+        with pytest.raises(ValidationError, match="provider:model"):
+            AISettings(model="gpt-4o")
+
+    def test_model_accepts_anthropic(self):
+        """Should accept Anthropic model strings."""
+        ai = AISettings(model="anthropic:claude-sonnet-4-5-20250929")
+
+        assert ai.model == "anthropic:claude-sonnet-4-5-20250929"
+
+    def test_model_accepts_google(self):
+        """Should accept Google model strings."""
+        ai = AISettings(model="google-gla:gemini-2.0-flash")
+
+        assert ai.model == "google-gla:gemini-2.0-flash"
 
     def test_max_tokens_validation_minimum(self):
         """Should raise ValidationError for max_tokens below minimum."""
@@ -320,17 +330,11 @@ class TestAISettings:
 
         assert ai.cache_ttl_seconds == 0
 
-    def test_api_key_alias_openai_api_key(self):
-        """Should accept 'openai_api_key' alias for api_key field."""
-        ai = AISettings(openai_api_key=SecretStr("sk-openai-key"))
-
-        assert ai.api_key.get_secret_value() == "sk-openai-key"
-
     def test_model_alias_ai_model(self):
         """Should accept 'ai_model' alias for model field."""
-        ai = AISettings(ai_model="gpt-3.5-turbo")
+        ai = AISettings(ai_model="openai:gpt-3.5-turbo")
 
-        assert ai.model == "gpt-3.5-turbo"
+        assert ai.model == "openai:gpt-3.5-turbo"
 
 
 # =============================================================================
@@ -566,7 +570,7 @@ class TestSettingsIntegration:
         monkeypatch.setenv("DATABASE__URL", "postgresql://prod-host/prod-db")
         monkeypatch.setenv("DISCORD__TOKEN", "prod-bot-token")
         monkeypatch.setenv("DISCORD__COMMAND_PREFIX", "!")
-        monkeypatch.setenv("AI__API_KEY", "sk-prod-key")
+        monkeypatch.setenv("AI__MODEL", "openai:gpt-5-mini")
 
         settings = Settings()
 
