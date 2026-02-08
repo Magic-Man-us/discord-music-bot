@@ -19,40 +19,22 @@ logger = logging.getLogger(__name__)
 
 
 class SQLiteVoteSessionRepository(VoteSessionRepository):
-    """SQLite implementation of the vote session repository."""
-
     def __init__(self, database: Database) -> None:
-        """Initialize the repository.
-
-        Args:
-            database: Database connection manager.
-        """
         self._db = database
 
-    # ---------------------------------------------------------------------
-    # Compatibility helpers (used by tests)
-    # ---------------------------------------------------------------------
-
     async def get_active(self, guild_id: int, track_id: TrackId) -> VoteSession | None:
-        """Tests expect get_active(guild_id, track_id). We map to SKIP sessions."""
         session = await self.get(guild_id=guild_id, vote_type=VoteType.SKIP)
         if session is None:
             return None
         return session if session.track_id == track_id else None
 
     async def delete_by_track(self, guild_id: int, track_id: TrackId) -> bool:
-        """Delete active vote session for a given track (test compatibility)."""
         session = await self.get_active(guild_id, track_id)
         if session is None:
             return False
         return await self.delete(guild_id, session.vote_type)
 
-    # ---------------------------------------------------------------------
-    # Domain interface implementation
-    # ---------------------------------------------------------------------
-
     async def get(self, guild_id: int, vote_type: VoteType) -> VoteSession | None:
-        """Get an active vote session for a guild."""
         row = await self._db.fetch_one(
             """
             SELECT * FROM vote_sessions
@@ -80,7 +62,6 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
         )
         session._voters = voters
 
-        # Respect repository contract: only return active (not expired) sessions.
         if session.is_expired:
             await self.delete(guild_id, session.vote_type)
             return None

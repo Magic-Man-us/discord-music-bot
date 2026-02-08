@@ -17,46 +17,126 @@ A Discord music bot with AI-powered radio, built with clean architecture. Plays 
 
 - **Python 3.12+**
 - **FFmpeg** - [ffmpeg.org](https://ffmpeg.org/)
-- **Docker** - For the YouTube POT provider ([Install Docker](https://docs.docker.com/get-docker/))
+- **Docker** and **Docker Compose** - For the YouTube POT provider ([Install Docker](https://docs.docker.com/get-docker/))
 - **Discord Bot Token** - [Developer Portal](https://discord.com/developers/applications) with Message Content and Server Members intents enabled
+- **tmux** *(optional)* - Only needed for `make run-tmux` / `music_start.py`
+
+### System packages (Linux)
+
+PyNaCl (required by discord.py for voice) ships pre-built wheels for most platforms. If pip fails to install it, you may need the build dependencies:
+
+```bash
+# Debian / Ubuntu
+sudo apt install libffi-dev libsodium-dev python3-dev ffmpeg
+
+# Fedora / RHEL
+sudo dnf install libffi-devel libsodium-devel python3-devel ffmpeg
+
+# macOS (Homebrew) — wheels usually just work, but if needed:
+brew install libffi libsodium ffmpeg
+```
+
+Run `make prereqs` to verify all required tools are installed.
 
 ## Quick Start
 
 ```bash
-# Clone and install
+# Clone and set up everything
 git clone https://github.com/Magic-Man-us/discord-music-bot.git
 cd discord-music-bot
-make install
+make setup
 
-# Start YouTube POT provider (prevents 403 errors)
-make pot-start
-
-# Configure environment
-make setup-env
 # Edit .env with your Discord token and settings
-
-# Run the bot
+# Then run the bot
 make run
 ```
 
-The database is created automatically on first run.
+`make setup` checks prerequisites, creates a virtual environment, installs dependencies, generates `.env` from the example, and starts the YouTube POT provider. The database is created automatically on first run.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and edit it. Key settings:
+Copy `.env.example` to `.env` and edit it:
 
-```env
-# Required
-DISCORD__TOKEN=your_discord_bot_token
-DISCORD__OWNER_IDS=[your_discord_user_id]
-DISCORD__GUILD_IDS=[guild_id_1,guild_id_2]
-
-# Optional - AI Radio (requires OpenAI API key)
-AI__API_KEY=your_openai_api_key
-AI__MODEL=gpt-4o-mini
+```bash
+make setup-env   # creates .env from .env.example
 ```
 
-All settings use Pydantic nested delimiter format (`SECTION__KEY`). See `.env.example` for the full list with defaults.
+All settings use Pydantic nested delimiter format (`SECTION__KEY=value`).
+
+### Environment Variables
+
+#### Required
+
+| Variable | Description |
+|----------|-------------|
+| `DISCORD__TOKEN` | Bot token from the [Developer Portal](https://discord.com/developers/applications) |
+| `DISCORD__OWNER_IDS` | JSON array of Discord user IDs for owner-only commands, e.g. `[123456789]` |
+| `DISCORD__GUILD_IDS` | JSON array of guild IDs where the bot should operate, e.g. `[111,222]` |
+
+#### General
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENVIRONMENT` | `development` | Runtime environment (`development`, `production`, `test`) |
+| `LOG_LEVEL` | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) |
+| `DEBUG` | `false` | Enable debug mode |
+| `SYNC_ON_STARTUP` | `false` | Sync slash commands to Discord on startup |
+
+#### Discord
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DISCORD__COMMAND_PREFIX` | `!` | Prefix for text commands |
+| `DISCORD__TEST_GUILD_IDS` | `[]` | Guild IDs for faster command sync during development |
+
+#### Database
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE__URL` | `sqlite:///data/bot.db` | Database connection URL |
+| `DATABASE__ECHO` | `false` | Log SQL queries |
+| `DATABASE__BUSY_TIMEOUT_MS` | `5000` | SQLite busy timeout in milliseconds (1000-30000) |
+| `DATABASE__CONNECTION_TIMEOUT_S` | `10` | Connection timeout in seconds (1-60) |
+
+#### Audio
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AUDIO__DEFAULT_VOLUME` | `0.5` | Default playback volume (0.0-2.0) |
+| `AUDIO__MAX_QUEUE_SIZE` | `50` | Maximum tracks per queue (1-1000) |
+| `AUDIO__POT_SERVER_URL` | `http://127.0.0.1:4416` | URL of the bgutil POT provider for bypassing YouTube bot detection |
+
+#### AI (Optional - powers `/radio`)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AI__API_KEY` | *(empty)* | OpenAI API key. Radio feature is disabled without this |
+| `AI__MODEL` | `gpt-5-mini` | Model to use for recommendations |
+| `AI__MAX_TOKENS` | `500` | Max response tokens (1-4096) |
+| `AI__TEMPERATURE` | `0.7` | Response randomness (0.0-2.0) |
+| `AI__CACHE_TTL_SECONDS` | `3600` | How long to cache recommendations in seconds |
+
+#### Voting
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VOTING__SKIP_THRESHOLD_PERCENTAGE` | `0.5` | Fraction of listeners needed to skip (0.0-1.0) |
+| `VOTING__MIN_VOTERS` | `1` | Minimum votes required to skip |
+| `VOTING__AUTO_SKIP_LISTENER_COUNT` | `2` | If this many or fewer listeners, anyone can skip without voting |
+
+#### Radio
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RADIO__DEFAULT_COUNT` | `5` | Songs to add per radio fill (1-10) |
+| `RADIO__MAX_TRACKS_PER_SESSION` | `50` | Max AI-generated tracks per radio session to cap API costs (1-200) |
+
+#### Cleanup
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLEANUP__STALE_SESSION_HOURS` | `24` | Hours before an idle session is cleaned up |
+| `CLEANUP__CLEANUP_INTERVAL_MINUTES` | `30` | How often the cleanup task runs |
 
 ## Commands
 
@@ -100,16 +180,107 @@ All settings use Pydantic nested delimiter format (`SECTION__KEY`). See `.env.ex
 | `/stats` | Show bot statistics |
 | `/played` | Show recently played tracks |
 
-## Development
+## Running in Production
+
+The `music_start.py` script manages the bot inside a detached [tmux](https://github.com/tmux/tmux) session, providing process lifecycle management and optional auto-restart on crash. Requires `tmux` to be installed (`apt install tmux` or `brew install tmux`).
+
+### Subcommands
+
+| Command | Description |
+|---------|-------------|
+| `./music_start.py start` | Start the bot in a detached tmux session |
+| `./music_start.py stop` | Stop the bot and kill the tmux session |
+| `./music_start.py restart` | Stop then start the bot |
+| `./music_start.py attach` | Attach to the running tmux session (Ctrl+B, D to detach) |
+| `./music_start.py status` | Show whether the session is running |
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--respawn` | Auto-restart the bot if it crashes (recommended for production) |
+| `--log-file PATH` | Log file path (default: `logs/music_bot.log`) |
+| `--session NAME` | tmux session name (default: `music_bot`) |
+| `--cmd CMD` | Override the bot command (default: auto-detects `discord-music-player` or falls back to `python src/discord_music_player/main.py`) |
+
+### Examples
 
 ```bash
-make dev        # Install with dev dependencies
-make test       # Run tests
-make test-cov   # Run tests with coverage report
-make lint       # Lint with ruff
-make format     # Auto-format code
-make check      # Lint + tests
+# Start with auto-restart (recommended)
+./music_start.py start --respawn
+
+# Start with custom log location
+./music_start.py start --respawn --log-file /var/log/music_bot.log
+
+# View live logs
+tail -f logs/music_bot.log
+
+# Attach to see real-time output (Ctrl+B, D to detach)
+./music_start.py attach
+
+# Restart after a config change
+./music_start.py restart --respawn
 ```
+
+There is also a Makefile shortcut: `make run-tmux` runs `./music_start.py start --respawn`.
+
+## Development
+
+### Makefile Commands
+
+Run `make help` to see all available targets. Below is the full reference:
+
+#### Setup
+
+| Command | Description |
+|---------|-------------|
+| `make setup` | Full first-time setup: checks prereqs, creates `.venv`, installs deps, creates `.env`, starts POT provider |
+| `make prereqs` | Check that Python 3.12+, ffmpeg, Docker, and docker-compose are installed |
+| `make install` | Install production dependencies (`pip install -e .`) |
+| `make dev` | Install with dev and test dependencies (`pip install -e ".[dev,test]"`) |
+| `make setup-env` | Create `.env` from `.env.example` (skips if `.env` exists) |
+
+#### Quality
+
+| Command | Description |
+|---------|-------------|
+| `make test` | Run tests with pytest |
+| `make test-cov` | Run tests with coverage report (HTML output in `htmlcov/`) |
+| `make lint` | Lint with ruff |
+| `make format` | Auto-format code with ruff |
+| `make check` | Run lint + tests together |
+
+#### Running
+
+| Command | Description |
+|---------|-------------|
+| `make run` | Run the bot directly (requires `.env` file) |
+| `make run-tmux` | Run the bot in tmux with auto-respawn (uses `music_start.py`) |
+
+#### Database
+
+| Command | Description |
+|---------|-------------|
+| `make db-reset` | Delete the SQLite database files (interactive confirmation) |
+
+#### YouTube POT Provider
+
+The POT (Proof of Origin Token) provider is a Docker container that generates tokens to prevent YouTube 403 errors. It must be running for YouTube playback to work reliably.
+
+| Command | Description |
+|---------|-------------|
+| `make pot-start` | Start the bgutil POT provider container |
+| `make pot-stop` | Stop the POT provider container |
+| `make pot-logs` | Tail the POT provider logs |
+| `make pot-status` | Check if the POT provider is running |
+
+#### Utilities
+
+| Command | Description |
+|---------|-------------|
+| `make clean` | Remove `__pycache__`, `.egg-info`, `.pytest_cache`, `.ruff_cache`, coverage files |
+| `make info` | Show Python version and installed dependency versions |
+| `make help` | Show all available make targets |
 
 ### Project Structure
 

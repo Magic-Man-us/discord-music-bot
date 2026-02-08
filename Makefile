@@ -1,4 +1,4 @@
-.PHONY: help install dev test test-cov lint format run clean db-reset check pot-start pot-stop pot-logs pot-status
+.PHONY: help install dev test test-cov lint format run clean db-reset check pot-start pot-stop pot-logs pot-status prereqs setup
 
 # Colors for output
 BLUE := \033[0;34m
@@ -12,9 +12,113 @@ help:  ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(YELLOW)Quick Start:$(NC)"
-	@echo "  1. make install      - Install dependencies"
-	@echo "  2. cp .env.example .env && edit .env"
+	@echo "  1. make setup        - Full first-time setup"
+	@echo "  2. Edit .env with your Discord token"
 	@echo "  3. make run          - Start the bot"
+
+prereqs:  ## Check that required system tools are installed
+	@echo "$(BLUE)Checking prerequisites...$(NC)"
+	@FAIL=0; \
+	PYTHON_VERSION=$$(python3 --version 2>/dev/null | grep -oP '\d+\.\d+'); \
+	if [ -z "$$PYTHON_VERSION" ]; then \
+		echo "  $(YELLOW)✗ python3       not found$(NC)  — install Python 3.12+ from https://python.org"; \
+		FAIL=1; \
+	else \
+		MAJOR=$$(echo "$$PYTHON_VERSION" | cut -d. -f1); \
+		MINOR=$$(echo "$$PYTHON_VERSION" | cut -d. -f2); \
+		if [ "$$MAJOR" -lt 3 ] || ([ "$$MAJOR" -eq 3 ] && [ "$$MINOR" -lt 12 ]); then \
+			echo "  $(YELLOW)✗ python3       $$PYTHON_VERSION (need 3.12+)$(NC)"; \
+			FAIL=1; \
+		else \
+			echo "  $(GREEN)✓ python3       $$PYTHON_VERSION$(NC)"; \
+		fi; \
+	fi; \
+	if command -v ffmpeg >/dev/null 2>&1; then \
+		echo "  $(GREEN)✓ ffmpeg        $$(ffmpeg -version 2>&1 | head -1 | grep -oP 'version \S+')$(NC)"; \
+	else \
+		echo "  $(YELLOW)✗ ffmpeg        not found$(NC)  — install from https://ffmpeg.org"; \
+		FAIL=1; \
+	fi; \
+	if command -v docker >/dev/null 2>&1; then \
+		echo "  $(GREEN)✓ docker        $$(docker --version 2>&1 | grep -oP '\d+\.\d+\.\d+')$(NC)"; \
+	else \
+		echo "  $(YELLOW)✗ docker        not found$(NC)  — install from https://docs.docker.com/get-docker/"; \
+		FAIL=1; \
+	fi; \
+	if command -v docker-compose >/dev/null 2>&1 || docker compose version >/dev/null 2>&1; then \
+		echo "  $(GREEN)✓ docker-compose$(NC)"; \
+	else \
+		echo "  $(YELLOW)✗ docker-compose not found$(NC)  — install Docker Compose"; \
+		FAIL=1; \
+	fi; \
+	if command -v tmux >/dev/null 2>&1; then \
+		echo "  $(GREEN)✓ tmux          $$(tmux -V 2>&1 | grep -oP '[\d.]+')$(NC)"; \
+	else \
+		echo "  $(YELLOW)  tmux          not found (optional, needed for make run-tmux)$(NC)"; \
+	fi; \
+	echo ""; \
+	if [ $$FAIL -ne 0 ]; then \
+		echo "$(YELLOW)Some prerequisites are missing. Install them and re-run make prereqs.$(NC)"; \
+		exit 1; \
+	fi; \
+	echo "$(BLUE)System libraries (needed if PyNaCl wheel is unavailable):$(NC)"; \
+	if command -v dpkg >/dev/null 2>&1; then \
+		for pkg in libffi-dev libsodium-dev python3-dev; do \
+			if dpkg -s $$pkg >/dev/null 2>&1; then \
+				echo "  $(GREEN)✓ $$pkg$(NC)"; \
+			else \
+				echo "  $(YELLOW)  $$pkg          not installed (apt install $$pkg)$(NC)"; \
+			fi; \
+		done; \
+	elif command -v brew >/dev/null 2>&1; then \
+		for pkg in libffi libsodium; do \
+			if brew list $$pkg >/dev/null 2>&1; then \
+				echo "  $(GREEN)✓ $$pkg$(NC)"; \
+			else \
+				echo "  $(YELLOW)  $$pkg          not installed (brew install $$pkg)$(NC)"; \
+			fi; \
+		done; \
+	else \
+		echo "  $(YELLOW)  Could not detect package manager. Ensure libffi and libsodium are installed.$(NC)"; \
+	fi
+	@echo ""
+	@echo "$(GREEN)✓ All prerequisites met$(NC)"
+
+setup: prereqs  ## Full first-time setup (prereqs → venv → install → .env → POT)
+	@echo ""
+	@echo "$(BLUE)Running full setup...$(NC)"
+	@if [ -z "$$VIRTUAL_ENV" ] && [ ! -d .venv ]; then \
+		echo "$(BLUE)Creating virtual environment in .venv/...$(NC)"; \
+		python3 -m venv .venv; \
+		echo "$(GREEN)✓ Virtual environment created$(NC)"; \
+	elif [ -n "$$VIRTUAL_ENV" ]; then \
+		echo "$(GREEN)✓ Already in a virtual environment$(NC)"; \
+	else \
+		echo "$(GREEN)✓ .venv/ already exists$(NC)"; \
+	fi
+	@echo "$(BLUE)Installing dependencies...$(NC)"
+	@if [ -n "$$VIRTUAL_ENV" ]; then \
+		pip install -e .; \
+	else \
+		.venv/bin/pip install -e .; \
+	fi
+	@echo "$(GREEN)✓ Dependencies installed$(NC)"
+	@$(MAKE) setup-env
+	@$(MAKE) pot-start
+	@echo ""
+	@echo "$(GREEN)========================================$(NC)"
+	@echo "$(GREEN)  Setup complete!$(NC)"
+	@echo "$(GREEN)========================================$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Next steps:$(NC)"
+	@if [ -z "$$VIRTUAL_ENV" ] && [ -d .venv ]; then \
+		echo "  1. source .venv/bin/activate"; \
+		echo "  2. Edit .env with your Discord token"; \
+		echo "  3. make run"; \
+	else \
+		echo "  1. Edit .env with your Discord token"; \
+		echo "  2. make run"; \
+	fi
 
 install:  ## Install production dependencies
 	@echo "$(BLUE)Installing production dependencies...$(NC)"

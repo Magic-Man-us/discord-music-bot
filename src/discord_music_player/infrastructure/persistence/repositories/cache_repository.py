@@ -18,17 +18,10 @@ logger = logging.getLogger(__name__)
 
 
 class SQLiteCacheRepository(RecommendationCacheRepository):
-    """SQLite implementation of the recommendation cache repository."""
-
     def __init__(self, database: Database) -> None:
         self._db = database
 
     async def get(self, cache_key: str) -> RecommendationSet | None:
-        """Get cached recommendations by key.
-
-        Compatibility: tests use a bare key like "test-key-123" but the domain
-        cache_key format is "<base_track_title>|<artist>".
-        """
         now_iso = UtcDateTime.now().iso
 
         row = await self._db.fetch_one(
@@ -82,7 +75,6 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
             return None
 
     async def set(self, key: str, data: dict, ttl_seconds: int) -> None:
-        """Compatibility helper for tests."""
         recs = [
             Recommendation(title=title, artist=None, query=title)
             for title in data.get("recommendations", [])
@@ -104,7 +96,6 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
         await self.save(rs)
 
     async def clear_all(self) -> int:
-        """Compatibility helper for tests."""
         return await self.clear()
 
     async def save(self, recommendation_set: RecommendationSet) -> None:
@@ -151,7 +142,6 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
         )
 
     async def delete(self, cache_key: str) -> bool:
-        # Try direct key
         row = await self._db.fetch_one(
             "SELECT 1 FROM recommendation_cache WHERE cache_key = ?",
             (cache_key,),
@@ -163,7 +153,6 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
             )
             return True
 
-        # Compatibility: if bare key was passed, also try normalized form.
         if "|" not in cache_key:
             compat_key = f"{cache_key.lower().strip()}|unknown"
             row2 = await self._db.fetch_one(

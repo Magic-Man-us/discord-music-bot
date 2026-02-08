@@ -252,7 +252,6 @@ class Database:
 
     @asynccontextmanager
     async def transaction(self) -> AsyncGenerator[aiosqlite.Connection, None]:
-        """Get a transaction context manager with auto-commit/rollback."""
         async with self.connection() as conn:
             try:
                 yield conn
@@ -264,13 +263,6 @@ class Database:
     async def execute(
         self, sql: str, parameters: tuple[Any, ...] | None = None
     ) -> aiosqlite.Cursor:
-        """Execute a SQL statement.
-
-        Note:
-            This always runs in its own transaction. If you need multiple
-            statements to commit/rollback together, use `transaction()` and the
-            returned connection directly.
-        """
         async with self.transaction() as conn:
             if parameters is not None:
                 cursor = await conn.execute(sql, parameters)
@@ -281,7 +273,6 @@ class Database:
     async def fetch_one(
         self, sql: str, parameters: tuple[Any, ...] | None = None
     ) -> dict[str, Any] | None:
-        """Fetch a single row."""
         async with self.connection() as conn:
             if parameters is not None:
                 cursor = await conn.execute(sql, parameters)
@@ -293,7 +284,6 @@ class Database:
     async def fetch_all(
         self, sql: str, parameters: tuple[Any, ...] | None = None
     ) -> list[dict[str, Any]]:
-        """Fetch all rows."""
         async with self.connection() as conn:
             if parameters is not None:
                 cursor = await conn.execute(sql, parameters)
@@ -303,19 +293,12 @@ class Database:
             return [dict(row) for row in rows]
 
     async def get_stats(self) -> dict[str, Any]:
-        """Get database statistics.
-
-        Returns:
-            Dictionary with database statistics including file size,
-            table counts, and other useful metrics.
-        """
         stats: dict[str, Any] = {
             "db_path": self._db_path,
             "initialized": self._initialized,
             "tables": {},
         }
 
-        # Get file size if exists
         db_file = Path(self._db_path)
         if db_file.exists():
             stats["file_size_bytes"] = db_file.stat().st_size
@@ -338,7 +321,6 @@ class Database:
                     count_row = await count_cursor.fetchone()
                     stats["tables"][table_name] = count_row[0] if count_row else 0
 
-                # Get page count and size
                 page_cursor = await conn.execute(SQLPragmas.PAGE_COUNT)
                 page_count_row = await page_cursor.fetchone()
                 stats["page_count"] = page_count_row[0] if page_count_row else 0
@@ -354,11 +336,6 @@ class Database:
         return stats
 
     async def close(self) -> None:
-        """Close the database manager.
-
-        For file-based DBs this is mostly a no-op. For in-memory DBs we also
-        close the keepalive connection.
-        """
         if self._keepalive_conn is not None:
             try:
                 await self._keepalive_conn.close()
