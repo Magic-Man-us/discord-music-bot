@@ -117,7 +117,7 @@ class AISettings(BaseModel):
         validation_alias=AliasChoices("api_key", "openai_api_key", "openai_key"),
     )
     model: str = Field(
-        default="gpt-4o-mini", validation_alias=AliasChoices("model", "ai_model", "openai_model")
+        default="gpt-5-mini", validation_alias=AliasChoices("model", "ai_model", "openai_model")
     )
     max_tokens: int = Field(default=500, ge=1, le=4096)
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
