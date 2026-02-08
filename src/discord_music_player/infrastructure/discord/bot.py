@@ -196,12 +196,19 @@ class MusicBot(commands.Bot):
         self._shutdown_event.set()
         logger.info(LogTemplates.BOT_SHUTDOWN_COMPLETE)
 
-    def run_with_graceful_shutdown(self, token: str) -> None:
+    def run_with_graceful_shutdown(self, token: str, *, shutdown_timeout: float = 30.0) -> None:
         async def runner():
             async with self:
                 loop = asyncio.get_running_loop()
+
+                async def _graceful_close() -> None:
+                    try:
+                        await asyncio.wait_for(self.close(), timeout=shutdown_timeout)
+                    except TimeoutError:
+                        logger.warning(LogTemplates.BOT_SHUTDOWN_TIMEOUT, shutdown_timeout)
+
                 for sig in (signal.SIGINT, signal.SIGTERM):
-                    loop.add_signal_handler(sig, lambda: asyncio.create_task(self.close()))
+                    loop.add_signal_handler(sig, lambda: asyncio.create_task(_graceful_close()))
                 await self.start(token)
 
         asyncio.run(runner())

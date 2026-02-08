@@ -58,5 +58,10 @@ def main() -> int:
         return 1
 
 
+def cli() -> None:
+    """Console script entry point (used by pyproject.toml [project.scripts])."""
+    sys.exit(main())
+
+
 if __name__ == "__main__":
-    sys.exit(main())  # pragma: no cover
+    cli()  # pragma: no cover

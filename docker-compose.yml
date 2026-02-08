@@ -24,22 +24,30 @@ services:
     networks:
       - music-bot
 
-  # Discord Music Bot (optional - for running the bot in Docker)
-  # music-bot:
-  #   build: .
-  #   container_name: discord-music-bot
-  #   restart: unless-stopped
-  #   depends_on:
-  #     bgutil-provider:
-  #       condition: service_healthy
-  #   environment:
-  #     DISCORD_TOKEN: ${DISCORD_TOKEN}
-  #     POT_SERVER_URL: http://bgutil-provider:4416
-  #   volumes:
-  #     - ./data:/app/data
-  #     - ./logs:/app/logs
-  #   networks:
-  #     - music-bot
+  # Discord Music Bot
+  music-bot:
+    build: .
+    container_name: discord-music-bot
+    restart: unless-stopped
+    depends_on:
+      bgutil-provider:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Override POT server URL to use the container hostname instead of localhost
+      AUDIO__POT_SERVER_URL: http://bgutil-provider:4416
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "test", "-f", "/app/logs/heartbeat.json"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - music-bot
 
 networks:
   music-bot:

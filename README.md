@@ -224,6 +224,63 @@ tail -f logs/music_bot.log
 
 There is also a Makefile shortcut: `make run-tmux` runs `./music_start.py start --respawn`.
 
+### Docker Deployment
+
+Run the full stack (bot + POT provider) with a single command:
+
+```bash
+# Configure your .env first
+make setup-env
+# Edit .env with your Discord token
+
+# Start everything
+docker compose up -d
+
+# View logs
+docker compose logs -f music-bot
+
+# Stop everything
+docker compose down
+```
+
+The `docker-compose.yml` includes:
+- **bgutil-provider** — YouTube POT token generator with health checks
+- **music-bot** — the bot itself, built from the included `Dockerfile`
+
+The bot service automatically:
+- Waits for the POT provider to be healthy before starting
+- Uses the container hostname (`bgutil-provider:4416`) instead of localhost
+- Mounts `data/` and `logs/` as volumes for persistence
+- Restarts on failure (`unless-stopped`)
+
+### Systemd Deployment
+
+For running the bot as a native Linux service (without Docker or tmux):
+
+1. Copy the service file:
+   ```bash
+   sudo cp discord-music-bot.service /etc/systemd/system/
+   ```
+
+2. Edit the paths and username:
+   ```bash
+   sudo systemctl edit discord-music-bot
+   ```
+
+3. Enable and start:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable discord-music-bot
+   sudo systemctl start discord-music-bot
+   ```
+
+4. View logs:
+   ```bash
+   journalctl -u discord-music-bot -f
+   ```
+
+The service file includes security hardening (`NoNewPrivileges`, `ProtectSystem`, `PrivateTmp`) and a 30-second graceful shutdown timeout.
+
 ## Development
 
 ### Makefile Commands
@@ -290,6 +347,52 @@ src/discord_music_player/
   application/        # Use cases (commands, queries, services)
   infrastructure/     # External adapters (Discord, yt-dlp, FFmpeg, SQLite, OpenAI)
   config/             # Settings and dependency injection container
+```
+
+## Troubleshooting
+
+### YouTube 403 Errors
+
+The POT (Proof of Origin Token) provider must be running for YouTube playback. See [docs/POT_PROVIDER_SETUP.md](docs/POT_PROVIDER_SETUP.md) for full details.
+
+```bash
+# Check if POT provider is running
+make pot-status
+
+# Restart it
+make pot-start
+
+# Update yt-dlp (fixes most extraction issues)
+pip install --upgrade yt-dlp bgutil-ytdlp-pot-provider
+```
+
+### Bot Won't Join Voice Channel
+
+1. **Check bot permissions** — the bot needs `Connect` and `Speak` permissions in the voice channel
+2. **Check intents** — ensure `Server Members` and `Message Content` intents are enabled in the [Developer Portal](https://discord.com/developers/applications)
+3. **Check ffmpeg** — run `ffmpeg -version` to confirm it's installed
+4. **Check PyNaCl** — run `python -c "import nacl"` — if it fails, install system deps (see [Prerequisites](#system-packages-linux))
+
+### Bot Not Responding to Commands
+
+1. **Check slash commands are synced** — set `SYNC_ON_STARTUP=true` in `.env` or use `/sync` (owner only)
+2. **Check guild IDs** — ensure `DISCORD__GUILD_IDS` includes your server's ID
+3. **Check logs** — `tail -f logs/music_bot.log` or `make pot-logs`
+
+### Audio Cuts Out or Skips
+
+- Increase FFmpeg reconnect settings (already configured in defaults)
+- Check network stability between bot host and Discord
+- If running in Docker, ensure the container has sufficient resources
+
+### Database Issues
+
+```bash
+# Check database stats via Discord
+/db-stats
+
+# Reset the database (deletes all data)
+make db-reset
 ```
 
 ## License

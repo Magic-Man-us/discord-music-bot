@@ -1,0 +1,34 @@
+.git
+.github
+.venv
+.env
+.claude
+.serena
+.vscode
+.coverage
+.wily
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+
+# Persistent data (mounted as volumes)
+data/
+logs/
+*.db
+*.db-shm
+*.db-wal
+
+# Build artifacts
+build/
+dist/
+htmlcov/
+
+# Dev/test files
+tests/
+tools/
+docs/
+Makefile
+uv.lock

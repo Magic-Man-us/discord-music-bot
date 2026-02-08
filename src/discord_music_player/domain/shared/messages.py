@@ -229,6 +229,7 @@ class LogTemplates:
     BOT_CONTAINER_SHUTDOWN = "Container shutdown complete"
     BOT_CONTAINER_SHUTDOWN_ERROR = "Error during container shutdown: %s"
     BOT_SHUTDOWN_COMPLETE = "Bot shutdown complete"
+    BOT_SHUTDOWN_TIMEOUT = "Graceful shutdown timed out after %.0fs, forcing exit"
     BOT_READY = "Bot ready as %s (%s)"
     BOT_CONNECTED_GUILDS = "Connected to %s guilds"
 
