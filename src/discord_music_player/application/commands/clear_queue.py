@@ -1,8 +1,4 @@
-"""
-Clear Queue Command
-
-Command and handler for clearing the queue.
-"""
+"""Command and handler for clearing the queue."""
 
 from __future__ import annotations
 
@@ -25,7 +21,6 @@ class ClearStatus(Enum):
 
 @dataclass
 class ClearQueueCommand:
-    """Command to clear all tracks from the queue."""
 
     guild_id: int
     user_id: int
@@ -39,7 +34,6 @@ class ClearQueueCommand:
 
 @dataclass
 class ClearResult:
-    """Result of a clear queue command."""
 
     status: ClearStatus
     message: str
@@ -63,19 +57,17 @@ class ClearResult:
 
 
 class ClearQueueHandler:
-    """Handler for ClearQueueCommand."""
 
     def __init__(self, session_repository: SessionRepository) -> None:
-        self._session_repository = session_repository
+        self._session_repo = session_repository
 
     async def handle(self, command: ClearQueueCommand) -> ClearResult:
-        """Execute the clear queue command."""
-        session = await self._session_repository.get(command.guild_id)
+        session = await self._session_repo.get(command.guild_id)
 
         if session is None or session.queue_length == 0:
             return ClearResult.error(ClearStatus.QUEUE_EMPTY, "Queue is already empty")
 
         tracks_cleared = session.clear_queue()
-        await self._session_repository.save(session)
+        await self._session_repo.save(session)
 
         return ClearResult.success(tracks_cleared)

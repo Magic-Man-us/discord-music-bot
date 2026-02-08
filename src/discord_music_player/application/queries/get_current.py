@@ -1,8 +1,4 @@
-"""
-Get Current Track Query
-
-Query for retrieving the currently playing track.
-"""
+"""Query for retrieving the currently playing track."""
 
 from __future__ import annotations
 
@@ -16,14 +12,12 @@ if TYPE_CHECKING:
 
 @dataclass
 class GetCurrentTrackQuery:
-    """Query to get the current track for a guild."""
 
     guild_id: int
 
 
 @dataclass
 class CurrentTrackInfo:
-    """Result containing current track information."""
 
     guild_id: int
     track: Track | None
@@ -33,13 +27,12 @@ class CurrentTrackInfo:
 
 
 class GetCurrentTrackHandler:
-    """Handler for GetCurrentTrackQuery."""
 
     def __init__(self, session_repository: SessionRepository) -> None:
-        self._session_repository = session_repository
+        self._session_repo = session_repository
 
     async def handle(self, query: GetCurrentTrackQuery) -> CurrentTrackInfo:
-        session = await self._session_repository.get(query.guild_id)
+        session = await self._session_repo.get(query.guild_id)
 
         if session is None:
             return CurrentTrackInfo(

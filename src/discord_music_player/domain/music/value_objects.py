@@ -1,23 +1,19 @@
-"""
-Music Domain Value Objects
-
-Immutable value objects for the music bounded context.
-"""
+"""Immutable value objects for the music bounded context."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Annotated
+
+from pydantic import PlainSerializer, PlainValidator
 
 from discord_music_player.domain.shared.messages import ErrorMessages
 
 
 @dataclass(frozen=True)
 class TrackId:
-    """Value object for track identification.
-
-    Typically a YouTube video ID or a hash of the URL.
-    """
+    """Typically a YouTube video ID or a hash of the URL."""
 
     value: str
 
@@ -33,15 +29,10 @@ class TrackId:
 
     @classmethod
     def from_url(cls, url: str) -> TrackId:
-        """Extract track ID from a URL.
-
-        For YouTube, extracts the video ID.
-        For other URLs, uses a hash of the URL.
-        """
+        """Extract track ID from a URL, using YouTube video ID or a URL hash as fallback."""
         import hashlib
         import re
 
-        # YouTube URL patterns
         youtube_patterns = [
             r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})",
             r"youtube\.com/shorts/([a-zA-Z0-9_-]{11})",
@@ -52,9 +43,23 @@ class TrackId:
             if match:
                 return cls(match.group(1))
 
-        # Fallback to URL hash
         url_hash = hashlib.md5(url.encode()).hexdigest()[:16]
         return cls(url_hash)
+
+
+# Pydantic-compatible type aliases for TrackId fields.
+# Serializes as plain string in JSON, stores as TrackId in the model.
+TrackIdField = Annotated[
+    TrackId,
+    PlainValidator(lambda v: TrackId(v) if isinstance(v, str) else v),
+    PlainSerializer(lambda v: v.value, return_type=str),
+]
+
+OptionalTrackIdField = Annotated[
+    TrackId | None,
+    PlainValidator(lambda v: TrackId(v) if isinstance(v, str) else v),
+    PlainSerializer(lambda v: v.value if v is not None else None, return_type=str | None),
+]
 
 
 @dataclass(frozen=True)
@@ -64,7 +69,6 @@ class QueuePosition:
     value: int
 
     def __post_init__(self) -> None:
-        # Use object.__setattr__ because dataclass is frozen
         if self.value < 0:
             raise ValueError(ErrorMessages.INVALID_QUEUE_POSITION)
 
@@ -84,7 +88,7 @@ class QueuePosition:
 
 
 class PlaybackState(Enum):
-    """Value object representing playback states.
+    """Playback state with enforced transitions.
 
     State transitions:
     - IDLE -> PLAYING (start playback)
@@ -121,18 +125,57 @@ class PlaybackState(Enum):
 
     @property
     def is_active(self) -> bool:
-        """Check if state represents active playback."""
         return self in {PlaybackState.PLAYING, PlaybackState.PAUSED}
 
     @property
     def is_playing(self) -> bool:
-        """Check if currently playing."""
         return self == PlaybackState.PLAYING
 
     @property
     def can_accept_commands(self) -> bool:
-        """Check if state can accept playback commands."""
         return self != PlaybackState.STOPPED
+
+
+class TrackFinishReason(Enum):
+    """Reasons a track can finish playing."""
+
+    COMPLETED = "completed"
+    SKIPPED = "skipped"
+    STOPPED = "stopped"
+    ERROR = "error"
+
+
+class SkipReason(Enum):
+    """Reasons a track can be skipped."""
+
+    USER_REQUEST = "user_request"
+    VOTE = "vote"
+    AUTO_SKIP = "auto_skip"
+
+
+class StopReason(Enum):
+    """Reasons playback can be stopped."""
+
+    USER_REQUEST = "user_request"
+    NO_MORE_TRACKS = "no_more_tracks"
+    ERROR = "error"
+    DISCONNECT = "disconnect"
+
+
+class SessionDestroyReason(Enum):
+    """Reasons a session can be destroyed."""
+
+    CLEANUP = "cleanup"
+    DISCONNECT = "disconnect"
+    INACTIVITY = "inactivity"
+
+
+class VoiceLeaveReason(Enum):
+    """Reasons the bot can leave a voice channel."""
+
+    DISCONNECT = "disconnect"
+    MOVED = "moved"
+    KICKED = "kicked"
 
 
 class LoopMode(Enum):

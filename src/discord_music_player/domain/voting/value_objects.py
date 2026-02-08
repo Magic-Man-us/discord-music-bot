@@ -1,8 +1,6 @@
-"""
-Voting Domain Value Objects
+"""Immutable value objects for the voting bounded context."""
 
-Immutable value objects for the voting bounded context.
-"""
+from __future__ import annotations
 
 from enum import Enum
 
@@ -10,9 +8,9 @@ from enum import Enum
 class VoteType(Enum):
     """Types of votes that can be cast."""
 
-    SKIP = "skip"  # Vote to skip the current track
-    STOP = "stop"  # Vote to stop playback entirely
-    CLEAR = "clear"  # Vote to clear the queue
+    SKIP = "skip"
+    STOP = "stop"
+    CLEAR = "clear"
 
     @property
     def past_tense(self) -> str:
@@ -34,26 +32,20 @@ class VoteType(Enum):
 
 
 class VoteResult(Enum):
-    """Results of attempting to cast a vote.
+    """Results of attempting to cast a vote."""
 
-    These results indicate what happened when a user tried to vote.
-    """
+    VOTE_RECORDED = "vote_recorded"
+    THRESHOLD_MET = "threshold_met"
+    REQUESTER_SKIP = "requester_skip"
+    AUTO_SKIP = "auto_skip"
 
-    # Successful outcomes
-    VOTE_RECORDED = "vote_recorded"  # Vote was counted
-    THRESHOLD_MET = "threshold_met"  # Vote hit threshold, action executed
-    REQUESTER_SKIP = "requester_skip"  # Requester skipped their own track
-    AUTO_SKIP = "auto_skip"  # 2-listener rule triggered auto-skip
+    ALREADY_VOTED = "already_voted"
+    NO_PLAYING = "no_playing"
+    NOT_IN_CHANNEL = "not_in_channel"
+    BOT_NOT_IN_CHANNEL = "bot_not_in_channel"
 
-    # Vote not counted outcomes
-    ALREADY_VOTED = "already_voted"  # User already voted
-    NO_PLAYING = "no_playing"  # Nothing is playing
-    NOT_IN_CHANNEL = "not_in_channel"  # User not in voice channel
-    BOT_NOT_IN_CHANNEL = "bot_not_in_channel"  # Bot not in voice channel
-
-    # Error outcomes
-    VOTE_EXPIRED = "vote_expired"  # Vote session expired
-    INVALID_VOTE = "invalid_vote"  # Invalid vote state
+    VOTE_EXPIRED = "vote_expired"
+    INVALID_VOTE = "invalid_vote"
 
     @property
     def is_success(self) -> bool:
@@ -75,16 +67,7 @@ class VoteResult(Enum):
         }
 
     def get_message(self, vote_type: VoteType, votes: int = 0, needed: int = 0) -> str:
-        """Get a user-friendly message for this result.
-
-        Args:
-            vote_type: The type of vote.
-            votes: Current vote count.
-            needed: Votes needed for threshold.
-
-        Returns:
-            User-friendly message string.
-        """
+        """Get a user-friendly message for this result."""
         messages = {
             VoteResult.VOTE_RECORDED: f"Vote recorded! ({votes}/{needed} votes to {vote_type.action_verb})",
             VoteResult.THRESHOLD_MET: f"Vote threshold met! Track {vote_type.past_tense}.",

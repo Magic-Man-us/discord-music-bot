@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.voting.entities import VoteSession
 from discord_music_player.domain.voting.value_objects import VoteType
 
@@ -20,7 +21,7 @@ class TestVoteRepositoryEdgeCases:
         """Create a sample vote session."""
         return VoteSession(
             guild_id=123,
-            track_id="test_track_123",
+            track_id=TrackId("test_track_123"),
             vote_type=VoteType.SKIP,
             threshold=3,
             started_at=datetime.now(UTC),
@@ -28,7 +29,7 @@ class TestVoteRepositoryEdgeCases:
 
     async def test_delete_by_track_returns_false_when_no_session(self, vote_repository):
         """Should return False when no session exists for the track."""
-        result = await vote_repository.delete_by_track(guild_id=999, track_id="nonexistent")
+        result = await vote_repository.delete_by_track(guild_id=999, track_id=TrackId("nonexistent"))
 
         assert result is False
 
@@ -40,7 +41,7 @@ class TestVoteRepositoryEdgeCases:
         await vote_repository.save(sample_vote_session)
 
         # Delete by track
-        result = await vote_repository.delete_by_track(guild_id=123, track_id="test_track_123")
+        result = await vote_repository.delete_by_track(guild_id=123, track_id=TrackId("test_track_123"))
 
         assert result is True
 
@@ -54,7 +55,7 @@ class TestVoteRepositoryEdgeCases:
         old_time = datetime.now(UTC) - timedelta(minutes=10)
         expired_session = VoteSession(
             guild_id=123,
-            track_id="test_track",
+            track_id=TrackId("test_track"),
             vote_type=VoteType.SKIP,
             threshold=3,
             started_at=old_time,
@@ -72,7 +73,7 @@ class TestVoteRepositoryEdgeCases:
         # Create session for track A
         session_a = VoteSession(
             guild_id=123,
-            track_id="track_a",
+            track_id=TrackId("track_a"),
             vote_type=VoteType.SKIP,
             threshold=3,
             started_at=datetime.now(UTC),
@@ -81,15 +82,15 @@ class TestVoteRepositoryEdgeCases:
 
         # Get or create for track B (different track)
         session_b = await vote_repository.get_or_create(
-            guild_id=123, track_id="track_b", vote_type=VoteType.SKIP, threshold=3
+            guild_id=123, track_id=TrackId("track_b"), vote_type=VoteType.SKIP, threshold=3
         )
 
-        assert session_b.track_id == "track_b"
+        assert session_b.track_id == TrackId("track_b")
 
         # Verify the session now has the new track
         retrieved = await vote_repository.get(123, VoteType.SKIP)
         assert retrieved is not None
-        assert retrieved.track_id == "track_b"
+        assert retrieved.track_id == TrackId("track_b")
 
     async def test_get_or_create_updates_threshold_for_existing(
         self, vote_repository, sample_vote_session
@@ -101,7 +102,7 @@ class TestVoteRepositoryEdgeCases:
         # Get or create with new threshold=5
         updated_session = await vote_repository.get_or_create(
             guild_id=123,
-            track_id="test_track_123",
+            track_id=TrackId("test_track_123"),
             vote_type=VoteType.SKIP,
             threshold=5,
         )
@@ -123,7 +124,7 @@ class TestVoteRepositoryEdgeCases:
         # Get or create with same params
         existing = await vote_repository.get_or_create(
             guild_id=123,
-            track_id="test_track_123",
+            track_id=TrackId("test_track_123"),
             vote_type=VoteType.SKIP,
             threshold=3,
         )
@@ -134,11 +135,11 @@ class TestVoteRepositoryEdgeCases:
     async def test_get_or_create_creates_new_when_none_exists(self, vote_repository):
         """Should create new session when none exists."""
         session = await vote_repository.get_or_create(
-            guild_id=456, track_id="new_track", vote_type=VoteType.SKIP, threshold=4
+            guild_id=456, track_id=TrackId("new_track"), vote_type=VoteType.SKIP, threshold=4
         )
 
         assert session.guild_id == 456
-        assert session.track_id == "new_track"
+        assert session.track_id == TrackId("new_track")
         assert session.threshold == 4
 
         # Verify it's saved
@@ -150,7 +151,7 @@ class TestVoteRepositoryEdgeCases:
         # Create initial session
         session = VoteSession(
             guild_id=123,
-            track_id="track_1",
+            track_id=TrackId("track_1"),
             vote_type=VoteType.SKIP,
             threshold=3,
             started_at=datetime.now(UTC),
@@ -158,14 +159,14 @@ class TestVoteRepositoryEdgeCases:
         await vote_repository.save(session)
 
         # Modify and save again
-        session.track_id = "track_2"
+        session.track_id = TrackId("track_2")
         session.threshold = 5
         await vote_repository.save(session)
 
         # Verify the session was updated
         retrieved = await vote_repository.get(123, VoteType.SKIP)
         assert retrieved is not None
-        assert retrieved.track_id == "track_2"
+        assert retrieved.track_id == TrackId("track_2")
         assert retrieved.threshold == 5
 
     async def test_delete_returns_true_when_session_deleted(
@@ -189,14 +190,14 @@ class TestVoteRepositoryEdgeCases:
         # Create sessions for different guilds
         session1 = VoteSession(
             guild_id=123,
-            track_id="track_1",
+            track_id=TrackId("track_1"),
             vote_type=VoteType.SKIP,
             threshold=3,
             started_at=datetime.now(UTC),
         )
         session2 = VoteSession(
             guild_id=456,
-            track_id="track_2",
+            track_id=TrackId("track_2"),
             vote_type=VoteType.STOP,
             threshold=2,
             started_at=datetime.now(UTC),
@@ -210,9 +211,9 @@ class TestVoteRepositoryEdgeCases:
         retrieved2 = await vote_repository.get(456, VoteType.STOP)
 
         assert retrieved1 is not None
-        assert retrieved1.track_id == "track_1"
+        assert retrieved1.track_id == TrackId("track_1")
         assert retrieved2 is not None
-        assert retrieved2.track_id == "track_2"
+        assert retrieved2.track_id == TrackId("track_2")
 
     async def test_cleanup_expired_removes_old_sessions(self, vote_repository):
         """Should remove expired vote sessions."""
@@ -220,7 +221,7 @@ class TestVoteRepositoryEdgeCases:
         old_time = datetime.now(UTC) - timedelta(minutes=10)
         old_session = VoteSession(
             guild_id=123,
-            track_id="old_track",
+            track_id=TrackId("old_track"),
             vote_type=VoteType.SKIP,
             threshold=3,
             started_at=old_time,
@@ -288,14 +289,14 @@ class TestVoteRepositoryEdgeCases:
         # Create multiple sessions for the guild
         session1 = VoteSession(
             guild_id=guild_id,
-            track_id="track_1",
+            track_id=TrackId("track_1"),
             vote_type=VoteType.SKIP,
             threshold=3,
             started_at=datetime.now(UTC),
         )
         session2 = VoteSession(
             guild_id=guild_id,
-            track_id="track_2",
+            track_id=TrackId("track_2"),
             vote_type=VoteType.STOP,
             threshold=2,
             started_at=datetime.now(UTC),

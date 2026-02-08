@@ -4,6 +4,7 @@ Additional Events Tests for Coverage
 Tests edge cases and uncovered code paths in events module.
 """
 
+from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.shared.events import (
     BotJoinedVoiceChannel,
     DomainEvent,
@@ -45,7 +46,7 @@ class TestEventBusEdgeCases:
         """Should handle publishing event with no subscribers."""
         bus = EventBus()
         event = TrackStartedPlaying(
-            guild_id=123, track_id="test", track_title="Test Song", track_url="https://test.com"
+            guild_id=123, track_id=TrackId("test"), track_title="Test Song", track_url="https://test.com"
         )
 
         # Should not raise - just logs and returns
@@ -65,7 +66,7 @@ class TestEventBusEdgeCases:
 
         # Publish event
         event = TrackStartedPlaying(
-            guild_id=123, track_id="test", track_title="Test Song", track_url="https://test.com"
+            guild_id=123, track_id=TrackId("test"), track_title="Test Song", track_url="https://test.com"
         )
         await bus.publish(event)
 
@@ -99,7 +100,7 @@ class TestEventBusEdgeCases:
         bus.subscribe(TrackStartedPlaying, working_handler)
 
         event = TrackStartedPlaying(
-            guild_id=123, track_id="test", track_title="Test Song", track_url="https://test.com"
+            guild_id=123, track_id=TrackId("test"), track_title="Test Song", track_url="https://test.com"
         )
 
         # Should not raise - errors are logged
@@ -122,7 +123,7 @@ class TestEventBusEdgeCases:
 
         # Publish event after clearing
         event = TrackStartedPlaying(
-            guild_id=123, track_id="test", track_title="Test Song", track_url="https://test.com"
+            guild_id=123, track_id=TrackId("test"), track_title="Test Song", track_url="https://test.com"
         )
         await bus.publish(event)
 
@@ -145,7 +146,7 @@ class TestEventBusEdgeCases:
         bus.subscribe(TrackStartedPlaying, handler2)
 
         event = TrackStartedPlaying(
-            guild_id=123, track_id="test", track_title="Test Song", track_url="https://test.com"
+            guild_id=123, track_id=TrackId("test"), track_title="Test Song", track_url="https://test.com"
         )
         await bus.publish(event)
 
@@ -169,7 +170,7 @@ class TestEventBusEdgeCases:
 
         # Publish TrackStartedPlaying
         started_event = TrackStartedPlaying(
-            guild_id=123, track_id="test", track_title="Test Song", track_url="https://test.com"
+            guild_id=123, track_id=TrackId("test"), track_title="Test Song", track_url="https://test.com"
         )
         await bus.publish(started_event)
 

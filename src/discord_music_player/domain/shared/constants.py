@@ -1,18 +1,10 @@
-"""Centralized constants for configuration keys, database schema, and other shared values.
-
-This module provides reusable constants that reduce magic strings and improve maintainability.
-"""
+"""Centralized constants for configuration keys, database schema, and other shared values."""
 
 from __future__ import annotations
 
 
 class ConfigKeys:
-    """Configuration and environment variable key names.
-
-    These constants centralize all configuration keys used across the application.
-    While Pydantic Settings already provides type-safe access, these constants
-    ensure consistency when accessing raw environment variables or config files.
-    """
+    """Configuration and environment variable key names."""
 
     # Top-level Settings
     ENVIRONMENT = "ENVIRONMENT"
@@ -44,11 +36,7 @@ class ConfigKeys:
 
 
 class DatabaseTables:
-    """Database table names.
-
-    Centralizing table names prevents typos in SQL queries and makes
-    schema changes easier to track.
-    """
+    """Database table names."""
 
     GUILD_SESSIONS = "guild_sessions"
     QUEUE_TRACKS = "queue_tracks"
@@ -59,11 +47,7 @@ class DatabaseTables:
 
 
 class DatabaseColumns:
-    """Database column names.
-
-    Centralizing column names ensures consistency across repositories
-    and makes refactoring safer.
-    """
+    """Database column names."""
 
     # Primary Keys
     ID = "id"
@@ -123,10 +107,7 @@ class DatabaseColumns:
 
 
 class SQLPragmas:
-    """SQLite PRAGMA statements for database configuration.
-
-    These pragmas are applied to each connection to ensure consistent behavior.
-    """
+    """SQLite PRAGMA statements."""
 
     JOURNAL_MODE_WAL = "PRAGMA journal_mode=WAL"
     FOREIGN_KEYS_ON = "PRAGMA foreign_keys=ON"
@@ -137,11 +118,7 @@ class SQLPragmas:
 
 
 class SQLQueries:
-    """Common SQL query patterns.
-
-    Extract frequently used SQL fragments to ensure consistency
-    and make it easier to spot potential SQL injection risks.
-    """
+    """Common SQL query templates."""
 
     # Table metadata queries
     GET_TABLE_NAMES = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '%_%'"
@@ -163,7 +140,7 @@ class AudioConstants:
 
     # FFmpeg Options
     FFMPEG_BEFORE_OPTIONS_DEFAULT = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
-    FFMPEG_OPTIONS_DEFAULT = "-vn"  # No video
+    FFMPEG_OPTIONS_DEFAULT = "-vn"
     FFMPEG_FADE_IN_FILTER = '-af "afade=t=in:ss=0:d={duration}"'
     FFMPEG_USER_AGENT_HEADER = '-headers "User-Agent: {user_agent}"'
 

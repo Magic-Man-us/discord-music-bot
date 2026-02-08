@@ -1,8 +1,4 @@
-"""
-Vote Skip Command
-
-Command and handler for vote-based skipping.
-"""
+"""Command and handler for vote-based skipping."""
 
 from __future__ import annotations
 
@@ -20,20 +16,16 @@ if TYPE_CHECKING:
 
 
 class VoteSkipCommand(BaseModel):
-    """Command to cast a vote to skip the current track."""
-
     model_config = ConfigDict(frozen=True, strict=True)
 
     guild_id: int
     user_id: int
     user_channel_id: int | None = None
 
-    # Validate Discord snowflake IDs using reusable validators
     _validate_ids = DiscordValidators.snowflakes("guild_id", "user_id")
 
 
 class VoteSkipResult(BaseModel):
-    """Result of a vote skip command."""
 
     model_config = ConfigDict(frozen=True, strict=True)
 
@@ -65,7 +57,6 @@ class VoteSkipResult(BaseModel):
 
 
 class VoteSkipHandler:
-    """Handler for VoteSkipCommand."""
 
     def __init__(
         self,
@@ -73,46 +64,37 @@ class VoteSkipHandler:
         vote_repository: VoteSessionRepository,
         voice_adapter: VoiceAdapter,
     ) -> None:
-        self._session_repository = session_repository
+        self._session_repo = session_repository
         self._vote_repository = vote_repository
         self._voice_adapter = voice_adapter
 
     async def handle(self, command: VoteSkipCommand) -> VoteSkipResult:
-        """Execute the vote skip command."""
         from ...domain.voting.services import VotingDomainService
 
-        # Check if something is playing
-        session = await self._session_repository.get(command.guild_id)
+        session = await self._session_repo.get(command.guild_id)
         if session is None or session.current_track is None:
             return VoteSkipResult.from_vote_result(VoteResult.NO_PLAYING)
 
-        # Check if user is in voice channel
         if command.user_channel_id is None:
             return VoteSkipResult.from_vote_result(VoteResult.NOT_IN_CHANNEL)
 
-        # Get listener count
         listeners = await self._voice_adapter.get_listeners(command.guild_id)
         listener_count = len(listeners)
 
-        # Check if user is in the bot's channel
         if command.user_id not in listeners:
             return VoteSkipResult.from_vote_result(VoteResult.NOT_IN_CHANNEL)
 
         current_track = session.current_track
-        track_id = str(current_track.id)
+        track_id = current_track.id
 
-        # Check for auto-skip conditions
         if VotingDomainService.can_auto_skip(command.user_id, current_track, listener_count):
-            # If we're auto-skipping, clear any existing skip-vote session.
-            # This prevents votes from leaking across repeated plays of the same
-            # track id (e.g., loop mode) and keeps the repository consistent.
+            # Clear any existing vote session to prevent votes from leaking across
+            # repeated plays of the same track id (e.g. loop mode).
             await self._vote_repository.delete(command.guild_id, VoteType.SKIP)
-            # Execute skip
             if current_track.was_requested_by(command.user_id):
                 return VoteSkipResult.from_vote_result(VoteResult.REQUESTER_SKIP)
             return VoteSkipResult.from_vote_result(VoteResult.AUTO_SKIP)
 
-        # Get or create vote session
         threshold = VotingDomainService.calculate_threshold(listener_count)
         vote_session = await self._vote_repository.get_or_create(
             guild_id=command.guild_id,
@@ -121,12 +103,10 @@ class VoteSkipHandler:
             threshold=threshold,
         )
 
-        # Reset if track changed
         if VotingDomainService.should_reset_session(vote_session, track_id):
             vote_session.reset(track_id)
             vote_session.update_threshold(threshold)
 
-        # Evaluate and add vote
         vote_result, vote_session = VotingDomainService.evaluate_vote(
             session=vote_session,
             user_id=command.user_id,
@@ -135,10 +115,7 @@ class VoteSkipHandler:
             user_in_channel=True,
         )
 
-        # Persist vote session.
-        # If the action is considered executed (threshold met), clear the
-        # session immediately to avoid vote state leaking to subsequent tracks
-        # (or repeated track ids).
+        # Clear completed vote sessions to avoid state leaking to subsequent tracks.
         if vote_result.action_executed:
             await self._vote_repository.delete(command.guild_id, VoteType.SKIP)
         else:

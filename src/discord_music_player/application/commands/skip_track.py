@@ -1,8 +1,4 @@
-"""
-Skip Track Command
-
-Command and handler for skipping the current track.
-"""
+"""Command and handler for skipping the current track."""
 
 from __future__ import annotations
 
@@ -28,16 +24,10 @@ class SkipStatus(Enum):
 
 @dataclass
 class SkipTrackCommand:
-    """Command to skip the current track.
-
-    Supports both immediate skip (for authorized users) and
-    indicates if this should trigger vote-skip instead.
-    """
-
     guild_id: int
     user_id: int
-    user_channel_id: int | None = None  # User's current voice channel
-    force: bool = False  # Skip without voting (for DJs/admins)
+    user_channel_id: int | None = None
+    force: bool = False
 
     def __post_init__(self) -> None:
         if self.guild_id <= 0:
@@ -48,7 +38,6 @@ class SkipTrackCommand:
 
 @dataclass
 class SkipResult:
-    """Result of a skip track command."""
 
     status: SkipStatus
     message: str
@@ -58,12 +47,10 @@ class SkipResult:
 
     @property
     def is_success(self) -> bool:
-        """Check if the skip was successful."""
         return self.status == SkipStatus.SUCCESS
 
     @classmethod
     def success(cls, skipped_track: Track, next_track: Track | None = None) -> SkipResult:
-        """Create a successful skip result."""
         if next_track:
             message = f"Skipped: {skipped_track.title}. Now playing: {next_track.title}"
         else:
@@ -78,7 +65,6 @@ class SkipResult:
 
     @classmethod
     def requires_voting(cls) -> SkipResult:
-        """Create a result indicating voting is required."""
         return cls(
             status=SkipStatus.PERMISSION_DENIED,
             message="Vote required to skip. Use the vote-skip command.",
@@ -87,67 +73,45 @@ class SkipResult:
 
     @classmethod
     def error(cls, status: SkipStatus, message: str) -> SkipResult:
-        """Create an error result."""
         return cls(status=status, message=message)
 
 
 class SkipTrackHandler:
-    """Handler for SkipTrackCommand.
-
-    Handles the logic for skipping tracks, including permission
-    checks and transitioning to the next track.
-    """
+    """Skips the current track with permission checks, falling back to vote-skip."""
 
     def __init__(
         self,
         session_repository: SessionRepository,
         voice_adapter: VoiceAdapter,
     ) -> None:
-        self._session_repository = session_repository
+        self._session_repo = session_repository
         self._voice_adapter = voice_adapter
 
     async def handle(self, command: SkipTrackCommand) -> SkipResult:
-        """Execute the skip track command.
-
-        Args:
-            command: The skip track command.
-
-        Returns:
-            The result of the operation.
-        """
-        # Get session
-        session = await self._session_repository.get(command.guild_id)
+        session = await self._session_repo.get(command.guild_id)
         if session is None or session.current_track is None:
             return SkipResult.error(SkipStatus.NOTHING_PLAYING, "Nothing is currently playing")
 
         current_track = session.current_track
 
-        # Check if user can skip
         if not command.force:
-            # Check if user is in the voice channel
             if command.user_channel_id is None:
                 return SkipResult.error(
                     SkipStatus.NOT_IN_CHANNEL, "You must be in a voice channel to skip"
                 )
 
-            # Get listener count
             listeners = await self._voice_adapter.get_listeners(command.guild_id)
             listener_count = len(listeners)
 
-            # Allow requester to skip their own track
             if not current_track.was_requested_by(command.user_id):
-                # Check for small audience rule (2 or fewer listeners)
+                # Small audience rule: skip freely with 2 or fewer listeners
                 if listener_count > 2:
                     return SkipResult.requires_voting()
 
-        # Perform skip
         skipped_track = current_track
         next_track = session.advance_to_next_track()
 
-        # Stop current playback
         await self._voice_adapter.stop(command.guild_id)
-
-        # Save session
-        await self._session_repository.save(session)
+        await self._session_repo.save(session)
 
         return SkipResult.success(skipped_track, next_track)

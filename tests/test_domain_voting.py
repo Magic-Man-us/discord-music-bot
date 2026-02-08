@@ -161,7 +161,7 @@ class TestVoteSession:
         """Fixture providing a fresh vote session."""
         return VoteSession(
             guild_id=123456789,
-            track_id="track123",
+            track_id=TrackId("track123"),
             vote_type=VoteType.SKIP,
             threshold=3,
         )
@@ -169,7 +169,7 @@ class TestVoteSession:
     def test_create_session(self, session):
         """Should create session with correct initial state."""
         assert session.guild_id == 123456789
-        assert session.track_id == "track123"
+        assert session.track_id == TrackId("track123")
         assert session.vote_type == VoteType.SKIP
         assert session.threshold == 3
         assert session.vote_count == 0
@@ -180,7 +180,7 @@ class TestVoteSession:
         with pytest.raises(ValueError, match="Guild ID must be positive"):
             VoteSession(
                 guild_id=0,
-                track_id="track123",
+                track_id=TrackId("track123"),
                 vote_type=VoteType.SKIP,
                 threshold=3,
             )
@@ -190,7 +190,7 @@ class TestVoteSession:
         with pytest.raises(ValueError, match="Threshold must be at least 1"):
             VoteSession(
                 guild_id=123,
-                track_id="track123",
+                track_id=TrackId("track123"),
                 vote_type=VoteType.SKIP,
                 threshold=0,
             )
@@ -229,7 +229,7 @@ class TestVoteSession:
         """is_expired should be True after expiration."""
         session = VoteSession(
             guild_id=123456789,
-            track_id="track123",
+            track_id=TrackId("track123"),
             vote_type=VoteType.SKIP,
             threshold=3,
             started_at=datetime.now(UTC) - timedelta(minutes=10),
@@ -301,8 +301,8 @@ class TestVoteSession:
 
     def test_reset_with_new_track_id(self, session):
         """reset should update track_id when provided."""
-        session.reset(new_track_id="new_track")
-        assert session.track_id == "new_track"
+        session.reset(new_track_id=TrackId("new_track"))
+        assert session.track_id == TrackId("new_track")
 
     def test_extend_expiration(self, session):
         """extend_expiration should update expires_at."""
@@ -329,10 +329,10 @@ class TestVoteSession:
     def test_create_skip_session_factory(self):
         """create_skip_session should create properly configured session."""
         session = VoteSession.create_skip_session(
-            guild_id=123456, track_id="track789", listener_count=6
+            guild_id=123456, track_id=TrackId("track789"), listener_count=6
         )
         assert session.guild_id == 123456
-        assert session.track_id == "track789"
+        assert session.track_id == TrackId("track789")
         assert session.vote_type == VoteType.SKIP
         # With 6 listeners: (6 // 2) + 1 = 4 threshold
         assert session.threshold == 4
@@ -362,7 +362,7 @@ class TestVotingDomainService:
         """Fixture providing a fresh vote session."""
         return VoteSession(
             guild_id=123456789,
-            track_id="test123",
+            track_id=TrackId("test123"),
             vote_type=VoteType.SKIP,
             threshold=3,
         )
@@ -454,7 +454,7 @@ class TestVotingDomainService:
         """Should return VOTE_EXPIRED for expired session."""
         expired_session = VoteSession(
             guild_id=123456789,
-            track_id="test123",
+            track_id=TrackId("test123"),
             vote_type=VoteType.SKIP,
             threshold=3,
             started_at=datetime.now(UTC) - timedelta(minutes=10),
@@ -534,14 +534,14 @@ class TestVotingDomainService:
     def test_should_reset_session_different_track(self, session):
         """Should reset when track ID changes."""
         result = VotingDomainService.should_reset_session(
-            session=session, current_track_id="different_track"
+            session=session, current_track_id=TrackId("different_track")
         )
         assert result is True
 
     def test_should_reset_session_same_track(self, session):
         """Should not reset when track ID is same."""
         result = VotingDomainService.should_reset_session(
-            session=session, current_track_id="test123"
+            session=session, current_track_id=TrackId("test123")
         )
         assert result is False
 
@@ -549,14 +549,14 @@ class TestVotingDomainService:
         """Should reset when session is expired."""
         expired_session = VoteSession(
             guild_id=123456789,
-            track_id="test123",
+            track_id=TrackId("test123"),
             vote_type=VoteType.SKIP,
             threshold=3,
             started_at=datetime.now(UTC) - timedelta(minutes=10),
             expires_at=datetime.now(UTC) - timedelta(minutes=5),
         )
         result = VotingDomainService.should_reset_session(
-            session=expired_session, current_track_id="test123"
+            session=expired_session, current_track_id=TrackId("test123")
         )
         assert result is True
 

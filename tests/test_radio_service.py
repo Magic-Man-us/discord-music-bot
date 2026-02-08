@@ -343,7 +343,7 @@ class TestRadioAutoRefill:
 
         event = QueueExhausted(
             guild_id=1,
-            last_track_id="abc",
+            last_track_id=TrackId("abc"),
             last_track_title="Test Song",
         )
         await get_event_bus().publish(event)
@@ -380,7 +380,7 @@ class TestRadioAutoRefill:
         )
         subscriber.start()
 
-        event = QueueExhausted(guild_id=1, last_track_id="abc", last_track_title="Test")
+        event = QueueExhausted(guild_id=1, last_track_id=TrackId("abc"), last_track_title="Test")
         await get_event_bus().publish(event)
 
         radio_service.refill_queue.assert_not_awaited()

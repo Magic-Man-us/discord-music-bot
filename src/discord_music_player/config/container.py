@@ -1,9 +1,4 @@
-"""Dependency Injection Container
-
-Manages the application's dependency graph, providing lazy initialization
-and lifecycle management for all services, repositories, adapters, and handlers.
-Components are created on-demand and cached for reuse throughout the application.
-"""
+"""Lazy-initializing dependency injection container for all application components."""
 
 from __future__ import annotations
 
@@ -45,11 +40,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class Container:
-    """Dependency injection container.
-
-    This container manages all application dependencies and their lifecycle.
-    Components are lazily initialized when first accessed.
-    """
 
     settings: Settings
     _bot: Bot | None = None
@@ -99,12 +89,10 @@ class Container:
     _cleanup_job: Any = None  # CleanupJob
 
     def set_bot(self, bot: Bot) -> None:
-        """Set the Discord bot instance."""
         self._bot = bot
 
     @property
     def bot(self) -> Bot:
-        """Get the Discord bot instance."""
         if self._bot is None:
             raise RuntimeError("Bot not initialized. Call set_bot() first.")
         return self._bot
@@ -113,7 +101,6 @@ class Container:
 
     @property
     def database(self) -> Database:
-        """Get the database connection manager."""
         if self._database is None:
             from ..infrastructure.persistence.database import Database
 
@@ -124,7 +111,6 @@ class Container:
 
     @property
     def session_repository(self) -> SessionRepository:
-        """Get the session repository."""
         if self._session_repository is None:
             from ..infrastructure.persistence.repositories.session_repository import (
                 SQLiteSessionRepository,
@@ -135,7 +121,6 @@ class Container:
 
     @property
     def history_repository(self) -> TrackHistoryRepository:
-        """Get the track history repository."""
         if self._history_repository is None:
             from ..infrastructure.persistence.repositories.history_repository import (
                 SQLiteHistoryRepository,
@@ -146,7 +131,6 @@ class Container:
 
     @property
     def vote_repository(self) -> VoteSessionRepository:
-        """Get the vote session repository."""
         if self._vote_repository is None:
             from ..infrastructure.persistence.repositories.vote_repository import (
                 SQLiteVoteSessionRepository,
@@ -157,7 +141,6 @@ class Container:
 
     @property
     def cache_repository(self) -> RecommendationCacheRepository:
-        """Get the recommendation cache repository."""
         if self._cache_repository is None:
             from ..infrastructure.persistence.repositories.cache_repository import (
                 SQLiteCacheRepository,
@@ -170,7 +153,6 @@ class Container:
 
     @property
     def audio_resolver(self) -> AudioResolver:
-        """Get the audio resolver."""
         if self._audio_resolver is None:
             from ..infrastructure.audio.ytdlp_resolver import YtDlpResolver
 
@@ -179,7 +161,6 @@ class Container:
 
     @property
     def voice_adapter(self) -> VoiceAdapter:
-        """Get the voice adapter."""
         if self._voice_adapter is None:
             from ..infrastructure.discord.adapters.voice_adapter import (
                 DiscordVoiceAdapter,
@@ -190,7 +171,6 @@ class Container:
 
     @property
     def ai_client(self) -> AIClient:
-        """Get the AI client."""
         if self._ai_client is None:
             from ..infrastructure.ai.openai_client import OpenAIRecommendationClient
 
@@ -201,7 +181,6 @@ class Container:
 
     @property
     def queue_domain_service(self) -> QueueDomainService:
-        """Get the queue domain service."""
         if self._queue_domain_service is None:
             from ..domain.music.services import QueueDomainService
 
@@ -210,7 +189,6 @@ class Container:
 
     @property
     def playback_domain_service(self) -> PlaybackDomainService:
-        """Get the playback domain service."""
         if self._playback_domain_service is None:
             from ..domain.music.services import PlaybackDomainService
 
@@ -219,7 +197,6 @@ class Container:
 
     @property
     def voting_domain_service(self) -> VotingDomainService:
-        """Get the voting domain service."""
         if self._voting_domain_service is None:
             from ..domain.voting.services import VotingDomainService
 
@@ -230,7 +207,6 @@ class Container:
 
     @property
     def playback_service(self) -> PlaybackApplicationService:
-        """Get the playback application service."""
         if self._playback_service is None:
             from ..application.services.playback_service import (
                 PlaybackApplicationService,
@@ -247,7 +223,6 @@ class Container:
 
     @property
     def queue_service(self) -> QueueApplicationService:
-        """Get the queue application service."""
         if self._queue_service is None:
             from ..application.services.queue_service import QueueApplicationService
 
@@ -261,7 +236,6 @@ class Container:
 
     @property
     def play_track_handler(self) -> PlayTrackHandler:
-        """Get the play track command handler."""
         if self._play_track_handler is None:
             from ..application.commands.play_track import PlayTrackHandler
 
@@ -274,7 +248,6 @@ class Container:
 
     @property
     def skip_track_handler(self) -> SkipTrackHandler:
-        """Get the skip track command handler."""
         if self._skip_track_handler is None:
             from ..application.commands.skip_track import SkipTrackHandler
 
@@ -286,7 +259,6 @@ class Container:
 
     @property
     def stop_playback_handler(self) -> StopPlaybackHandler:
-        """Get the stop playback command handler."""
         if self._stop_playback_handler is None:
             from ..application.commands.stop_playback import StopPlaybackHandler
 
@@ -298,7 +270,6 @@ class Container:
 
     @property
     def clear_queue_handler(self) -> ClearQueueHandler:
-        """Get the clear queue command handler."""
         if self._clear_queue_handler is None:
             from ..application.commands.clear_queue import ClearQueueHandler
 
@@ -309,7 +280,6 @@ class Container:
 
     @property
     def vote_skip_handler(self) -> VoteSkipHandler:
-        """Get the vote skip command handler."""
         if self._vote_skip_handler is None:
             from ..application.commands.vote_skip import VoteSkipHandler
 
@@ -324,7 +294,6 @@ class Container:
 
     @property
     def voice_warmup_tracker(self) -> VoiceWarmupTracker:
-        """Get the in-memory voice warmup tracker."""
         if self._voice_warmup_tracker is None:
             from ..infrastructure.discord.services.voice_warmup import (
                 VoiceWarmupTracker,
@@ -337,7 +306,6 @@ class Container:
 
     @property
     def auto_skip_on_requester_leave(self) -> AutoSkipOnRequesterLeave:
-        """Get the requester-leave auto-skip subscriber."""
         if self._auto_skip_on_requester_leave is None:
             from ..application.services.requester_leave_autoskip import (
                 AutoSkipOnRequesterLeave,
@@ -351,7 +319,6 @@ class Container:
 
     @property
     def radio_service(self) -> RadioApplicationService:
-        """Get the radio application service."""
         if self._radio_service is None:
             from ..application.services.radio_service import RadioApplicationService
 
@@ -366,7 +333,6 @@ class Container:
 
     @property
     def radio_auto_refill(self) -> RadioAutoRefill:
-        """Get the radio auto-refill subscriber."""
         if self._radio_auto_refill is None:
             from ..application.services.radio_auto_refill import RadioAutoRefill
 
@@ -380,7 +346,6 @@ class Container:
 
     @property
     def get_queue_handler(self) -> GetQueueHandler:
-        """Get the get queue query handler."""
         if self._get_queue_handler is None:
             from ..application.queries.get_queue import GetQueueHandler
 
@@ -391,7 +356,6 @@ class Container:
 
     @property
     def get_current_handler(self) -> GetCurrentTrackHandler:
-        """Get the get current track query handler."""
         if self._get_current_handler is None:
             from ..application.queries.get_current import GetCurrentTrackHandler
 
@@ -404,7 +368,6 @@ class Container:
 
     @property
     def cleanup_job(self) -> Any:
-        """Get the cleanup job."""
         if self._cleanup_job is None:
             from ..infrastructure.persistence.cleanup import CleanupJob
 
@@ -420,15 +383,11 @@ class Container:
     # === Lifecycle ===
 
     async def initialize(self) -> None:
-        """Initialize all async resources."""
         await self.database.initialize()
-
-        # Start cross-cutting subscribers.
         self.auto_skip_on_requester_leave.start()
         self.radio_auto_refill.start()
 
     async def shutdown(self) -> None:
-        """Shutdown and cleanup all resources."""
         try:
             if self._auto_skip_on_requester_leave is not None:
                 self._auto_skip_on_requester_leave.stop()
@@ -444,10 +403,8 @@ class Container:
         if self._database is not None:
             await self._database.close()
 
-        # Clear all cached instances
         self._instances.clear()
 
 
 def create_container(settings: Settings) -> Container:
-    """Create a new dependency injection container."""
     return Container(settings)

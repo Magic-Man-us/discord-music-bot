@@ -15,7 +15,7 @@ A Discord music bot with AI-powered radio, built with clean architecture. Plays 
 
 ## Prerequisites
 
-- **Python 3.11+**
+- **Python 3.12+**
 - **FFmpeg** - [ffmpeg.org](https://ffmpeg.org/)
 - **Docker** - For the YouTube POT provider ([Install Docker](https://docs.docker.com/get-docker/))
 - **Discord Bot Token** - [Developer Portal](https://discord.com/developers/applications) with Message Content and Server Members intents enabled

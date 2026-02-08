@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from ...domain.music.entities import Track
+from ...domain.music.value_objects import LoopMode
 from ...domain.shared.messages import LogTemplates
 
 if TYPE_CHECKING:
@@ -19,19 +20,16 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class EnqueueResult:
-    """Result of an enqueue operation."""
-
     success: bool
     track: Track | None = None
     position: int = 0
     queue_length: int = 0
     message: str = ""
-    should_start: bool = False  # True if playback should start (was idle)
+    should_start: bool = False
 
 
 @dataclass
 class QueueInfo:
-    """Information about the current queue."""
 
     current_track: Track | None
     upcoming_tracks: list[Track]
@@ -40,38 +38,26 @@ class QueueInfo:
 
     @property
     def tracks(self) -> list[Track]:
-        """Alias for upcoming_tracks for compatibility."""
         return self.upcoming_tracks
 
     @property
     def total_tracks(self) -> int:
-        """Alias for total_length for compatibility."""
         return self.total_length
 
     @property
     def total_duration(self) -> int | None:
-        """Alias for total_duration_seconds for compatibility."""
         return self.total_duration_seconds
 
 
 class QueueApplicationService:
-    """Manages queue operations for guilds.
-
-    This service handles adding, removing, and reordering tracks
-    in a guild's playback queue.
-    """
+    """Manages queue operations (add, remove, reorder, shuffle) for guilds."""
 
     def __init__(
         self,
+        *,
         session_repository: SessionRepository,
         queue_domain_service: QueueDomainService,
     ) -> None:
-        """Initialize the queue service.
-
-        Args:
-            session_repository: Repository for session persistence.
-            queue_domain_service: Domain service for queue rules.
-        """
         self._session_repo = session_repository
         self._queue_service = queue_domain_service
 
@@ -82,37 +68,22 @@ class QueueApplicationService:
         user_id: int,
         user_name: str,
     ) -> EnqueueResult:
-        """Add a track to the end of the queue.
-
-        Args:
-            guild_id: The guild to add the track to.
-            track: The track to add.
-            user_id: ID of the user requesting the track.
-            user_name: Name of the user requesting the track.
-
-        Returns:
-            Result of the enqueue operation.
-        """
         session = await self._session_repo.get_or_create(guild_id)
 
-        # Check if queue can accept more tracks
         if not session.can_add_to_queue:
             return EnqueueResult(
                 success=False,
                 message=f"Queue is full (max {session.MAX_QUEUE_SIZE} tracks)",
             )
 
-        # Check if playback should start (nothing currently playing)
         was_idle = session.current_track is None
 
-        # Add requester info to track
         track_with_requester = track.with_requester(
             user_id=user_id,
             user_name=user_name,
             requested_at=datetime.now(UTC),
         )
 
-        # Add to queue
         position = session.enqueue(track_with_requester)
         await self._session_repo.save(session)
 
@@ -139,17 +110,7 @@ class QueueApplicationService:
         user_id: int,
         user_name: str,
     ) -> EnqueueResult:
-        """Add a track to play next (front of queue).
-
-        Args:
-            guild_id: The guild to add the track to.
-            track: The track to add.
-            user_id: ID of the user requesting the track.
-            user_name: Name of the user requesting the track.
-
-        Returns:
-            Result of the enqueue operation.
-        """
+        """Add a track to the front of the queue."""
         session = await self._session_repo.get_or_create(guild_id)
 
         if not session.can_add_to_queue:
@@ -178,15 +139,6 @@ class QueueApplicationService:
         )
 
     async def remove(self, guild_id: int, position: int) -> Track | None:
-        """Remove a track from the queue.
-
-        Args:
-            guild_id: The guild to remove from.
-            position: Zero-based position in queue.
-
-        Returns:
-            The removed track, or None if position invalid.
-        """
         session = await self._session_repo.get(guild_id)
         if session is None:
             return None
@@ -199,14 +151,6 @@ class QueueApplicationService:
         return track
 
     async def clear(self, guild_id: int) -> int:
-        """Clear all tracks from the queue.
-
-        Args:
-            guild_id: The guild to clear.
-
-        Returns:
-            Number of tracks cleared.
-        """
         session = await self._session_repo.get(guild_id)
         if session is None:
             return 0
@@ -217,14 +161,6 @@ class QueueApplicationService:
         return count
 
     async def shuffle(self, guild_id: int) -> bool:
-        """Shuffle the queue.
-
-        Args:
-            guild_id: The guild to shuffle.
-
-        Returns:
-            True if shuffle was successful.
-        """
         session = await self._session_repo.get(guild_id)
         if session is None or not session.queue:
             return False
@@ -235,16 +171,6 @@ class QueueApplicationService:
         return True
 
     async def move(self, guild_id: int, from_pos: int, to_pos: int) -> bool:
-        """Move a track from one position to another.
-
-        Args:
-            guild_id: The guild to modify.
-            from_pos: Current position of the track.
-            to_pos: Target position.
-
-        Returns:
-            True if move was successful.
-        """
         session = await self._session_repo.get(guild_id)
         if session is None:
             return False
@@ -257,14 +183,6 @@ class QueueApplicationService:
         return success
 
     async def get_queue(self, guild_id: int) -> QueueInfo:
-        """Get information about the current queue.
-
-        Args:
-            guild_id: The guild to get queue for.
-
-        Returns:
-            Queue information.
-        """
         session = await self._session_repo.get(guild_id)
         if session is None:
             return QueueInfo(
@@ -274,7 +192,6 @@ class QueueApplicationService:
                 total_duration_seconds=None,
             )
 
-        # Calculate total duration if all tracks have durations
         total_duration = 0
         has_all_durations = True
 
@@ -296,17 +213,9 @@ class QueueApplicationService:
             total_duration_seconds=total_duration if has_all_durations else None,
         )
 
-    async def toggle_loop(self, guild_id: int) -> str:
-        """Toggle loop mode for a guild.
-
-        Args:
-            guild_id: The guild to toggle loop for.
-
-        Returns:
-            The new loop mode as a string.
-        """
+    async def toggle_loop(self, guild_id: int) -> LoopMode:
         session = await self._session_repo.get_or_create(guild_id)
         new_mode = session.toggle_loop()
         await self._session_repo.save(session)
         logger.info(LogTemplates.LOOP_MODE_CHANGED, new_mode.value, guild_id)
-        return new_mode.value
+        return new_mode

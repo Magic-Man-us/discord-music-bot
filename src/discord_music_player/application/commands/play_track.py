@@ -1,8 +1,4 @@
-"""
-Play Track Command
-
-Command and handler for playing a track from a query or URL.
-"""
+"""Command and handler for playing a track from a query or URL."""
 
 from __future__ import annotations
 
@@ -38,11 +34,7 @@ class PlayTrackStatus(Enum):
 
 
 class PlayTrackCommand(BaseModel):
-    """Command to play a track from a query or URL.
-
-    This command encapsulates all the information needed to queue
-    and potentially start playing a track.
-    """
+    """Request to resolve a query/URL, queue the track, and optionally start playback."""
 
     model_config = ConfigDict(frozen=True, strict=True)
 
@@ -52,21 +44,16 @@ class PlayTrackCommand(BaseModel):
     user_name: str
     query: str
 
-    # Optional settings
-    play_next: bool = False  # Insert at front of queue
+    play_next: bool = False
     want_recommendations: bool = False
-    start_playing: bool = True  # Auto-start if not already playing
-
-    # Timestamp
+    start_playing: bool = True
     requested_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    # Validate Discord snowflake IDs using reusable validators
     _validate_ids = DiscordValidators.snowflakes("guild_id", "channel_id", "user_id")
 
     @field_validator("query")
     @classmethod
     def validate_query(cls, v: str) -> str:
-        """Validate query is not empty."""
         return validate_non_empty_string(v, "Query")
 
 
@@ -85,7 +72,6 @@ class PlayTrackResult(BaseModel):
 
     @property
     def is_success(self) -> bool:
-        """Check if the command was successful."""
         return self.status in {
             PlayTrackStatus.SUCCESS,
             PlayTrackStatus.QUEUED,
@@ -101,7 +87,6 @@ class PlayTrackResult(BaseModel):
         started_playing: bool = False,
         recommendations_requested: bool = False,
     ) -> PlayTrackResult:
-        """Create a successful result."""
         if started_playing:
             status = PlayTrackStatus.NOW_PLAYING
             message = f"Now playing: {track.title}"
@@ -121,16 +106,11 @@ class PlayTrackResult(BaseModel):
 
     @classmethod
     def error(cls, status: PlayTrackStatus, message: str) -> PlayTrackResult:
-        """Create an error result."""
         return cls(status=status, message=message)
 
 
 class PlayTrackHandler:
-    """Handler for PlayTrackCommand.
-
-    Orchestrates the process of resolving a track from a query,
-    adding it to the queue, and starting playback if needed.
-    """
+    """Resolves a track from a query, adds it to the queue, and starts playback if needed."""
 
     def __init__(
         self,
@@ -138,26 +118,11 @@ class PlayTrackHandler:
         audio_resolver: AudioResolver,
         voice_adapter: VoiceAdapter,
     ) -> None:
-        self._session_repository = session_repository
+        self._session_repo = session_repository
         self._audio_resolver = audio_resolver
         self._voice_adapter = voice_adapter
 
     async def handle(self, command: PlayTrackCommand) -> PlayTrackResult:
-        """Execute the play track command.
-
-        Steps:
-        1. Ensure bot is in voice channel
-        2. Resolve the query to a track
-        3. Add track to queue
-        4. Start playback if idle
-
-        Args:
-            command: The play track command.
-
-        Returns:
-            The result of the operation.
-        """
-        # Ensure voice connection
         voice_result = await self._voice_adapter.ensure_connected(
             command.guild_id, command.channel_id
         )
@@ -166,7 +131,6 @@ class PlayTrackHandler:
                 PlayTrackStatus.VOICE_ERROR, "Could not connect to voice channel"
             )
 
-        # Resolve query to track
         try:
             track = await self._audio_resolver.resolve(command.query)
             if track is None:
@@ -178,30 +142,24 @@ class PlayTrackHandler:
                 PlayTrackStatus.RESOLUTION_ERROR, f"Error resolving track: {e}"
             )
 
-        # Add requester info to track
         track = track.with_requester(
             user_id=command.user_id,
             user_name=command.user_name,
             requested_at=command.requested_at,
         )
 
-        # Get or create session
-        session = await self._session_repository.get_or_create(command.guild_id)
+        session = await self._session_repo.get_or_create(command.guild_id)
 
-        # Check queue capacity
         if not session.can_add_to_queue:
             return PlayTrackResult.error(PlayTrackStatus.QUEUE_FULL, "Queue is full")
 
-        # Add to queue
         if command.play_next:
             position = session.enqueue_next(track)
         else:
             position = session.enqueue(track)
 
-        # Save session
-        await self._session_repository.save(session)
+        await self._session_repo.save(session)
 
-        # Start playback if idle and requested
         started_playing = False
         if command.start_playing and session.is_idle:
             # Playback will be triggered by the application service

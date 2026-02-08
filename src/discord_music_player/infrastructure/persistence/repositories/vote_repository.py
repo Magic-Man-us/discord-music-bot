@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
 from discord_music_player.domain.shared.messages import LogTemplates
 from discord_music_player.domain.voting.entities import VoteSession
@@ -32,14 +33,14 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
     # Compatibility helpers (used by tests)
     # ---------------------------------------------------------------------
 
-    async def get_active(self, guild_id: int, track_id: str) -> VoteSession | None:
+    async def get_active(self, guild_id: int, track_id: TrackId) -> VoteSession | None:
         """Tests expect get_active(guild_id, track_id). We map to SKIP sessions."""
         session = await self.get(guild_id=guild_id, vote_type=VoteType.SKIP)
         if session is None:
             return None
         return session if session.track_id == track_id else None
 
-    async def delete_by_track(self, guild_id: int, track_id: str) -> bool:
+    async def delete_by_track(self, guild_id: int, track_id: TrackId) -> bool:
         """Delete active vote session for a given track (test compatibility)."""
         session = await self.get_active(guild_id, track_id)
         if session is None:
@@ -72,7 +73,7 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
 
         session = VoteSession(
             guild_id=guild_id,
-            track_id=row["track_id"],
+            track_id=TrackId(row["track_id"]),
             vote_type=VoteType(row["vote_type"]),
             threshold=row["threshold"],
             started_at=UtcDateTime.from_iso(row["started_at"]).dt,
@@ -88,7 +89,7 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
     async def get_or_create(
         self,
         guild_id: int,
-        track_id: str,
+        track_id: TrackId,
         vote_type: VoteType,
         threshold: int,
     ) -> VoteSession:
@@ -135,7 +136,7 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
                     WHERE id = ?
                     """,
                     (
-                        session.track_id,
+                        session.track_id.value,
                         session.threshold,
                         UtcDateTime(session.started_at).iso,
                         session_id,
@@ -153,7 +154,7 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
                     """,
                     (
                         session.guild_id,
-                        session.track_id,
+                        session.track_id.value,
                         session.vote_type.value,
                         session.threshold,
                         UtcDateTime(session.started_at).iso,

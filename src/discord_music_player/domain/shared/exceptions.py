@@ -1,9 +1,6 @@
-"""
-Domain Exceptions
+"""Base exception classes for domain-level errors."""
 
-Base exception classes for domain-level errors.
-All domain exceptions should inherit from DomainError.
-"""
+from __future__ import annotations
 
 
 class DomainError(Exception):

@@ -1,8 +1,4 @@
-"""
-Stop Playback Command
-
-Command and handler for stopping playback and clearing the queue.
-"""
+"""Command and handler for stopping playback and clearing the queue."""
 
 from __future__ import annotations
 
@@ -26,12 +22,11 @@ class StopStatus(Enum):
 
 @dataclass
 class StopPlaybackCommand:
-    """Command to stop playback and optionally clear the queue."""
 
     guild_id: int
     user_id: int
-    clear_queue: bool = True  # Also clear the queue
-    disconnect: bool = False  # Disconnect from voice channel
+    clear_queue: bool = True
+    disconnect: bool = False
 
     def __post_init__(self) -> None:
         if self.guild_id <= 0:
@@ -42,7 +37,6 @@ class StopPlaybackCommand:
 
 @dataclass
 class StopResult:
-    """Result of a stop playback command."""
 
     status: StopStatus
     message: str
@@ -75,40 +69,34 @@ class StopResult:
 
 
 class StopPlaybackHandler:
-    """Handler for StopPlaybackCommand."""
 
     def __init__(
         self,
         session_repository: SessionRepository,
         voice_adapter: VoiceAdapter,
     ) -> None:
-        self._session_repository = session_repository
+        self._session_repo = session_repository
         self._voice_adapter = voice_adapter
 
     async def handle(self, command: StopPlaybackCommand) -> StopResult:
-        """Execute the stop playback command."""
-        session = await self._session_repository.get(command.guild_id)
+        session = await self._session_repo.get(command.guild_id)
 
         if session is None:
             return StopResult.error(StopStatus.NOTHING_PLAYING, "Nothing is currently playing")
 
-        # Stop playback
         await self._voice_adapter.stop(command.guild_id)
 
-        # Clear queue if requested
         tracks_cleared = 0
         if command.clear_queue:
             tracks_cleared = session.clear_queue()
 
-        # Reset session state
         session.stop()
 
-        # Disconnect if requested
         disconnected = False
         if command.disconnect:
             disconnected = await self._voice_adapter.disconnect(command.guild_id)
-            await self._session_repository.delete(command.guild_id)
+            await self._session_repo.delete(command.guild_id)
         else:
-            await self._session_repository.save(session)
+            await self._session_repo.save(session)
 
         return StopResult.success(tracks_cleared, disconnected)

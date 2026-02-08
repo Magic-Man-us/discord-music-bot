@@ -1333,7 +1333,7 @@ class TestVoteSkipHandler:
         # Create vote session
         vote_session = VoteSession(
             guild_id=123456,
-            track_id="test123",
+            track_id=TrackId("test123"),
             vote_type=VoteType.SKIP,
             threshold=3,
         )
@@ -1364,7 +1364,7 @@ class TestVoteSkipHandler:
 
         vote_session = VoteSession(
             guild_id=123456,
-            track_id="test123",
+            track_id=TrackId("test123"),
             vote_type=VoteType.SKIP,
             threshold=2,
         )

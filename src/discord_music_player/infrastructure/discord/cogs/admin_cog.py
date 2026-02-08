@@ -1,9 +1,4 @@
-"""
-Admin Cog
-
-Prefix-only admin commands for bot management.
-These commands are restricted to bot owners and admins.
-"""
+"""Prefix-only admin commands for syncing, cog management, cache, and diagnostics."""
 
 from __future__ import annotations
 
@@ -26,26 +21,21 @@ logger = logging.getLogger(__name__)
 
 
 def require_owner_or_admin():
-    """Check decorator that requires owner or admin permissions."""
-
     async def predicate(ctx: commands.Context) -> bool:
         if not ctx.guild:
             return False
 
-        # Check if bot owner
         app_info = ctx.bot.application
         if app_info and app_info.owner:
             if ctx.author.id == app_info.owner.id:
                 return True
 
-        # Check container settings for owner IDs
         container = getattr(ctx.bot, "container", None)
         if container:
             owner_ids = container.settings.discord.owner_ids
             if ctx.author.id in owner_ids:
                 return True
 
-        # Check server admin
         if isinstance(ctx.author, discord.Member):
             if ctx.author.guild_permissions.administrator:
                 return True
@@ -58,19 +48,7 @@ def require_owner_or_admin():
 
 
 class AdminCog(commands.Cog):
-    """Prefix-only admin commands for bot management.
-
-    These commands handle slash command syncing, cog reloading,
-    cache management, and system diagnostics.
-    """
-
     def __init__(self, bot: commands.Bot, container: Container) -> None:
-        """Initialize the admin cog.
-
-        Args:
-            bot: The Discord bot instance.
-            container: The DI container.
-        """
         self.bot = bot
         self.container = container
 
@@ -81,14 +59,12 @@ class AdminCog(commands.Cog):
         *,
         embed: discord.Embed | None = None,
     ) -> None:
-        """Reply in the invoking channel."""
         if embed:
             await ctx.send(content or "", embed=embed)
         else:
             await ctx.send(content or DiscordUIMessages.SUCCESS_GENERIC)
 
     async def cog_command_error(self, ctx: commands.Context, error: Exception) -> None:
-        """Handle errors from admin commands."""
         if isinstance(error, commands.CheckFailure):
             await self._reply(ctx, DiscordUIMessages.ERROR_REQUIRES_OWNER_OR_ADMIN)
             return
@@ -103,7 +79,6 @@ class AdminCog(commands.Cog):
             await self._reply(ctx, DiscordUIMessages.ERROR_INVALID_ARGUMENT)
             return
 
-        # Log and report
         original = getattr(error, "original", error)
         logger.exception(LogTemplates.ADMIN_COMMAND_FAILED, exc_info=original)
         await self._reply(ctx, DiscordUIMessages.ERROR_COMMAND_FAILED_SEE_LOGS)
@@ -115,12 +90,6 @@ class AdminCog(commands.Cog):
     @commands.command(name="sync", description="Sync slash commands.")
     @require_owner_or_admin()
     async def sync(self, ctx: commands.Context, scope: str = "guild") -> None:
-        """Sync slash commands to Discord.
-
-        Args:
-            ctx: Command context.
-            scope: "guild" for current server, "global" for all servers.
-        """
         try:
             scope_lower = scope.strip().lower()
 
@@ -145,7 +114,6 @@ class AdminCog(commands.Cog):
     @commands.command(name="slash_status", description="Show slash command status.")
     @require_owner_or_admin()
     async def slash_status(self, ctx: commands.Context) -> None:
-        """Display registered slash commands."""
         try:
             global_cmds = await self.bot.tree.fetch_commands()
             guild_cmds = []
@@ -185,28 +153,17 @@ class AdminCog(commands.Cog):
     @commands.command(name="reload", description="Reload a cog.")
     @require_owner_or_admin()
     async def reload(self, ctx: commands.Context, extension: str) -> None:
-        """Reload a single extension/cog.
-
-        Args:
-            ctx: Command context.
-            extension: Cog name (e.g., "music_cog" or "cog.music_cog").
-        """
-        # Handle both new and old module paths
         if extension.startswith("discord_music_player."):
-            # Full path provided
             mod = extension
         elif extension.startswith("cog."):
-            # Legacy path format
             mod = extension
         else:
-            # Short name - construct full path
             mod = f"discord_music_player.infrastructure.discord.cogs.{extension}"
 
         try:
             await self.bot.reload_extension(mod)
             await self._reply(ctx, DiscordUIMessages.SUCCESS_RELOADED_EXTENSION.format(module=mod))
         except commands.ExtensionNotLoaded:
-            # Try old path
             old_mod = f"cog.{extension}"
             try:
                 await self.bot.reload_extension(old_mod)
@@ -225,7 +182,6 @@ class AdminCog(commands.Cog):
     @commands.command(name="reload_all", description="Reload all cogs.")
     @require_owner_or_admin()
     async def reload_all(self, ctx: commands.Context) -> None:
-        """Reload all loaded extensions."""
         extensions = list(self.bot.extensions.keys())
 
         if not extensions:
@@ -252,7 +208,6 @@ class AdminCog(commands.Cog):
     @commands.command(name="cache_status", description="Show cache statistics.")
     @require_owner_or_admin()
     async def cache_status(self, ctx: commands.Context) -> None:
-        """Show AI recommendation cache statistics."""
         try:
             ai_client = self.container.ai_client
             stats = ai_client.get_cache_stats()
@@ -274,7 +229,6 @@ class AdminCog(commands.Cog):
     @commands.command(name="cache_clear", description="Clear the AI cache.")
     @require_owner_or_admin()
     async def cache_clear(self, ctx: commands.Context) -> None:
-        """Clear the AI recommendation cache."""
         try:
             ai_client = self.container.ai_client
             cleared = ai_client.clear_cache()
@@ -286,12 +240,6 @@ class AdminCog(commands.Cog):
     @commands.command(name="cache_prune", description="Prune old cache entries.")
     @require_owner_or_admin()
     async def cache_prune(self, ctx: commands.Context, max_age_seconds: int = 3600) -> None:
-        """Prune old cache entries.
-
-        Args:
-            ctx: Command context.
-            max_age_seconds: Maximum age of entries to keep.
-        """
         try:
             ai_client = self.container.ai_client
             pruned = ai_client.prune_cache(max_age_seconds)
@@ -307,7 +255,6 @@ class AdminCog(commands.Cog):
     @commands.command(name="db_cleanup", description="Run database cleanup.")
     @require_owner_or_admin()
     async def db_cleanup(self, ctx: commands.Context) -> None:
-        """Manually trigger database cleanup job."""
         try:
             cleanup_job = self.container.cleanup_job
             stats = await cleanup_job.run_cleanup()
@@ -329,7 +276,6 @@ class AdminCog(commands.Cog):
     @commands.command(name="db_stats", description="Show database statistics.")
     @require_owner_or_admin()
     async def db_stats(self, ctx: commands.Context) -> None:
-        """Show database connection statistics."""
         try:
             db = self.container.database
             stats = await db.get_stats()
@@ -348,7 +294,6 @@ class AdminCog(commands.Cog):
                 name="Database Path", value=str(stats.get("db_path", "Unknown")), inline=False
             )
 
-            # Table stats
             tables = stats.get("tables", {})
             if tables:
                 table_info = "\n".join(f"{name}: {count} rows" for name, count in tables.items())
@@ -366,24 +311,14 @@ class AdminCog(commands.Cog):
     @commands.command(name="status", description="Show bot status.")
     @require_owner_or_admin()
     async def status(self, ctx: commands.Context) -> None:
-        """Show overall bot status and statistics."""
         embed = discord.Embed(title=DiscordUIMessages.EMBED_BOT_STATUS, color=discord.Color.green())
-
-        # Basic stats
         embed.add_field(name="Guilds", value=str(len(self.bot.guilds)), inline=True)
         embed.add_field(name="Latency", value=f"{self.bot.latency * 1000:.0f}ms", inline=True)
 
-        # Voice connections
-        voice_connections = len(self.bot.voice_clients)
-        embed.add_field(name="Voice Connections", value=str(voice_connections), inline=True)
-
-        # Extensions
+        embed.add_field(name="Voice Connections", value=str(len(self.bot.voice_clients)), inline=True)
         embed.add_field(name="Extensions", value=str(len(self.bot.extensions)), inline=True)
-
-        # Cogs
         embed.add_field(name="Cogs", value=str(len(self.bot.cogs)), inline=True)
 
-        # Settings info
         settings = self.container.settings
         embed.add_field(name="Environment", value=settings.environment, inline=True)
 
@@ -392,10 +327,8 @@ class AdminCog(commands.Cog):
     @commands.command(name="shutdown", description="Gracefully shutdown the bot.")
     @require_owner_or_admin()
     async def shutdown(self, ctx: commands.Context) -> None:
-        """Gracefully shutdown the bot."""
         await self._reply(ctx, DiscordUIMessages.SUCCESS_SHUTTING_DOWN)
 
-        # Cleanup
         try:
             cleanup_job = self.container.cleanup_job
             await cleanup_job.shutdown()
@@ -406,11 +339,6 @@ class AdminCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Set up the admin cog.
-
-    Args:
-        bot: The Discord bot instance.
-    """
     container = getattr(bot, "container", None)
     if container is None:
         raise RuntimeError(ErrorMessages.CONTAINER_NOT_FOUND)

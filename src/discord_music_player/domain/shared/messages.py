@@ -1,8 +1,4 @@
-"""Centralized message constants for error messages, validation, and user feedback.
-
-This module provides consistent, reusable message strings across the application.
-Using constants ensures consistency and makes future changes (like i18n) easier.
-"""
+"""Centralized message constants for error messages, validation, and user feedback."""
 
 from __future__ import annotations
 

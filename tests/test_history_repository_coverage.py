@@ -64,14 +64,14 @@ class TestHistoryRepositoryEdgeCases:
 
     async def test_get_play_count_returns_zero_for_new_track(self, history_repository):
         """Should return 0 for tracks that haven't been played."""
-        count = await history_repository.get_play_count(guild_id=123, track_id="never_played")
+        count = await history_repository.get_play_count(guild_id=123, track_id=TrackId("never_played"))
 
         assert count == 0
 
     async def test_get_play_count_counts_multiple_plays(self, history_repository, sample_track):
         """Should count multiple plays of the same track."""
         guild_id = 123
-        track_id = sample_track.id.value
+        track_id = sample_track.id
 
         # Play the same track 5 times
         for _ in range(5):
@@ -148,7 +148,7 @@ class TestHistoryRepositoryEdgeCases:
     async def test_mark_finished_updates_most_recent_play(self, history_repository, sample_track):
         """Should mark the most recent play as finished."""
         guild_id = 123
-        track_id = sample_track.id.value
+        track_id = sample_track.id
 
         # Record a play
         await history_repository.record_play(guild_id, sample_track)
@@ -162,7 +162,7 @@ class TestHistoryRepositoryEdgeCases:
     async def test_mark_finished_with_skip_flag(self, history_repository, sample_track):
         """Should mark play as skipped."""
         guild_id = 123
-        track_id = sample_track.id.value
+        track_id = sample_track.id
 
         # Record a play
         await history_repository.record_play(guild_id, sample_track)

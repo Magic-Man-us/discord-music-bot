@@ -1,10 +1,4 @@
-"""Voice warmup gate.
-
-Tracks when a user joins a voice channel so interactions can be blocked
-for a short warmup period.
-
-This is intentionally in-memory; it resets on bot restart.
-"""
+"""In-memory per-user voice warmup gate; resets on bot restart."""
 
 from __future__ import annotations
 
@@ -15,11 +9,7 @@ from math import ceil
 
 @dataclass
 class VoiceWarmupTracker:
-    """Tracks per-user voice join times.
-
-    A user is considered "warmed up" once they've been in a voice channel for
-    at least ``warmup_seconds``.
-    """
+    """Blocks interactions until a user has been in voice for ``warmup_seconds``."""
 
     warmup_seconds: int = 60
 
@@ -35,13 +25,6 @@ class VoiceWarmupTracker:
         user_id: int,
         joined_at: datetime | None = None,
     ) -> None:
-        """Record that a user joined a voice channel.
-
-        Args:
-            guild_id: Discord guild ID.
-            user_id: Discord user ID.
-            joined_at: The join timestamp (UTC). Defaults to now.
-        """
         when = joined_at or datetime.now(UTC)
         if when.tzinfo is None:
             raise ValueError("joined_at must be timezone-aware")
@@ -63,16 +46,6 @@ class VoiceWarmupTracker:
         user_id: int,
         now: datetime | None = None,
     ) -> int:
-        """Return remaining warmup seconds for a user.
-
-        Args:
-            guild_id: Discord guild ID.
-            user_id: Discord user ID.
-            now: Current time (UTC). Defaults to now.
-
-        Returns:
-            Remaining seconds, or 0 if not blocked.
-        """
         joined_at = self._joined_at.get((guild_id, user_id))
         if joined_at is None or self.warmup_seconds == 0:
             return 0

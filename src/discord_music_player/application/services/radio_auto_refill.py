@@ -1,8 +1,4 @@
-"""Auto-refill subscriber for the radio feature.
-
-When the queue is exhausted and radio is enabled, automatically
-generates more recommendations and restarts playback.
-"""
+"""Auto-refill subscriber that generates more radio tracks when the queue is exhausted."""
 
 from __future__ import annotations
 
@@ -33,14 +29,12 @@ class RadioAutoRefill:
         self._started = False
 
     def start(self) -> None:
-        """Start listening to events."""
         if self._started:
             return
         self._bus.subscribe(QueueExhausted, self._on_queue_exhausted)
         self._started = True
 
     def stop(self) -> None:
-        """Stop listening to events."""
         if not self._started:
             return
         self._bus.unsubscribe(QueueExhausted, self._on_queue_exhausted)

@@ -1,209 +1,99 @@
-"""
-Music Domain Repository Interfaces
+"""Abstract repository interfaces for music domain persistence."""
 
-Abstract base classes defining the contracts for data persistence.
-Implementations live in the infrastructure layer.
-"""
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
+from discord_music_player.domain.music.value_objects import TrackId
 
 
 class SessionRepository(ABC):
-    """Abstract repository for guild playback sessions.
-
-    This repository manages the persistence of GuildPlaybackSession aggregates.
-    Implementations may use in-memory storage, SQLite, Redis, etc.
-    """
+    """Abstract repository for guild playback sessions."""
 
     @abstractmethod
     async def get(self, guild_id: int) -> GuildPlaybackSession | None:
-        """Retrieve a session by guild ID.
-
-        Args:
-            guild_id: The Discord guild ID.
-
-        Returns:
-            The session if found, None otherwise.
-        """
+        """Retrieve a session by guild ID."""
         ...
 
     @abstractmethod
     async def get_or_create(self, guild_id: int) -> GuildPlaybackSession:
-        """Get an existing session or create a new one.
-
-        Args:
-            guild_id: The Discord guild ID.
-
-        Returns:
-            The existing or newly created session.
-        """
+        """Get an existing session or create a new one."""
         ...
 
     @abstractmethod
     async def save(self, session: GuildPlaybackSession) -> None:
-        """Save a session.
-
-        Args:
-            session: The session to save.
-        """
+        """Save a session."""
         ...
 
     @abstractmethod
     async def delete(self, guild_id: int) -> bool:
-        """Delete a session by guild ID.
-
-        Args:
-            guild_id: The Discord guild ID.
-
-        Returns:
-            True if the session was deleted, False if it didn't exist.
-        """
+        """Delete a session by guild ID."""
         ...
 
     @abstractmethod
     async def exists(self, guild_id: int) -> bool:
-        """Check if a session exists for a guild.
-
-        Args:
-            guild_id: The Discord guild ID.
-
-        Returns:
-            True if session exists.
-        """
+        """Check if a session exists for a guild."""
         ...
 
     @abstractmethod
     async def get_all_active(self) -> list[GuildPlaybackSession]:
-        """Get all active sessions (sessions with activity).
-
-        Returns:
-            List of active sessions.
-        """
+        """Get all active sessions."""
         ...
 
     @abstractmethod
     async def cleanup_stale(self, older_than: datetime) -> int:
-        """Clean up sessions that haven't had activity since the given time.
-
-        This is critical for fixing memory leaks - sessions that belong to
-        guilds the bot is no longer in should be removed.
-
-        Args:
-            older_than: Remove sessions with last_activity before this time.
-
-        Returns:
-            Number of sessions cleaned up.
-        """
+        """Remove sessions with no activity since the given time to prevent memory leaks."""
         ...
 
     @abstractmethod
     async def count(self) -> int:
-        """Get the total number of sessions.
-
-        Returns:
-            Total session count.
-        """
+        """Get the total number of sessions."""
         ...
 
 
 class TrackHistoryRepository(ABC):
-    """Abstract repository for track play history.
-
-    This repository manages historical track data for analytics
-    and recommendation features.
-    """
+    """Abstract repository for track play history."""
 
     @abstractmethod
     async def record_play(
         self, guild_id: int, track: Track, played_at: datetime | None = None
     ) -> None:
-        """Record that a track was played.
-
-        Args:
-            guild_id: The Discord guild ID.
-            track: The track that was played.
-            played_at: When the track was played (defaults to now).
-        """
+        """Record that a track was played."""
         ...
 
     @abstractmethod
     async def get_recent(self, guild_id: int, limit: int = 10) -> list[Track]:
-        """Get recently played tracks for a guild.
-
-        Args:
-            guild_id: The Discord guild ID.
-            limit: Maximum number of tracks to return.
-
-        Returns:
-            List of recently played tracks, most recent first.
-        """
+        """Get recently played tracks for a guild, most recent first."""
         ...
 
     @abstractmethod
-    async def get_play_count(self, guild_id: int, track_id: str) -> int:
-        """Get the number of times a track has been played in a guild.
-
-        Args:
-            guild_id: The Discord guild ID.
-            track_id: The track identifier.
-
-        Returns:
-            Play count for the track.
-        """
+    async def get_play_count(self, guild_id: int, track_id: TrackId) -> int:
+        """Get the number of times a track has been played in a guild."""
         ...
 
     @abstractmethod
     async def get_most_played(self, guild_id: int, limit: int = 10) -> list[tuple[Track, int]]:
-        """Get the most played tracks for a guild.
-
-        Args:
-            guild_id: The Discord guild ID.
-            limit: Maximum number of tracks to return.
-
-        Returns:
-            List of (track, play_count) tuples, sorted by play count descending.
-        """
+        """Get the most played tracks for a guild, sorted by play count descending."""
         ...
 
     @abstractmethod
     async def clear_history(self, guild_id: int) -> int:
-        """Clear all history for a guild.
-
-        Args:
-            guild_id: The Discord guild ID.
-
-        Returns:
-            Number of history entries deleted.
-        """
+        """Clear all history for a guild."""
         ...
 
     @abstractmethod
     async def mark_finished(
         self,
         guild_id: int,
-        track_id: str,
+        track_id: TrackId,
         skipped: bool = False,
     ) -> None:
-        """Mark the most recent play of a track as finished.
-
-        Args:
-            guild_id: The Discord guild ID.
-            track_id: The track identifier.
-            skipped: Whether the track was skipped.
-        """
+        """Mark the most recent play of a track as finished."""
         ...
 
     @abstractmethod
     async def cleanup_old(self, older_than: datetime) -> int:
-        """Clean up history entries older than the given time.
-
-        Args:
-            older_than: Remove entries before this time.
-
-        Returns:
-            Number of entries cleaned up.
-        """
+        """Remove history entries older than the given time."""
         ...

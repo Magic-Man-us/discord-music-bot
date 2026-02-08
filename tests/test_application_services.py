@@ -435,15 +435,15 @@ class TestQueueApplicationServiceToggleLoop:
 
         # OFF -> TRACK
         result = await service.toggle_loop(guild_id=123456)
-        assert result == LoopMode.TRACK.value
+        assert result == LoopMode.TRACK
 
         # TRACK -> QUEUE
         result = await service.toggle_loop(guild_id=123456)
-        assert result == LoopMode.QUEUE.value
+        assert result == LoopMode.QUEUE
 
         # QUEUE -> OFF
         result = await service.toggle_loop(guild_id=123456)
-        assert result == LoopMode.OFF.value
+        assert result == LoopMode.OFF
 
 
 # =============================================================================

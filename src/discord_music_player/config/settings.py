@@ -1,10 +1,4 @@
-"""Application Settings and Configuration
-
-Pydantic-based settings management using environment variables.
-Settings are loaded from environment variables with support for .env files,
-type validation, and sensible defaults. All settings are frozen and immutable
-after initialization.
-"""
+"""Pydantic-based settings loaded from environment variables."""
 
 from __future__ import annotations
 
@@ -18,7 +12,6 @@ from ..domain.shared.validators import validate_discord_snowflake
 
 
 class DatabaseSettings(BaseModel):
-    """Database configuration."""
 
     model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
 
@@ -26,7 +19,7 @@ class DatabaseSettings(BaseModel):
         default="sqlite:///data/bot.db",
         validation_alias=AliasChoices("url", "database_url", "db_url"),
     )
-    pool_size: int = Field(default=5, ge=1, le=100)  # Reserved for future use
+    pool_size: int = Field(default=5, ge=1, le=100)
     echo: bool = False
     busy_timeout_ms: int = Field(
         default=5000,
@@ -44,14 +37,12 @@ class DatabaseSettings(BaseModel):
     @field_validator("url")
     @classmethod
     def validate_url(cls, v: str) -> str:
-        """Validate database URL format."""
         if not v.startswith(("sqlite://", "postgresql://", "mysql://")):
             raise ValueError("Database URL must start with sqlite://, postgresql://, or mysql://")
         return v
 
 
 class DiscordSettings(BaseModel):
-    """Discord bot configuration."""
 
     model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
 
@@ -78,8 +69,6 @@ class DiscordSettings(BaseModel):
     @field_validator("owner_ids", "guild_ids", "test_guild_ids", mode="before")
     @classmethod
     def validate_snowflake_ids(cls, v: tuple[int, ...] | list[int]) -> tuple[int, ...]:
-        """Validate Discord snowflake IDs and convert lists to tuples."""
-        # Convert list to tuple if needed (from JSON array in env vars)
         if isinstance(v, list):
             v = tuple(v)
         for snowflake in v:
@@ -88,7 +77,6 @@ class DiscordSettings(BaseModel):
 
 
 class AudioSettings(BaseModel):
-    """Audio playback configuration."""
 
     model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
 
@@ -108,7 +96,6 @@ class AudioSettings(BaseModel):
 
 
 class AISettings(BaseModel):
-    """AI/OpenAI configuration."""
 
     model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
 
@@ -127,7 +114,6 @@ class AISettings(BaseModel):
 
 
 class VotingSettings(BaseModel):
-    """Voting configuration."""
 
     model_config = SettingsConfigDict(frozen=True, strict=True)
 
@@ -137,7 +123,6 @@ class VotingSettings(BaseModel):
 
 
 class RadioSettings(BaseModel):
-    """Radio feature configuration."""
 
     model_config = SettingsConfigDict(frozen=True, strict=True)
 
@@ -146,7 +131,6 @@ class RadioSettings(BaseModel):
 
 
 class CleanupSettings(BaseModel):
-    """Session cleanup configuration."""
 
     model_config = SettingsConfigDict(frozen=True, strict=True)
 
@@ -155,17 +139,6 @@ class CleanupSettings(BaseModel):
 
 
 class Settings(BaseSettings):
-    """Application settings container.
-
-    Automatically loads configuration from environment variables.
-
-    Environment variable naming:
-    - ENVIRONMENT, DEBUG, LOG_LEVEL (top-level)
-    - DISCORD_TOKEN, DISCORD_COMMAND_PREFIX, etc. (nested with prefix)
-    - OWNER_IDS, GUILD_IDS (comma-separated integers)
-    - DATABASE_PATH (converted to sqlite:/// URL)
-    - OPENAI_API_KEY, AI_MODEL, etc. (nested with prefix)
-    """
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -191,7 +164,6 @@ class Settings(BaseSettings):
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
-        """Validate log level."""
         valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
         v_upper = v.upper()
         if v_upper not in valid_levels:
@@ -200,26 +172,13 @@ class Settings(BaseSettings):
 
     @classmethod
     def from_env(cls) -> Settings:
-        """Create settings from environment variables.
-
-        This method is provided for backward compatibility.
-        Pydantic BaseSettings automatically loads from environment.
-        """
         return cls()
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Get cached application settings.
-
-    Settings are automatically loaded from:
-    1. .env file (if present)
-    2. Environment variables
-    3. Default values
-    """
     return Settings()
 
 
 def clear_settings_cache() -> None:
-    """Clear the settings cache (useful for testing)."""
     get_settings.cache_clear()

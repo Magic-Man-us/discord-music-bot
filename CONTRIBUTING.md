@@ -23,7 +23,7 @@ Thank you for contributing to the Discord Music Bot! This document provides guid
 
 2. **Create virtual environment:**
    ```bash
-   python3.11 -m venv .venv
+   python3.12 -m venv .venv
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
    ```
 
@@ -196,7 +196,7 @@ git commit --no-verify -m "Emergency fix"
 ## Code Style
 
 ### Python Version
-- **Required**: Python 3.11+
+- **Required**: Python 3.12+
 - Use modern features (match/case, | for unions, etc.)
 
 ### Import Organization

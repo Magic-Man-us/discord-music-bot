@@ -1,11 +1,4 @@
-"""Auto-skip rule when requester leaves.
-
-When the requester of the currently playing track leaves the bot's voice
-channel, automatically skip the track.
-
-The voice layer publishes :class:`~domain.shared.events.VoiceMemberLeftVoiceChannel`
-when a user leaves the bot-connected voice channel.
-"""
+"""Auto-skip the current track when its requester leaves the voice channel."""
 
 from __future__ import annotations
 
@@ -24,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 class AutoSkipOnRequesterLeave:
-    """Subscribes to voice events and auto-skips when appropriate."""
 
     def __init__(
         self,
@@ -39,14 +31,12 @@ class AutoSkipOnRequesterLeave:
         self._started = False
 
     def start(self) -> None:
-        """Start listening to events."""
         if self._started:
             return
         self._bus.subscribe(VoiceMemberLeftVoiceChannel, self._on_member_left)
         self._started = True
 
     def stop(self) -> None:
-        """Stop listening to events."""
         if not self._started:
             return
         self._bus.unsubscribe(VoiceMemberLeftVoiceChannel, self._on_member_left)
@@ -74,5 +64,5 @@ class AutoSkipOnRequesterLeave:
                 "Auto-skipped requester track in guild %s (user_id=%s, track_id=%s)",
                 event.guild_id,
                 event.user_id,
-                str(skipped.id),
+                skipped.id,
             )

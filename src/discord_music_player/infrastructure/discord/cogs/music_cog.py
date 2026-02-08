@@ -1,9 +1,4 @@
-"""
-Music Cog
-
-Slash-only music commands for the Discord bot.
-This is a thin adapter that delegates to application services.
-"""
+"""Slash-command music cog delegating to application services."""
 
 from __future__ import annotations
 
@@ -19,6 +14,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from discord_music_player.domain.music.entities import Track
+from discord_music_player.domain.music.value_objects import LoopMode
 from discord_music_player.domain.shared.messages import DiscordUIMessages
 from discord_music_player.domain.voting.value_objects import VoteResult
 from discord_music_player.utils.reply import format_duration, truncate
@@ -29,7 +25,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Constants
 QUEUE_PER_PAGE = 10
 
 
@@ -69,12 +64,10 @@ class _GuildMessageState:
     queued: deque[_TrackedMessage] = field(default_factory=deque)
 
     def pop_matching_queued(self, track: Track) -> _TrackedMessage | None:
-        """Find and remove the queued message that matches the given track."""
         target = _TrackKey.from_track(track)
         if not self.queued:
             return None
 
-        # Find the matching tracked message
         found: _TrackedMessage | None = None
         for tracked in self.queued:
             if tracked.track_key == target:
@@ -84,47 +77,30 @@ class _GuildMessageState:
         if found is None:
             return None
 
-        # Remove it using O(n) filter instead of O(n²) list rebuild
         self.queued = deque(t for t in self.queued if t.track_key != target)
         return found
 
 
 class MusicCog(commands.Cog):
-    """Slash-only music commands.
-
-    This cog provides user-facing music commands using Discord slash commands.
-    All commands delegate to application services via the DI container.
-    """
-
     def __init__(self, bot: commands.Bot, container: Container) -> None:
-        """Initialize the music cog.
-
-        Args:
-            bot: The Discord bot instance.
-            container: The DI container with application services.
-        """
         self.bot = bot
         self.container = container
 
         self._message_state_by_guild: dict[int, _GuildMessageState] = {}
 
     async def cog_load(self) -> None:
-        """Register callbacks when the cog is loaded."""
         self.container.playback_service.set_track_finished_callback(self._on_track_finished)
 
     async def cog_unload(self) -> None:
-        """Best-effort cleanup when the cog is unloaded."""
         self._message_state_by_guild.clear()
 
     async def _send_ephemeral(self, interaction: discord.Interaction, message: str) -> None:
-        """Send an ephemeral message, using followup if already responded."""
         if interaction.response.is_done():
             await interaction.followup.send(message, ephemeral=True)
         else:
             await interaction.response.send_message(message, ephemeral=True)
 
     async def _get_member(self, interaction: discord.Interaction) -> discord.Member | None:
-        """Get the invoking member, or respond with an error."""
         if not interaction.guild:
             await self._send_ephemeral(
                 interaction,
@@ -142,7 +118,6 @@ class MusicCog(commands.Cog):
     async def _ensure_voice_warmup(
         self, interaction: discord.Interaction, member: discord.Member
     ) -> bool:
-        """Block commands until the member has been in voice long enough."""
         if not interaction.guild:
             return False
 
@@ -160,7 +135,6 @@ class MusicCog(commands.Cog):
         return False
 
     async def _ensure_user_in_voice_and_warm(self, interaction: discord.Interaction) -> bool:
-        """Ensure the user is in voice and has passed warmup."""
         member = await self._get_member(interaction)
         if member is None:
             return False
@@ -172,14 +146,6 @@ class MusicCog(commands.Cog):
         return await self._ensure_voice_warmup(interaction, member)
 
     async def _ensure_voice(self, interaction: discord.Interaction) -> bool:
-        """Ensure user is in a voice channel and bot can join/is joined.
-
-        Args:
-            interaction: The Discord interaction.
-
-        Returns:
-            True if voice requirements are met.
-        """
         member = await self._get_member(interaction)
         if member is None:
             return False
@@ -193,7 +159,6 @@ class MusicCog(commands.Cog):
         if not await self._ensure_voice_warmup(interaction, member):
             return False
 
-        # Try to connect/move to user's channel
         voice_adapter = self.container.voice_adapter
         channel_id = member.voice.channel.id
 
@@ -214,16 +179,9 @@ class MusicCog(commands.Cog):
         interaction: discord.Interaction,
         query: str,
     ) -> None:
-        """Queue a track from a URL or search query.
-
-        Args:
-            interaction: The Discord interaction.
-            query: The URL or search query.
-        """
-        # Defer response FIRST - Discord interactions expire after 3 seconds
+        # Defer early because voice connection can exceed the 3-second interaction deadline
         await interaction.response.defer()
 
-        # Now check voice connection (can take up to 10 seconds)
         if not await self._ensure_voice(interaction):
             return
 
@@ -231,12 +189,10 @@ class MusicCog(commands.Cog):
             return
 
         try:
-            # Get services
             queue_service = self.container.queue_service
             playback_service = self.container.playback_service
             resolver = self.container.audio_resolver
 
-            # Resolve track
             track = await resolver.resolve(query)
             if not track:
                 await interaction.followup.send(
@@ -244,7 +200,6 @@ class MusicCog(commands.Cog):
                 )
                 return
 
-            # Enqueue
             user = interaction.user
             result = await queue_service.enqueue(
                 guild_id=interaction.guild.id,
@@ -257,7 +212,6 @@ class MusicCog(commands.Cog):
                 await interaction.followup.send(result.message, ephemeral=True)
                 return
 
-            # Start playback if needed - only when transitioning from idle
             logger.info(
                 "Enqueue result: position=%s, should_start=%s",
                 result.position,
@@ -275,7 +229,6 @@ class MusicCog(commands.Cog):
             if result.should_start:
                 embed = self._build_now_playing_embed(resolved_track)
 
-                # Create download view with buttons
                 from ..views.download_view import DownloadView
 
                 view = DownloadView(
@@ -316,7 +269,6 @@ class MusicCog(commands.Cog):
             )
 
     async def _on_track_finished(self, guild_id: int, track: Track) -> None:
-        """Clean up the now-playing message and promote the next queued message."""
         state = self._message_state_by_guild.get(guild_id)
         if state is None:
             return
@@ -328,7 +280,6 @@ class MusicCog(commands.Cog):
             )
             state.now_playing = None
 
-        # If another track is now current, promote its queued message into a full embed.
         session = await self.container.session_repository.get(guild_id)
         next_track = session.current_track if session is not None else None
         if next_track is None:
@@ -497,13 +448,6 @@ class MusicCog(commands.Cog):
         self._message_state_by_guild.pop(guild_id, None)
 
     def cleanup_guild_message_state(self, guild_id: int) -> None:
-        """Public method to cleanup message state for a guild.
-
-        Called when the bot leaves a guild or during cleanup operations.
-
-        Args:
-            guild_id: The guild ID to cleanup.
-        """
         self._reset_message_state(guild_id)
         logger.debug("Cleaned up message state for guild %s", guild_id)
 
@@ -512,11 +456,6 @@ class MusicCog(commands.Cog):
         description="Show recently played tracks for this server.",
     )
     async def played(self, interaction: discord.Interaction) -> None:
-        """Show recently played tracks.
-
-        Args:
-            interaction: The Discord interaction.
-        """
         if not await self._ensure_user_in_voice_and_warm(interaction):
             return
 
@@ -565,12 +504,6 @@ class MusicCog(commands.Cog):
     @app_commands.command(name="skip", description="Vote to skip the current track.")
     @app_commands.describe(force="Force skip (admin only)")
     async def skip(self, interaction: discord.Interaction, force: bool = False) -> None:
-        """Vote or force skip the currently playing track.
-
-        Args:
-            interaction: The Discord interaction.
-            force: Whether to force skip (requires admin).
-        """
         if not await self._ensure_user_in_voice_and_warm(interaction):
             return
 
@@ -591,7 +524,6 @@ class MusicCog(commands.Cog):
     async def _handle_force_skip(
         self, interaction: discord.Interaction, user: discord.Member
     ) -> None:
-        """Handle force skip request."""
         if not self._can_force_skip(user):
             await interaction.response.send_message(
                 DiscordUIMessages.ERROR_FORCE_SKIP_REQUIRES_ADMIN, ephemeral=True
@@ -611,7 +543,6 @@ class MusicCog(commands.Cog):
             )
 
     def _can_force_skip(self, user: discord.Member) -> bool:
-        """Check if user can force skip."""
         is_admin = user.guild_permissions.administrator
         is_owner = user.id in self.container.settings.discord.owner_ids
         return is_admin or is_owner
@@ -619,7 +550,6 @@ class MusicCog(commands.Cog):
     async def _handle_vote_skip(
         self, interaction: discord.Interaction, user: discord.Member
     ) -> None:
-        """Handle vote skip request."""
         user_channel_id = None
         if user.voice and user.voice.channel:
             user_channel_id = user.voice.channel.id
@@ -643,7 +573,6 @@ class MusicCog(commands.Cog):
     async def _send_skip_success(
         self, interaction: discord.Interaction, result: VoteSkipResult
     ) -> None:
-        """Send success message for skip action."""
         playback_service = self.container.playback_service
         skipped_track = await playback_service.skip_track(interaction.guild.id)  # type: ignore
         track_title = skipped_track.title if skipped_track else "track"
@@ -667,7 +596,6 @@ class MusicCog(commands.Cog):
     async def _send_skip_failure(
         self, interaction: discord.Interaction, result: VoteSkipResult
     ) -> None:
-        """Send failure/progress message for skip vote."""
         match result.result:
             case VoteResult.NO_PLAYING:
                 msg = DiscordUIMessages.STATE_NOTHING_PLAYING
@@ -688,11 +616,6 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(name="stop", description="Stop playback and clear the queue.")
     async def stop(self, interaction: discord.Interaction) -> None:
-        """Stop playback and clear the queue.
-
-        Args:
-            interaction: The Discord interaction.
-        """
         if not await self._ensure_user_in_voice_and_warm(interaction):
             return
 
@@ -701,13 +624,8 @@ class MusicCog(commands.Cog):
         playback_service = self.container.playback_service
         queue_service = self.container.queue_service
 
-        # Disable radio if active
         self.container.radio_service.disable_radio(interaction.guild.id)
-
-        # Stop playback
         stopped = await playback_service.stop_playback(interaction.guild.id)
-
-        # Clear queue
         cleared = await queue_service.clear(interaction.guild.id)
 
         if stopped or cleared > 0:
@@ -722,11 +640,6 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(name="pause", description="Pause the current track.")
     async def pause(self, interaction: discord.Interaction) -> None:
-        """Pause the current track.
-
-        Args:
-            interaction: The Discord interaction.
-        """
         if not await self._ensure_user_in_voice_and_warm(interaction):
             return
 
@@ -744,11 +657,6 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(name="resume", description="Resume paused playback.")
     async def resume(self, interaction: discord.Interaction) -> None:
-        """Resume paused playback.
-
-        Args:
-            interaction: The Discord interaction.
-        """
         if not await self._ensure_user_in_voice_and_warm(interaction):
             return
 
@@ -769,12 +677,6 @@ class MusicCog(commands.Cog):
     @app_commands.command(name="queue", description="Show the current queue.")
     @app_commands.describe(page="Page number")
     async def queue(self, interaction: discord.Interaction, page: int = 1) -> None:
-        """Show the current queue.
-
-        Args:
-            interaction: The Discord interaction.
-            page: The page number to display.
-        """
         if not await self._ensure_user_in_voice_and_warm(interaction):
             return
 
@@ -789,13 +691,11 @@ class MusicCog(commands.Cog):
             )
             return
 
-        # Pagination
         per_page = QUEUE_PER_PAGE
         total_pages = max(1, math.ceil(queue_info.total_tracks / per_page))
         page = max(1, min(page, total_pages))
         start_idx = (page - 1) * per_page
 
-        # Build embed
         embed = discord.Embed(
             title=DiscordUIMessages.EMBED_QUEUE.format(
                 total_tracks=queue_info.total_tracks, page=page, total_pages=total_pages
@@ -803,7 +703,6 @@ class MusicCog(commands.Cog):
             color=discord.Color.blurple(),
         )
 
-        # Show current track
         if queue_info.current_track:
             embed.add_field(
                 name="🎵 Now Playing",
@@ -812,7 +711,6 @@ class MusicCog(commands.Cog):
                 inline=False,
             )
 
-        # Show queue tracks
         tracks = queue_info.tracks[start_idx : start_idx + per_page]
         for idx, track in enumerate(tracks, start=start_idx + 1):
             embed.add_field(
@@ -821,7 +719,6 @@ class MusicCog(commands.Cog):
                 inline=False,
             )
 
-        # Show total duration
         if queue_info.total_duration:
             embed.set_footer(text=f"Total duration: {format_duration(queue_info.total_duration)}")
 
@@ -829,11 +726,6 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(name="current", description="Show the current track.")
     async def current(self, interaction: discord.Interaction) -> None:
-        """Show the currently playing track.
-
-        Args:
-            interaction: The Discord interaction.
-        """
         if not await self._ensure_user_in_voice_and_warm(interaction):
             return
 
@@ -867,7 +759,6 @@ class MusicCog(commands.Cog):
             name="👤 Requested by", value=track.requested_by_name or "Unknown", inline=True
         )
 
-        # Create download view with buttons
         from ..views.download_view import DownloadView
 
         view = DownloadView(
@@ -879,11 +770,6 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(name="shuffle", description="Shuffle the queue.")
     async def shuffle(self, interaction: discord.Interaction) -> None:
-        """Shuffle the queue.
-
-        Args:
-            interaction: The Discord interaction.
-        """
         if not await self._ensure_user_in_voice_and_warm(interaction):
             return
 
@@ -903,11 +789,6 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(name="loop", description="Toggle loop mode.")
     async def loop(self, interaction: discord.Interaction) -> None:
-        """Toggle loop mode.
-
-        Args:
-            interaction: The Discord interaction.
-        """
         if not await self._ensure_user_in_voice_and_warm(interaction):
             return
 
@@ -917,29 +798,23 @@ class MusicCog(commands.Cog):
         mode = await queue_service.toggle_loop(interaction.guild.id)
 
         match mode:
-            case "off":
+            case LoopMode.OFF:
                 emoji = "➡️"
-            case "track":
+            case LoopMode.TRACK:
                 emoji = "🔂"
-            case "queue":
+            case LoopMode.QUEUE:
                 emoji = "🔁"
             case _:
                 emoji = "➡️"
 
         await interaction.response.send_message(
-            DiscordUIMessages.ACTION_LOOP_MODE_CHANGED.format(emoji=emoji, mode=mode),
+            DiscordUIMessages.ACTION_LOOP_MODE_CHANGED.format(emoji=emoji, mode=mode.value),
             ephemeral=True,
         )
 
     @app_commands.command(name="remove", description="Remove a track from the queue.")
     @app_commands.describe(position="Position in queue (1-based)")
     async def remove(self, interaction: discord.Interaction, position: int) -> None:
-        """Remove a track from the queue.
-
-        Args:
-            interaction: The Discord interaction.
-            position: The position of the track to remove (1-based).
-        """
         if not await self._ensure_user_in_voice_and_warm(interaction):
             return
 
@@ -952,7 +827,6 @@ class MusicCog(commands.Cog):
             return
 
         queue_service = self.container.queue_service
-        # Convert from 1-based (user-facing) to 0-based (internal)
         track = await queue_service.remove(interaction.guild.id, position - 1)
 
         if track:
@@ -968,11 +842,6 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(name="clear", description="Clear the queue.")
     async def clear(self, interaction: discord.Interaction) -> None:
-        """Clear the queue.
-
-        Args:
-            interaction: The Discord interaction.
-        """
         if not await self._ensure_user_in_voice_and_warm(interaction):
             return
 
@@ -996,7 +865,6 @@ class MusicCog(commands.Cog):
         description="Toggle AI radio — auto-queue similar songs.",
     )
     async def radio(self, interaction: discord.Interaction) -> None:
-        """Toggle radio mode: find and queue songs similar to what's playing."""
         if not await self._ensure_user_in_voice_and_warm(interaction):
             return
 
@@ -1027,11 +895,6 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(name="leave", description="Disconnect from voice channel.")
     async def leave(self, interaction: discord.Interaction) -> None:
-        """Disconnect from voice channel.
-
-        Args:
-            interaction: The Discord interaction.
-        """
         if not await self._ensure_user_in_voice_and_warm(interaction):
             return
 
@@ -1040,15 +903,9 @@ class MusicCog(commands.Cog):
         voice_adapter = self.container.voice_adapter
         playback_service = self.container.playback_service
 
-        # Disable radio if active
         self.container.radio_service.disable_radio(interaction.guild.id)
-
-        # Cleanup guild resources
         await playback_service.cleanup_guild(interaction.guild.id)
-
         self._reset_message_state(interaction.guild.id)
-
-        # Disconnect
         disconnected = await voice_adapter.disconnect(interaction.guild.id)
 
         if disconnected:
@@ -1062,11 +919,6 @@ class MusicCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Set up the music cog.
-
-    Args:
-        bot: The Discord bot instance.
-    """
     container = getattr(bot, "container", None)
     if container is None:
         raise RuntimeError("Container not found on bot instance")

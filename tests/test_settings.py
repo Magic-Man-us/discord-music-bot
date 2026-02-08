@@ -277,7 +277,7 @@ class TestAISettings:
         ai = AISettings()
 
         assert ai.api_key.get_secret_value() == ""
-        assert ai.model == "gpt-4o-mini"
+        assert ai.model == "gpt-5-mini"
         assert ai.max_tokens == 500
         assert ai.temperature == 0.7
         assert ai.cache_ttl_seconds == 3600

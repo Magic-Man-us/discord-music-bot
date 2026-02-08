@@ -38,6 +38,7 @@ class CleanupJob:
 
     def __init__(
         self,
+        *,
         session_repository: SessionRepository,
         history_repository: TrackHistoryRepository,
         cache_repository: RecommendationCacheRepository,

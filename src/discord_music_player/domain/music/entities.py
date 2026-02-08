@@ -1,8 +1,4 @@
-"""
-Music Domain Entities
-
-Core domain entities for the music bounded context.
-"""
+"""Core domain entities for the music bounded context."""
 
 from __future__ import annotations
 
@@ -27,29 +23,7 @@ from discord_music_player.domain.shared.messages import ErrorMessages
 
 
 class Track(BaseModel):
-    """Domain entity representing a playable track.
-
-    A Track contains all information needed to play audio and display
-    information to users. Tracks are immutable value objects built from
-    audio resolver responses (e.g., yt-dlp) and enriched with requester
-    metadata when queued.
-
-    Attributes:
-        id: Unique identifier for this track.
-        title: Display title of the track.
-        webpage_url: Original webpage URL (e.g., YouTube video page).
-        stream_url: Direct stream URL for playback (optional, may be resolved later).
-        duration_seconds: Track duration in seconds (optional).
-        thumbnail_url: URL to track thumbnail image (optional).
-        artist: Artist name if available from resolver.
-        uploader: Channel/uploader name if available from resolver.
-        like_count: Number of likes/upvotes if available.
-        view_count: Number of views if available.
-        requested_by_id: Discord user ID who requested this track.
-        requested_by_name: Discord username who requested this track.
-        requested_at: Timestamp when track was queued.
-        is_from_recommendation: Whether this track came from AI recommendations.
-    """
+    """Immutable value object representing a playable track."""
 
     model_config = ConfigDict(frozen=True, strict=True)
 
@@ -113,19 +87,7 @@ class Track(BaseModel):
     def with_requester(
         self, user_id: int, user_name: str, requested_at: datetime | None = None
     ) -> Track:
-        """Create a new Track with requester information.
-
-        Returns a new Track instance (since Track is immutable) with the
-        requester metadata fields populated.
-
-        Args:
-            user_id: Discord user ID of the requester.
-            user_name: Discord username of the requester.
-            requested_at: Optional timestamp (defaults to current UTC time).
-
-        Returns:
-            A new Track instance with requester information set.
-        """
+        """Return a copy of this track with requester metadata populated."""
         return self.model_copy(
             update={
                 "requested_by_id": user_id,
@@ -135,21 +97,13 @@ class Track(BaseModel):
         )
 
     def was_requested_by(self, user_id: int) -> bool:
-        """Check if track was requested by the given user."""
         return self.requested_by_id == user_id
 
 
 @dataclass
 class GuildPlaybackSession:
-    """Aggregate root for guild music session.
+    """Aggregate root managing playback state for a single Discord guild."""
 
-    Manages the complete state of music playback for a single Discord guild,
-    including the queue, current track, and playback state.
-
-    This is the primary aggregate for the music bounded context.
-    """
-
-    # Configuration constants
     MAX_QUEUE_SIZE: ClassVar[int] = 50
 
     guild_id: int
@@ -169,32 +123,26 @@ class GuildPlaybackSession:
 
     @property
     def queue_length(self) -> int:
-        """Get the current queue length."""
         return len(self.queue)
 
     @property
     def is_playing(self) -> bool:
-        """Check if currently playing."""
         return self.state == PlaybackState.PLAYING
 
     @property
     def is_paused(self) -> bool:
-        """Check if playback is paused."""
         return self.state == PlaybackState.PAUSED
 
     @property
     def is_idle(self) -> bool:
-        """Check if session is idle (no playback)."""
         return self.state == PlaybackState.IDLE
 
     @property
     def has_tracks(self) -> bool:
-        """Check if there are tracks in the queue or currently playing."""
         return self.current_track is not None or bool(self.queue)
 
     @property
     def can_add_to_queue(self) -> bool:
-        """Check if more tracks can be added to the queue."""
         return self.queue_length < self.MAX_QUEUE_SIZE
 
     def touch(self) -> None:
@@ -202,14 +150,7 @@ class GuildPlaybackSession:
         self.last_activity = utcnow()
 
     def enqueue(self, track: Track) -> QueuePosition:
-        """Add a track to the end of the queue.
-
-        Returns:
-            The position where the track was added.
-
-        Raises:
-            BusinessRuleViolation: If queue is at maximum capacity.
-        """
+        """Add a track to the end of the queue."""
         if not self.can_add_to_queue:
             raise BusinessRuleViolationError(
                 rule="MAX_QUEUE_SIZE", message=f"Queue is full (max {self.MAX_QUEUE_SIZE} tracks)"
@@ -221,14 +162,7 @@ class GuildPlaybackSession:
         return position
 
     def enqueue_next(self, track: Track) -> QueuePosition:
-        """Add a track to the front of the queue (play next).
-
-        Returns:
-            Position 0 (front of queue).
-
-        Raises:
-            BusinessRuleViolation: If queue is at maximum capacity.
-        """
+        """Add a track to the front of the queue (play next)."""
         if not self.can_add_to_queue:
             raise BusinessRuleViolationError(
                 rule="MAX_QUEUE_SIZE", message=f"Queue is full (max {self.MAX_QUEUE_SIZE} tracks)"
@@ -239,11 +173,7 @@ class GuildPlaybackSession:
         return QueuePosition(0)
 
     def dequeue(self) -> Track | None:
-        """Remove and return the next track from the queue.
-
-        Returns:
-            The next track, or None if queue is empty.
-        """
+        """Remove and return the next track from the queue."""
         if not self.queue:
             return None
 
@@ -256,14 +186,7 @@ class GuildPlaybackSession:
         return self.queue[0] if self.queue else None
 
     def remove_at(self, position: int) -> Track | None:
-        """Remove a track at a specific position.
-
-        Args:
-            position: Zero-based index in the queue.
-
-        Returns:
-            The removed track, or None if position is invalid.
-        """
+        """Remove a track at a specific queue position."""
         if 0 <= position < len(self.queue):
             track = self.queue.pop(position)
             self.touch()
@@ -271,11 +194,7 @@ class GuildPlaybackSession:
         return None
 
     def clear_queue(self) -> int:
-        """Clear all tracks from the queue.
-
-        Returns:
-            The number of tracks that were cleared.
-        """
+        """Clear all tracks from the queue and return the count removed."""
         count = len(self.queue)
         self.queue.clear()
         self.touch()
@@ -287,11 +206,7 @@ class GuildPlaybackSession:
         self.touch()
 
     def transition_to(self, new_state: PlaybackState) -> None:
-        """Transition to a new playback state.
-
-        Raises:
-            InvalidOperationError: If the transition is not valid.
-        """
+        """Transition to a new playback state."""
         if not self.state.can_transition_to(new_state):
             raise InvalidOperationError(
                 operation=f"transition to {new_state.value}",
@@ -303,11 +218,7 @@ class GuildPlaybackSession:
         self.touch()
 
     def start_playback(self, track: Track) -> None:
-        """Start playing a track.
-
-        Args:
-            track: The track to play.
-        """
+        """Start playing a track."""
         self.current_track = track
         if self.state == PlaybackState.IDLE or self.state == PlaybackState.STOPPED:
             self.state = PlaybackState.PLAYING
@@ -335,17 +246,11 @@ class GuildPlaybackSession:
         self.touch()
 
     def advance_to_next_track(self) -> Track | None:
-        """Advance to the next track based on loop mode.
-
-        Returns:
-            The next track to play, or None if no more tracks.
-        """
+        """Advance to the next track based on loop mode."""
         if self.loop_mode == LoopMode.TRACK and self.current_track:
-            # Keep playing the same track
             return self.current_track
 
         if self.loop_mode == LoopMode.QUEUE and self.current_track:
-            # Re-add current track to end of queue
             self.queue.append(self.current_track)
 
         next_track = self.dequeue()
@@ -370,15 +275,7 @@ class GuildPlaybackSession:
         self.touch()
 
     def move_track(self, from_pos: int, to_pos: int) -> bool:
-        """Move a track from one position to another.
-
-        Args:
-            from_pos: Current position of the track.
-            to_pos: Target position.
-
-        Returns:
-            True if move was successful.
-        """
+        """Move a track from one queue position to another."""
         if not (0 <= from_pos < len(self.queue) and 0 <= to_pos < len(self.queue)):
             return False
 

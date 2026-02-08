@@ -1,9 +1,6 @@
-"""
-Shared Value Objects
+"""Strongly-typed identifiers used across all bounded contexts."""
 
-Strongly-typed identifiers used across all bounded contexts.
-Value objects are immutable and validated on creation.
-"""
+from __future__ import annotations
 
 from dataclasses import dataclass
 

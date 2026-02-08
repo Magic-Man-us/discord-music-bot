@@ -21,7 +21,7 @@ import discord
 import pytest
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
-from discord_music_player.domain.music.value_objects import PlaybackState, TrackId
+from discord_music_player.domain.music.value_objects import LoopMode, PlaybackState, TrackId
 from discord_music_player.domain.voting.value_objects import VoteResult
 from discord_music_player.infrastructure.discord.cogs.music_cog import (
     MusicCog,
@@ -928,7 +928,7 @@ class TestLoopCommand:
     @pytest.mark.asyncio
     async def test_loop_toggle_off(self, music_cog, mock_interaction, mock_container):
         """Should toggle loop to off."""
-        mock_container.queue_service.toggle_loop = AsyncMock(return_value="off")
+        mock_container.queue_service.toggle_loop = AsyncMock(return_value=LoopMode.OFF)
 
         await music_cog.loop.callback(music_cog, mock_interaction)
 
@@ -940,7 +940,7 @@ class TestLoopCommand:
     @pytest.mark.asyncio
     async def test_loop_toggle_track(self, music_cog, mock_interaction, mock_container):
         """Should toggle loop to track."""
-        mock_container.queue_service.toggle_loop = AsyncMock(return_value="track")
+        mock_container.queue_service.toggle_loop = AsyncMock(return_value=LoopMode.TRACK)
 
         await music_cog.loop.callback(music_cog, mock_interaction)
 
@@ -951,7 +951,7 @@ class TestLoopCommand:
     @pytest.mark.asyncio
     async def test_loop_toggle_queue(self, music_cog, mock_interaction, mock_container):
         """Should toggle loop to queue."""
-        mock_container.queue_service.toggle_loop = AsyncMock(return_value="queue")
+        mock_container.queue_service.toggle_loop = AsyncMock(return_value=LoopMode.QUEUE)
 
         await music_cog.loop.callback(music_cog, mock_interaction)
 

@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from discord_music_player.domain.music.value_objects import TrackId
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -321,7 +323,7 @@ class TestVoteRepository:
         from discord_music_player.domain.voting.value_objects import VoteType
 
         guild_id = 123
-        track_id = "track-123"
+        track_id = TrackId("track-123")
 
         session = VoteSession(
             guild_id=guild_id,
@@ -340,7 +342,7 @@ class TestVoteRepository:
     @pytest.mark.asyncio
     async def test_get_nonexistent_vote_session(self, vote_repository):
         """Test getting a vote session that doesn't exist."""
-        result = await vote_repository.get_active(999, "nonexistent")
+        result = await vote_repository.get_active(999, TrackId("nonexistent"))
         assert result is None
 
     @pytest.mark.asyncio
@@ -350,7 +352,7 @@ class TestVoteRepository:
         from discord_music_player.domain.voting.value_objects import VoteType
 
         guild_id = 456
-        track_id = "track-456"
+        track_id = TrackId("track-456")
 
         session = VoteSession(
             guild_id=guild_id,
@@ -516,7 +518,7 @@ class TestDomainEvents:
 
         event = TrackStartedPlaying(
             guild_id=123,
-            track_id="test",
+            track_id=TrackId("test"),
             track_title="Test Song",
             track_url="https://test.url",
         )
@@ -546,7 +548,7 @@ class TestDomainEvents:
 
         event = TrackSkipped(
             guild_id=123,
-            track_id="test",
+            track_id=TrackId("test"),
             track_title="Test",
             skipped_by_id=456,
         )

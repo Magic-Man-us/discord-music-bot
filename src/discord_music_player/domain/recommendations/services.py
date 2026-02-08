@@ -1,13 +1,9 @@
-"""
-Recommendations Domain Services
-
-Domain services containing recommendation business logic.
-"""
+"""Domain services containing recommendation business logic."""
 
 import re
 from typing import TYPE_CHECKING
 
-from ...domain.recommendations.entities import (
+from .entities import (
     Recommendation,
     RecommendationRequest,
     RecommendationSet,
@@ -18,13 +14,8 @@ if TYPE_CHECKING:
 
 
 class RecommendationDomainService:
-    """Domain service for recommendation-related business rules.
+    """Recommendation-related business rules and transformations."""
 
-    Encapsulates logic for creating recommendations requests,
-    parsing AI responses, and filtering recommendations.
-    """
-
-    # Configuration
     DEFAULT_RECOMMENDATION_COUNT = 3
     MAX_RECOMMENDATION_COUNT = 10
 
@@ -35,17 +26,6 @@ class RecommendationDomainService:
         count: int = DEFAULT_RECOMMENDATION_COUNT,
         exclude_ids: list[str] | None = None,
     ) -> RecommendationRequest:
-        """Create a recommendation request from a track.
-
-        Args:
-            track: The base track for recommendations.
-            count: Number of recommendations to request.
-            exclude_ids: Track IDs to exclude from recommendations.
-
-        Returns:
-            A RecommendationRequest configured for the track.
-        """
-        # Try to extract artist from title
         artist = cls.extract_artist_from_title(track.title)
         title = cls.clean_title(track.title)
 
@@ -66,23 +46,14 @@ class RecommendationDomainService:
         - "Artist - Song Title"
         - "Artist: Song Title"
         - "Song Title by Artist"
-
-        Args:
-            title: The track title.
-
-        Returns:
-            The extracted artist name, or None if not found.
         """
-        # Try "Artist - Title" format
         if " - " in title:
             parts = title.split(" - ", 1)
             if len(parts) == 2:
                 artist = parts[0].strip()
-                # Filter out common non-artist prefixes
                 if not cls._is_common_prefix(artist):
                     return artist
 
-        # Try "Title by Artist" format
         by_match = re.search(r"\s+by\s+(.+?)(?:\s*[\[\(]|$)", title, re.IGNORECASE)
         if by_match:
             return by_match.group(1).strip()
@@ -91,17 +62,7 @@ class RecommendationDomainService:
 
     @classmethod
     def clean_title(cls, title: str) -> str:
-        """Clean a track title for recommendation queries.
-
-        Removes common suffixes like "(Official Video)", "[Lyrics]", etc.
-
-        Args:
-            title: The track title to clean.
-
-        Returns:
-            The cleaned title.
-        """
-        # Remove content in brackets/parentheses if it's metadata
+        """Remove common suffixes like "(Official Video)", "[Lyrics]", etc."""
         patterns = [
             r"\s*[\[\(](official\s*(video|audio|music\s*video|lyric\s*video|visualizer))\s*[\]\)]",
             r"\s*[\[\(](lyrics?|with\s*lyrics?|letra)\s*[\]\)]",
@@ -136,19 +97,10 @@ class RecommendationDomainService:
 
     @classmethod
     def filter_duplicates(cls, recommendations: list[Recommendation]) -> list[Recommendation]:
-        """Remove duplicate recommendations.
-
-        Args:
-            recommendations: List of recommendations.
-
-        Returns:
-            List with duplicates removed.
-        """
         seen_keys: set[str] = set()
         unique: list[Recommendation] = []
 
         for rec in recommendations:
-            # Create a normalized key
             key = f"{(rec.artist or '').lower()}|{rec.title.lower()}"
             if key not in seen_keys:
                 seen_keys.add(key)
@@ -158,14 +110,7 @@ class RecommendationDomainService:
 
     @classmethod
     def validate_recommendations(cls, recommendation_set: RecommendationSet) -> list[str]:
-        """Validate a recommendation set.
-
-        Args:
-            recommendation_set: The set to validate.
-
-        Returns:
-            List of validation error messages (empty if valid).
-        """
+        """Validate a recommendation set, returning error messages."""
         errors: list[str] = []
 
         if recommendation_set.is_empty:

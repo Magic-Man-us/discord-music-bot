@@ -145,7 +145,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         )
         return [self._row_to_track(row) for row in rows]
 
-    async def get_play_count(self, guild_id: int, track_id: str) -> int:
+    async def get_play_count(self, guild_id: int, track_id: TrackId) -> int:
         """Get the number of times a track has been played in a guild.
 
         Args:
@@ -160,7 +160,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             SELECT COUNT(*) as count FROM track_history
             WHERE guild_id = ? AND track_id = ?
             """,
-            (guild_id, track_id),
+            (guild_id, track_id.value),
         )
         return row["count"] if row else 0
 
@@ -212,7 +212,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         logger.info(LogTemplates.HISTORY_CLEARED, count, guild_id)
         return count
 
-    async def mark_finished(self, guild_id: int, track_id: str, skipped: bool = False) -> None:
+    async def mark_finished(self, guild_id: int, track_id: TrackId, skipped: bool = False) -> None:
         """Mark the most recent play of a track as finished.
 
         Args:
@@ -231,7 +231,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
                 LIMIT 1
             )
             """,
-            (UtcDateTime.now().iso, skipped, guild_id, track_id),
+            (UtcDateTime.now().iso, skipped, guild_id, track_id.value),
         )
 
     def _row_to_track(self, row: dict) -> Track:

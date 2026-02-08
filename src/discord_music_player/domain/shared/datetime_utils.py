@@ -1,19 +1,11 @@
-"""Date/time helpers.
-
-Goal: centralize all date/time serialization + parsing.
-
-- Always store and operate on timezone-aware UTC datetimes.
-- Provide common string formats used across the app (DB, logs, Discord).
-
-This module is intentionally dependency-free and safe to use in any layer.
-"""
+"""Date/time helpers for timezone-aware UTC datetimes."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from ...domain.shared.messages import ErrorMessages
+from .messages import ErrorMessages
 
 
 @dataclass(frozen=True, slots=True)
