@@ -331,7 +331,3 @@ pip install --upgrade yt-dlp bgutil-ytdlp-pot-provider
 # Reset the database (deletes all data)
 make db-reset
 ```
-
-## License
-
-BSD 3-Clause License - see [LICENSE](LICENSE) for details. Attribution required.
