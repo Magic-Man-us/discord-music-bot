@@ -54,7 +54,7 @@ class MusicBot(commands.Bot):
             logger.exception(LogTemplates.BOT_CONTAINER_INIT_FAILED, e)
             raise
 
-        await self._reset_stale_sessions()
+        await self._resume_sessions()
         await self._load_cogs()
         self.tree.on_error = self._on_app_command_error
 
@@ -73,28 +73,153 @@ class MusicBot(commands.Bot):
 
         logger.info(LogTemplates.BOT_SETUP_COMPLETE)
 
-    async def _reset_stale_sessions(self) -> None:
-        """Reset all sessions to IDLE on startup to clear stale state from previous runs."""
+    async def _resume_sessions(self) -> None:
+        """Resume playback sessions that were active before bot restart."""
         try:
             from ...domain.music.value_objects import PlaybackState
 
             session_repo = self.container.session_repository
             sessions = await session_repo.get_all_active()
 
+            resumed_count = 0
             reset_count = 0
+
             for session in sessions:
-                if session.state != PlaybackState.IDLE or session.current_track is not None:
-                    session.state = PlaybackState.IDLE
-                    session.current_track = None
-                    await session_repo.save(session)
+                # Skip sessions that are already idle with no tracks
+                if session.state == PlaybackState.IDLE and not session.has_tracks:
+                    continue
+
+                guild = self.get_guild(session.guild_id)
+                if guild is None:
+                    logger.debug(
+                        "Guild %s not found, resetting session", session.guild_id
+                    )
+                    await self._reset_session(session, session_repo)
+                    reset_count += 1
+                    continue
+
+                # Try to resume this session
+                if await self._try_resume_session(session, guild):
+                    resumed_count += 1
+                else:
+                    await self._reset_session(session, session_repo)
                     reset_count += 1
 
+            if resumed_count > 0:
+                logger.info("Resumed %d playback session(s)", resumed_count)
             if reset_count > 0:
-                logger.info(LogTemplates.BOT_STALE_SESSIONS_RESET, reset_count)
-            else:
-                logger.debug(LogTemplates.BOT_NO_STALE_SESSIONS)
+                logger.info("Reset %d stale session(s)", reset_count)
+
         except Exception as e:
             logger.warning(LogTemplates.BOT_STALE_SESSIONS_RESET_FAILED, e)
+
+    async def _try_resume_session(
+        self, session: any, guild: discord.Guild
+    ) -> bool:
+        """Attempt to resume playback for a single session. Returns True if successful."""
+        try:
+            # Skip if no tracks to play
+            if not session.has_tracks:
+                logger.debug("Session %s has no tracks, skipping resume", session.guild_id)
+                return False
+
+            # Find a voice channel with members
+            voice_channel = await self._find_resumable_voice_channel(guild)
+            if voice_channel is None:
+                logger.debug(
+                    "No suitable voice channel found for guild %s", session.guild_id
+                )
+                return False
+
+            # Find a text channel to post the resume prompt
+            text_channel = await self._find_text_channel(guild, session)
+            if text_channel is None:
+                logger.debug(
+                    "No text channel found for guild %s, skipping resume", session.guild_id
+                )
+                return False
+
+            # Connect to voice first
+            voice_adapter = self.container.voice_adapter
+            success = await voice_adapter.ensure_connected(
+                session.guild_id, voice_channel.id
+            )
+            if not success:
+                logger.debug(
+                    "Failed to connect to voice in guild %s", session.guild_id
+                )
+                return False
+
+            # Determine what track to show in the prompt
+            track_title = "Unknown"
+            if session.current_track is not None:
+                track_title = session.current_track.title
+            elif session.queue:
+                track_title = session.queue[0].title
+
+            # Send resume prompt to channel
+            from .views.resume_playback_view import ResumePlaybackView
+
+            playback_service = self.container.playback_service
+            view = ResumePlaybackView(
+                guild_id=session.guild_id,
+                channel_id=text_channel.id,
+                playback_service=playback_service,
+                track_title=track_title,
+            )
+
+            message = await text_channel.send(
+                f"🔄 I was playing **{track_title}** before restarting. Resume playback?",
+                view=view,
+            )
+            view.set_message(message)
+
+            logger.info(
+                "Sent resume prompt for guild %s: %s",
+                session.guild_id,
+                track_title,
+            )
+            return True
+
+        except Exception as e:
+            logger.warning(
+                "Failed to resume session for guild %s: %s", session.guild_id, e
+            )
+            return False
+
+    async def _find_text_channel(
+        self, guild: discord.Guild, session: any
+    ) -> discord.TextChannel | None:
+        """Find a suitable text channel to post the resume prompt."""
+        # Try system channel first
+        if guild.system_channel and isinstance(guild.system_channel, discord.TextChannel):
+            return guild.system_channel
+
+        # Try first text channel bot can send to
+        for channel in guild.text_channels:
+            if channel.permissions_for(guild.me).send_messages:
+                return channel
+
+        return None
+
+    async def _find_resumable_voice_channel(
+        self, guild: discord.Guild
+    ) -> discord.VoiceChannel | None:
+        """Find a voice channel with at least one non-bot member."""
+        for channel in guild.voice_channels:
+            # Count non-bot members
+            member_count = sum(1 for m in channel.members if not m.bot)
+            if member_count > 0:
+                return channel
+        return None
+
+    async def _reset_session(self, session: any, session_repo: any) -> None:
+        """Reset a session to IDLE state."""
+        from ...domain.music.value_objects import PlaybackState
+
+        session.state = PlaybackState.IDLE
+        session.current_track = None
+        await session_repo.save(session)
 
     async def _load_cogs(self) -> None:
         cogs = [

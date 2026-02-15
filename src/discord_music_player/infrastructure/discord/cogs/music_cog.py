@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 from collections import deque
@@ -184,10 +185,56 @@ class MusicCog(commands.Cog):
     ) -> None:
         # Defer early because voice connection can exceed the 3-second interaction deadline
         await interaction.response.defer()
+        await self._execute_play(interaction, query)
 
-        if not await self._ensure_voice(interaction):
+    async def _execute_play(self, interaction: discord.Interaction, query: str) -> None:
+        """Full play flow: voice checks, warmup with retry view, connect, play.
+
+        Expects the interaction to already be deferred.
+        """
+        member = await self._get_member(interaction)
+        if member is None:
             return
 
+        if not member.voice or not member.voice.channel:
+            await self._send_ephemeral(interaction, DiscordUIMessages.STATE_NEED_TO_BE_IN_VOICE)
+            return
+
+        if not interaction.guild:
+            return
+
+        remaining = self.container.voice_warmup_tracker.remaining_seconds(
+            guild_id=interaction.guild.id,
+            user_id=member.id,
+        )
+        if remaining > 0:
+            from ..views.warmup_retry_view import WarmupRetryView
+
+            view = WarmupRetryView(remaining_seconds=remaining, query=query, cog=self)
+            msg = await interaction.followup.send(
+                DiscordUIMessages.STATE_VOICE_WARMUP_REQUIRED.format(remaining=remaining),
+                view=view,
+                ephemeral=True,
+                wait=True,
+            )
+            view.set_message(msg)
+            return
+
+        voice_adapter = self.container.voice_adapter
+        channel_id = member.voice.channel.id
+
+        if not voice_adapter.is_connected(interaction.guild.id):
+            success = await voice_adapter.ensure_connected(interaction.guild.id, channel_id)
+            if not success:
+                await self._send_ephemeral(
+                    interaction, DiscordUIMessages.ERROR_COULD_NOT_JOIN_VOICE
+                )
+                return
+
+        await self._play_track(interaction, query)
+
+    async def _play_track(self, interaction: discord.Interaction, query: str) -> None:
+        """Resolve track, enqueue, start playback, and send response."""
         if not interaction.guild:
             return
 
@@ -204,6 +251,42 @@ class MusicCog(commands.Cog):
                 return
 
             user = interaction.user
+
+            # Check if track is longer than 6 minutes (360 seconds) - trigger vote
+            LONG_TRACK_THRESHOLD = 360
+            if track.duration_seconds and track.duration_seconds > LONG_TRACK_THRESHOLD:
+                if not interaction.channel_id:
+                    await interaction.followup.send(
+                        "Cannot start vote: no channel context.", ephemeral=True
+                    )
+                    return
+
+                # Post vote prompt in channel
+                from ..views.long_track_vote_view import LongTrackVoteView
+
+                view = LongTrackVoteView(
+                    guild_id=interaction.guild.id,
+                    track=track,
+                    requester_id=user.id,
+                    requester_name=getattr(user, "display_name", user.name),
+                    cog=self,
+                )
+
+                channel = self.bot.get_channel(interaction.channel_id)
+                if channel and hasattr(channel, "send"):
+                    msg = await channel.send(
+                        f"⏱️ **{getattr(user, 'display_name', user.name)}** wants to queue a long track ({format_duration(track.duration_seconds)}): **{truncate(track.title, 60)}**\nVote to accept or reject:",
+                        view=view,
+                    )
+                    view.set_message(msg)
+
+                    await interaction.followup.send(
+                        f"⏱️ Started vote for long track: **{truncate(track.title, 60)}**",
+                        ephemeral=True,
+                    )
+                return
+
+            # Normal enqueue flow for tracks ≤6 minutes
             result = await queue_service.enqueue(
                 guild_id=interaction.guild.id,
                 track=track,
@@ -827,6 +910,73 @@ class MusicCog(commands.Cog):
                 DiscordUIMessages.STATE_NOT_ENOUGH_TRACKS_TO_SHUFFLE, ephemeral=True
             )
 
+    @app_commands.command(
+        name="shuffle_history", description="Queue and shuffle all previously played tracks."
+    )
+    @app_commands.describe(limit="Max number of tracks to fetch (default: 100)")
+    async def shuffle_history(self, interaction: discord.Interaction, limit: int = 100) -> None:
+        if not await self._ensure_voice(interaction):
+            return
+
+        assert interaction.guild is not None
+
+        await interaction.response.defer(ephemeral=True)
+
+        history_repo = self.container.history_repository
+        queue_service = self.container.queue_service
+        playback_service = self.container.playback_service
+        user = interaction.user
+
+        # Fetch recent history
+        history_tracks = await history_repo.get_recent(interaction.guild.id, limit=limit)
+        if not history_tracks:
+            await interaction.followup.send(
+                DiscordUIMessages.STATE_NO_TRACKS_PLAYED_YET, ephemeral=True
+            )
+            return
+
+        # Dedupe by track_id using a set
+        seen_ids: set[str] = set()
+        unique_tracks = []
+        for track in history_tracks:
+            if track.id.value not in seen_ids:
+                seen_ids.add(track.id.value)
+                unique_tracks.append(track)
+
+        if not unique_tracks:
+            await interaction.followup.send(
+                DiscordUIMessages.STATE_NO_TRACKS_PLAYED_YET, ephemeral=True
+            )
+            return
+
+        # Shuffle the unique tracks
+        import random
+
+        random.shuffle(unique_tracks)
+
+        # Enqueue all tracks
+        enqueued_count = 0
+        should_start = False
+        for track in unique_tracks:
+            result = await queue_service.enqueue(
+                guild_id=interaction.guild.id,
+                track=track,
+                user_id=user.id,
+                user_name=getattr(user, "display_name", user.name),
+            )
+            if result.success:
+                enqueued_count += 1
+                if result.should_start:
+                    should_start = True
+
+        # Start playback if needed
+        if should_start:
+            await playback_service.start_playback(interaction.guild.id)
+
+        await interaction.followup.send(
+            f"🔀 Shuffled and queued **{enqueued_count}** tracks from history.", ephemeral=True
+        )
+
     @app_commands.command(name="loop", description="Toggle loop mode.")
     async def loop(self, interaction: discord.Interaction) -> None:
         if not await self._ensure_user_in_voice_and_warm(interaction):
@@ -904,34 +1054,118 @@ class MusicCog(commands.Cog):
         name="radio",
         description="Toggle AI radio — auto-queue similar songs.",
     )
-    async def radio(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(
+        query="Optional: song name or URL to seed radio with",
+        action="Action to perform (default: toggle)",
+    )
+    @app_commands.choices(
+        action=[
+            app_commands.Choice(name="Toggle radio on/off", value="toggle"),
+            app_commands.Choice(name="Clear AI recommendations from queue", value="clear"),
+        ]
+    )
+    async def radio(
+        self,
+        interaction: discord.Interaction,
+        query: str | None = None,
+        action: app_commands.Choice[str] | None = None,
+    ) -> None:
         if not await self._ensure_user_in_voice_and_warm(interaction):
             return
 
         assert interaction.guild is not None
 
-        await interaction.response.defer(ephemeral=True)
+        # Handle "clear" action
+        action_value = action.value if action else "toggle"
+        if action_value == "clear":
+            await interaction.response.defer(ephemeral=True)
+            radio_service = self.container.radio_service
+            queue_service = self.container.queue_service
+
+            # Disable radio
+            radio_service.disable_radio(interaction.guild.id)
+
+            # Clear AI recommendations from queue
+            count = await queue_service.clear_recommendations(interaction.guild.id)
+
+            if count > 0:
+                await interaction.followup.send(
+                    f"📻 Radio disabled. Removed **{count}** AI recommendation(s) from the queue.",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.followup.send(
+                    "📻 Radio disabled. No AI recommendations were in the queue.",
+                    ephemeral=True,
+                )
+            return
+
+        # Normal toggle/enable flow
+        await interaction.response.defer()
 
         user = interaction.user
+
         radio_service = self.container.radio_service
 
-        result = await radio_service.toggle_radio(
-            guild_id=interaction.guild.id,
-            user_id=user.id,
-            user_name=getattr(user, "display_name", user.name),
+        # If query provided, play it first, then force-enable radio (don't toggle)
+        if query:
+            await self._execute_play(interaction, query)
+            # Wait a moment for the track to start
+            await asyncio.sleep(0.5)
+
+            # Disable first if already enabled, then enable fresh
+            if radio_service.is_enabled(interaction.guild.id):
+                radio_service.disable_radio(interaction.guild.id)
+
+            result = await radio_service.toggle_radio(
+                guild_id=interaction.guild.id,
+                user_id=user.id,
+                user_name=getattr(user, "display_name", user.name),
+            )
+        else:
+            # No query - normal toggle behavior
+            result = await radio_service.toggle_radio(
+                guild_id=interaction.guild.id,
+                user_id=user.id,
+                user_name=getattr(user, "display_name", user.name),
+            )
+
+        # If disabling radio or error, send ephemeral message
+        if not result.enabled:
+            if result.message:
+                msg = f"{DiscordUIMessages.RADIO_DISABLED} {result.message}"
+            else:
+                msg = DiscordUIMessages.RADIO_DISABLED
+            await interaction.followup.send(msg, ephemeral=True)
+            return
+
+        # Radio enabled - send public message with "Up Next" and shuffle button
+        queue_service = self.container.queue_service
+        queue_info = await queue_service.get_queue(interaction.guild.id)
+
+        embed = discord.Embed(
+            title="📻 Radio Enabled",
+            description=f"Playing similar tracks based on **{result.seed_title}**",
+            color=discord.Color.purple(),
         )
 
-        if result.enabled:
-            msg = DiscordUIMessages.RADIO_ENABLED.format(
-                count=result.tracks_added,
-                seed_title=result.seed_title,
-            )
-        elif result.message:
-            msg = f"{DiscordUIMessages.RADIO_DISABLED} {result.message}"
-        else:
-            msg = DiscordUIMessages.RADIO_DISABLED
+        # Show "Up Next" section with queued tracks
+        if queue_info.tracks:
+            up_next_lines = []
+            for idx, track in enumerate(queue_info.tracks[:result.tracks_added], start=1):
+                title = truncate(track.title, 60)
+                up_next_lines.append(f"{idx}. {title}")
 
-        await interaction.followup.send(msg, ephemeral=True)
+            embed.add_field(
+                name="🎵 Up Next",
+                value="\n".join(up_next_lines) if up_next_lines else "No tracks queued",
+                inline=False,
+            )
+
+        from ..views.radio_view import RadioView
+
+        view = RadioView(guild_id=interaction.guild.id, cog=self)
+        await interaction.followup.send(embed=embed, view=view)
 
     @app_commands.command(name="leave", description="Disconnect from voice channel.")
     async def leave(self, interaction: discord.Interaction) -> None:

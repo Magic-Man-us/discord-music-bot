@@ -189,7 +189,7 @@ class TestSetupHook:
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         with patch.object(bot, "_load_cogs", new_callable=AsyncMock):
-            with patch.object(bot, "_reset_stale_sessions", new_callable=AsyncMock):
+            with patch.object(bot, "_resume_sessions", new_callable=AsyncMock):
                 await bot.setup_hook()
 
         mock_container.initialize.assert_called_once()
@@ -202,7 +202,7 @@ class TestSetupHook:
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         with patch.object(bot, "_load_cogs", new_callable=AsyncMock):
-            with patch.object(bot, "_reset_stale_sessions", new_callable=AsyncMock) as mock_reset:
+            with patch.object(bot, "_resume_sessions", new_callable=AsyncMock) as mock_reset:
                 await bot.setup_hook()
 
         mock_reset.assert_called_once()
@@ -215,7 +215,7 @@ class TestSetupHook:
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         with patch.object(bot, "_load_cogs", new_callable=AsyncMock) as mock_load:
-            with patch.object(bot, "_reset_stale_sessions", new_callable=AsyncMock):
+            with patch.object(bot, "_resume_sessions", new_callable=AsyncMock):
                 await bot.setup_hook()
 
         mock_load.assert_called_once()
@@ -228,7 +228,7 @@ class TestSetupHook:
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         with patch.object(bot, "_load_cogs", new_callable=AsyncMock):
-            with patch.object(bot, "_reset_stale_sessions", new_callable=AsyncMock):
+            with patch.object(bot, "_resume_sessions", new_callable=AsyncMock):
                 await bot.setup_hook()
 
         assert bot.tree.on_error is not None
@@ -241,7 +241,7 @@ class TestSetupHook:
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         with patch.object(bot, "_load_cogs", new_callable=AsyncMock):
-            with patch.object(bot, "_reset_stale_sessions", new_callable=AsyncMock):
+            with patch.object(bot, "_resume_sessions", new_callable=AsyncMock):
                 await bot.setup_hook()
 
         mock_container.cleanup_job.start.assert_called_once()
@@ -255,7 +255,7 @@ class TestSetupHook:
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         with patch.object(bot, "_load_cogs", new_callable=AsyncMock):
-            with patch.object(bot, "_reset_stale_sessions", new_callable=AsyncMock):
+            with patch.object(bot, "_resume_sessions", new_callable=AsyncMock):
                 with patch.object(bot, "_sync_commands", new_callable=AsyncMock) as mock_sync:
                     await bot.setup_hook()
 
@@ -270,7 +270,7 @@ class TestSetupHook:
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         with patch.object(bot, "_load_cogs", new_callable=AsyncMock):
-            with patch.object(bot, "_reset_stale_sessions", new_callable=AsyncMock):
+            with patch.object(bot, "_resume_sessions", new_callable=AsyncMock):
                 with patch.object(bot, "_sync_commands", new_callable=AsyncMock) as mock_sync:
                     await bot.setup_hook()
 
@@ -296,7 +296,7 @@ class TestSetupHook:
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         with patch.object(bot, "_load_cogs", new_callable=AsyncMock):
-            with patch.object(bot, "_reset_stale_sessions", new_callable=AsyncMock):
+            with patch.object(bot, "_resume_sessions", new_callable=AsyncMock):
                 # Should not raise
                 await bot.setup_hook()
 
@@ -309,7 +309,7 @@ class TestSetupHook:
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         with patch.object(bot, "_load_cogs", new_callable=AsyncMock):
-            with patch.object(bot, "_reset_stale_sessions", new_callable=AsyncMock):
+            with patch.object(bot, "_resume_sessions", new_callable=AsyncMock):
                 with patch.object(
                     bot,
                     "_sync_commands",
@@ -325,26 +325,26 @@ class TestSetupHook:
 # =============================================================================
 
 
-class TestResetStaleSessions:
-    """Tests for MusicBot._reset_stale_sessions method."""
+class TestResumeSessions:
+    """Tests for MusicBot._resume_sessions method."""
 
     @pytest.mark.asyncio
-    async def test_reset_stale_sessions_no_sessions(self, mock_container, mock_settings):
+    async def test_resume_sessions_no_sessions(self, mock_container, mock_settings):
         """Should handle no active sessions gracefully."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
         mock_container.session_repository.get_all_active.return_value = []
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
-        await bot._reset_stale_sessions()
+        await bot._resume_sessions()
 
         mock_container.session_repository.get_all_active.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_reset_stale_sessions_resets_playing_sessions(
+    async def test_resume_sessions_resets_when_guild_not_found(
         self, mock_container, mock_settings
     ):
-        """Should reset sessions with current track to IDLE."""
+        """Should reset sessions when guild is not found."""
         from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
         from discord_music_player.domain.music.value_objects import PlaybackState, TrackId
         from discord_music_player.infrastructure.discord.bot import MusicBot
@@ -360,16 +360,18 @@ class TestResetStaleSessions:
 
         mock_container.session_repository.get_all_active.return_value = [session]
         bot = MusicBot(container=mock_container, settings=mock_settings)
+        # Bot has no guilds by default, so guild lookup will fail
 
-        await bot._reset_stale_sessions()
+        await bot._resume_sessions()
 
+        # Session should be reset when guild not found
         assert session.state == PlaybackState.IDLE
         assert session.current_track is None
         mock_container.session_repository.save.assert_called_once_with(session)
 
     @pytest.mark.asyncio
-    async def test_reset_stale_sessions_skips_idle_sessions(self, mock_container, mock_settings):
-        """Should not modify already idle sessions."""
+    async def test_resume_sessions_skips_idle_sessions(self, mock_container, mock_settings):
+        """Should skip sessions that are already idle with no tracks."""
         from discord_music_player.domain.music.entities import GuildPlaybackSession
         from discord_music_player.domain.music.value_objects import PlaybackState
         from discord_music_player.infrastructure.discord.bot import MusicBot
@@ -381,20 +383,21 @@ class TestResetStaleSessions:
         mock_container.session_repository.get_all_active.return_value = [session]
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
-        await bot._reset_stale_sessions()
+        await bot._resume_sessions()
 
+        # Should skip idle sessions with no tracks
         mock_container.session_repository.save.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_reset_stale_sessions_handles_error(self, mock_container, mock_settings):
-        """Should handle errors during session reset gracefully."""
+    async def test_resume_sessions_handles_error(self, mock_container, mock_settings):
+        """Should handle errors during session resume gracefully."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
         mock_container.session_repository.get_all_active.side_effect = Exception("DB error")
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         # Should not raise
-        await bot._reset_stale_sessions()
+        await bot._resume_sessions()
 
 
 # =============================================================================

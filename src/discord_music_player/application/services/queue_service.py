@@ -160,6 +160,17 @@ class QueueApplicationService:
         logger.info(LogTemplates.QUEUE_CLEARED, count, guild_id)
         return count
 
+    async def clear_recommendations(self, guild_id: int) -> int:
+        """Clear only AI-recommended tracks from the queue."""
+        session = await self._session_repo.get(guild_id)
+        if session is None:
+            return 0
+
+        count = session.clear_recommendations()
+        await self._session_repo.save(session)
+        logger.info("Cleared %d AI recommendations from queue in guild %s", count, guild_id)
+        return count
+
     async def shuffle(self, guild_id: int) -> bool:
         session = await self._session_repo.get(guild_id)
         if session is None or not session.queue:

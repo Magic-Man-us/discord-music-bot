@@ -200,6 +200,15 @@ class GuildPlaybackSession:
         self.touch()
         return count
 
+    def clear_recommendations(self) -> int:
+        """Clear only AI-recommended tracks from the queue and return the count removed."""
+        original_count = len(self.queue)
+        self.queue = [track for track in self.queue if not track.is_from_recommendation]
+        removed_count = original_count - len(self.queue)
+        if removed_count > 0:
+            self.touch()
+        return removed_count
+
     def set_current_track(self, track: Track | None) -> None:
         """Set the currently playing track."""
         self.current_track = track

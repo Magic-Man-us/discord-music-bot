@@ -135,7 +135,7 @@ class TestDiscordSettings:
         assert discord.owner_ids == ()
         assert discord.guild_ids == ()
         assert discord.test_guild_ids == ()
-        assert discord.sync_on_startup is False
+        assert discord.sync_on_startup is True
 
     def test_create_with_custom_token(self):
         """Should accept custom bot token."""

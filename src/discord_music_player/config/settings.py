@@ -64,7 +64,7 @@ class DiscordSettings(BaseModel):
     test_guild_ids: tuple[int, ...] = Field(
         default_factory=tuple, validation_alias=AliasChoices("test_guild_ids", "test_guilds")
     )
-    sync_on_startup: bool = False
+    sync_on_startup: bool = True
 
     @field_validator("owner_ids", "guild_ids", "test_guild_ids", mode="before")
     @classmethod

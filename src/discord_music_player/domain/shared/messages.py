@@ -410,6 +410,7 @@ class DiscordUIMessages:
     STATE_VOICE_WARMUP_REQUIRED = (
         "You must be in the voice channel for {remaining}s before you can use commands."
     )
+    STATE_VOICE_WARMUP_READY = "You can now use commands! Click **Retry** to play."
     STATE_SERVER_ONLY = "This command can only be used in a server."
     STATE_VERIFY_VOICE_FAILED = "Could not verify your voice state."
     STATE_VERIFY_PERMISSIONS_FAILED = "Could not verify your permissions."
