@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord.ext import commands
@@ -113,9 +113,7 @@ class MusicBot(commands.Bot):
         except Exception as e:
             logger.warning(LogTemplates.BOT_STALE_SESSIONS_RESET_FAILED, e)
 
-    async def _try_resume_session(
-        self, session: any, guild: discord.Guild
-    ) -> bool:
+    async def _try_resume_session(self, session: Any, guild: discord.Guild) -> bool:
         """Attempt to resume playback for a single session. Returns True if successful."""
         try:
             # Skip if no tracks to play
@@ -188,7 +186,7 @@ class MusicBot(commands.Bot):
             return False
 
     async def _find_text_channel(
-        self, guild: discord.Guild, session: any
+        self, guild: discord.Guild, session: Any
     ) -> discord.TextChannel | None:
         """Find a suitable text channel to post the resume prompt."""
         # Try system channel first
@@ -213,7 +211,7 @@ class MusicBot(commands.Bot):
                 return channel
         return None
 
-    async def _reset_session(self, session: any, session_repo: any) -> None:
+    async def _reset_session(self, session: Any, session_repo: Any) -> None:
         """Reset a session to IDLE state."""
         from ...domain.music.value_objects import PlaybackState
 
