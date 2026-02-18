@@ -33,8 +33,10 @@ class VoiceAdapter(ABC):
         ...
 
     @abstractmethod
-    async def play(self, guild_id: int, track: "Track") -> bool:
-        """Start playing a track."""
+    async def play(
+        self, guild_id: int, track: "Track", *, start_seconds: int | None = None
+    ) -> bool:
+        """Start playing a track, optionally seeking to *start_seconds*."""
         ...
 
     @abstractmethod

@@ -41,6 +41,9 @@ class PlaybackApplicationService:
 
         self._on_track_finished_callback: Callable[[int, Track], Any] | None = None
 
+        # Optional seek offset (seconds) consumed on next playback start per guild.
+        self._pending_start_seconds: dict[int, int] = {}
+
         # When we intentionally stop audio (skip/stop), discord.py still fires
         # the "after" callback. Suppress the next event per guild to avoid double-advancing.
         self._ignore_next_voice_track_end: set[int] = set()
@@ -64,8 +67,12 @@ class PlaybackApplicationService:
     def set_track_finished_callback(self, callback: Callable[[int, Track], Any]) -> None:
         self._on_track_finished_callback = callback
 
-    async def start_playback(self, guild_id: int) -> bool:
+    async def start_playback(
+        self, guild_id: int, *, start_seconds: int | None = None
+    ) -> bool:
         """Start playback of the next track in queue."""
+        if start_seconds is not None:
+            self._pending_start_seconds[guild_id] = start_seconds
         logger.info(LogTemplates.PLAYBACK_START_CALLED, guild_id)
 
         session = await self._session_repo.get(guild_id)
@@ -155,7 +162,10 @@ class PlaybackApplicationService:
 
     async def _start_voice_playback(self, session: Any, track: Track, guild_id: int) -> bool:
         try:
-            success = await self._voice_adapter.play(guild_id, track)
+            seek = self._pending_start_seconds.pop(guild_id, None)
+            success = await self._voice_adapter.play(
+                guild_id, track, start_seconds=seek
+            )
             if not success:
                 logger.error(LogTemplates.VOICE_ADAPTER_FAILED, guild_id)
                 session.set_current_track(None)

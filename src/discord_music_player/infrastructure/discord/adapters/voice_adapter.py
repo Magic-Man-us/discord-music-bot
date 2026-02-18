@@ -161,7 +161,9 @@ class DiscordVoiceAdapter(VoiceAdapter):
     # TODO(integ): Test playing a short audio clip via FFmpeg on a live voice connection.
     # Verify: is_playing() returns True, volume transformer is applied, after_callback fires
     # when the clip ends, and _handle_track_end propagates correctly.
-    async def play(self, guild_id: int, track: Track) -> bool:
+    async def play(
+        self, guild_id: int, track: Track, *, start_seconds: int | None = None
+    ) -> bool:
         vc = self._get_voice_client(guild_id)
         if not vc:
             logger.warning(LogTemplates.VOICE_NOT_CONNECTED, guild_id)
@@ -178,6 +180,8 @@ class DiscordVoiceAdapter(VoiceAdapter):
             # User-Agent must match yt-dlp's Android client to prevent YouTube 403
             base_before_opts = self._ffmpeg_options.get("before_options", "")
             before_opts = f'{base_before_opts} -headers "User-Agent: {ANDROID_USER_AGENT}"'
+            if start_seconds:
+                before_opts = f"-ss {start_seconds} {before_opts}"
             base_opts = self._ffmpeg_options.get("options", "")
 
             fade_opts = f'{base_opts} -af "afade=t=in:ss=0:d={FADE_IN_SECONDS}"'

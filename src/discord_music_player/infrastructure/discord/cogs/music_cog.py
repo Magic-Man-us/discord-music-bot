@@ -18,7 +18,12 @@ from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.value_objects import LoopMode
 from discord_music_player.domain.shared.messages import DiscordUIMessages
 from discord_music_player.domain.voting.value_objects import VoteResult
-from discord_music_player.utils.reply import format_duration, truncate
+from discord_music_player.utils.reply import (
+    extract_youtube_timestamp,
+    format_duration,
+    parse_timestamp,
+    truncate,
+)
 
 if TYPE_CHECKING:
     from ....application.commands.vote_skip import VoteSkipResult
@@ -177,17 +182,40 @@ class MusicCog(commands.Cog):
         return True
 
     @app_commands.command(name="play", description="Play a song by URL or search query.")
-    @app_commands.describe(query="YouTube URL or search query")
+    @app_commands.describe(
+        query="YouTube URL or search query",
+        timestamp='Start position (e.g. "1:30" or "90")',
+    )
     async def play(
         self,
         interaction: discord.Interaction,
         query: str,
+        timestamp: str | None = None,
     ) -> None:
+        start_seconds: int | None = None
+        if timestamp is not None:
+            start_seconds = parse_timestamp(timestamp)
+            if start_seconds is None:
+                await interaction.response.send_message(
+                    "Invalid timestamp format. Use `1:30`, `1:30:00`, or seconds like `90`.",
+                    ephemeral=True,
+                )
+                return
+        else:
+            # Auto-extract from YouTube URL ?t= parameter
+            start_seconds = extract_youtube_timestamp(query)
+
         # Defer early because voice connection can exceed the 3-second interaction deadline
         await interaction.response.defer()
-        await self._execute_play(interaction, query)
+        await self._execute_play(interaction, query, start_seconds=start_seconds)
 
-    async def _execute_play(self, interaction: discord.Interaction, query: str) -> None:
+    async def _execute_play(
+        self,
+        interaction: discord.Interaction,
+        query: str,
+        *,
+        start_seconds: int | None = None,
+    ) -> None:
         """Full play flow: voice checks, warmup with retry view, connect, play.
 
         Expects the interaction to already be deferred.
@@ -231,9 +259,15 @@ class MusicCog(commands.Cog):
                 )
                 return
 
-        await self._play_track(interaction, query)
+        await self._play_track(interaction, query, start_seconds=start_seconds)
 
-    async def _play_track(self, interaction: discord.Interaction, query: str) -> None:
+    async def _play_track(
+        self,
+        interaction: discord.Interaction,
+        query: str,
+        *,
+        start_seconds: int | None = None,
+    ) -> None:
         """Resolve track, enqueue, start playback, and send response."""
         if not interaction.guild:
             return
@@ -253,40 +287,46 @@ class MusicCog(commands.Cog):
             user = interaction.user
 
             # Check if track is longer than 6 minutes (360 seconds) - trigger vote
+            # Skip the vote if there are 4 or fewer listeners in the channel
             LONG_TRACK_THRESHOLD = 360
+            SMALL_CHANNEL_LIMIT = 4
             if track.duration_seconds and track.duration_seconds > LONG_TRACK_THRESHOLD:
-                if not interaction.channel_id:
-                    await interaction.followup.send(
-                        "Cannot start vote: no channel context.", ephemeral=True
+                listeners = await self.container.voice_adapter.get_listeners(
+                    interaction.guild.id
+                )
+                if len(listeners) > SMALL_CHANNEL_LIMIT:
+                    if not interaction.channel_id:
+                        await interaction.followup.send(
+                            "Cannot start vote: no channel context.", ephemeral=True
+                        )
+                        return
+
+                    # Post vote prompt in channel
+                    from ..views.long_track_vote_view import LongTrackVoteView
+
+                    view = LongTrackVoteView(
+                        guild_id=interaction.guild.id,
+                        track=track,
+                        requester_id=user.id,
+                        requester_name=getattr(user, "display_name", user.name),
+                        cog=self,
                     )
+
+                    channel = self.bot.get_channel(interaction.channel_id)
+                    if channel and hasattr(channel, "send"):
+                        msg = await channel.send(
+                            f"⏱️ **{getattr(user, 'display_name', user.name)}** wants to queue a long track ({format_duration(track.duration_seconds)}): **{truncate(track.title, 60)}**\nVote to accept or reject:",
+                            view=view,
+                        )
+                        view.set_message(msg)
+
+                        await interaction.followup.send(
+                            f"⏱️ Started vote for long track: **{truncate(track.title, 60)}**",
+                            ephemeral=True,
+                        )
                     return
 
-                # Post vote prompt in channel
-                from ..views.long_track_vote_view import LongTrackVoteView
-
-                view = LongTrackVoteView(
-                    guild_id=interaction.guild.id,
-                    track=track,
-                    requester_id=user.id,
-                    requester_name=getattr(user, "display_name", user.name),
-                    cog=self,
-                )
-
-                channel = self.bot.get_channel(interaction.channel_id)
-                if channel and hasattr(channel, "send"):
-                    msg = await channel.send(
-                        f"⏱️ **{getattr(user, 'display_name', user.name)}** wants to queue a long track ({format_duration(track.duration_seconds)}): **{truncate(track.title, 60)}**\nVote to accept or reject:",
-                        view=view,
-                    )
-                    view.set_message(msg)
-
-                    await interaction.followup.send(
-                        f"⏱️ Started vote for long track: **{truncate(track.title, 60)}**",
-                        ephemeral=True,
-                    )
-                return
-
-            # Normal enqueue flow for tracks ≤6 minutes
+            # Normal enqueue flow (tracks ≤6 min, or long tracks in small channels)
             result = await queue_service.enqueue(
                 guild_id=interaction.guild.id,
                 track=track,
@@ -308,7 +348,9 @@ class MusicCog(commands.Cog):
                     "Calling start_playback for guild %s",
                     interaction.guild.id,
                 )
-                await playback_service.start_playback(interaction.guild.id)
+                await playback_service.start_playback(
+                    interaction.guild.id, start_seconds=start_seconds
+                )
 
             resolved_track = result.track or track
 
