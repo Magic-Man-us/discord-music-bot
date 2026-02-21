@@ -8,7 +8,7 @@ from typing import Annotated, ClassVar
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from discord_music_player.domain.shared.datetime_utils import utcnow
-from discord_music_player.domain.shared.types import NonEmptyStr, UnitInterval
+from discord_music_player.domain.shared.types import HttpUrlStr, NonEmptyStr, PositiveInt, UnitInterval
 
 
 class RecommendationRequest(BaseModel):
@@ -17,10 +17,10 @@ class RecommendationRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     base_track_title: NonEmptyStr
-    base_track_artist: str | None = None
-    count: Annotated[int, Field(ge=1, le=10)] = 3
-    genre_hint: str | None = None
-    exclude_tracks: frozenset[str] = Field(default_factory=frozenset)
+    base_track_artist: NonEmptyStr | None = None
+    count: Annotated[PositiveInt, Field(le=10)] = 3
+    genre_hint: NonEmptyStr | None = None
+    exclude_tracks: frozenset[NonEmptyStr] = Field(default_factory=frozenset)
 
     @property
     def cache_key(self) -> str:
@@ -34,11 +34,11 @@ class Recommendation(BaseModel):
     """A single track recommendation that hasn't been resolved yet."""
 
     title: NonEmptyStr
-    artist: str | None = None
-    query: str = ""  # Search query for resolution
-    url: str | None = None  # Optional direct URL
+    artist: NonEmptyStr | None = None
+    query: str = ""  # Search query for resolution (set by model validator)
+    url: HttpUrlStr | None = None  # Optional direct URL
     confidence: UnitInterval = 1.0  # Confidence score from AI
-    reason: str | None = None  # Why this was recommended
+    reason: NonEmptyStr | None = None  # Why this was recommended
 
     @model_validator(mode="after")
     def _set_default_query(self) -> Recommendation:
@@ -60,7 +60,7 @@ class RecommendationSet(BaseModel):
     """Aggregate grouping recommendations for a specific base track."""
 
     base_track_title: NonEmptyStr
-    base_track_artist: str | None = None
+    base_track_artist: NonEmptyStr | None = None
     recommendations: list[Recommendation] = Field(default_factory=list)
     generated_at: datetime = Field(default_factory=utcnow)
     expires_at: datetime | None = None

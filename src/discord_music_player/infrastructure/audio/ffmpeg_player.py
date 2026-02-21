@@ -13,6 +13,7 @@ import discord
 from pydantic import BaseModel
 
 from discord_music_player.config.settings import AudioSettings
+from discord_music_player.domain.shared.types import NonNegativeFloat, NonNegativeInt, PositiveInt, VolumeFloat
 from discord_music_player.domain.shared.messages import LogTemplates
 
 if TYPE_CHECKING:
@@ -33,11 +34,11 @@ class PlayerState(Enum):
 class FFmpegConfig(BaseModel):
     reconnect: bool = True
     reconnect_streamed: bool = True
-    reconnect_delay_max: int = 5
+    reconnect_delay_max: NonNegativeInt = 5
     disable_video: bool = True
-    fade_in_seconds: float = 0.5
-    default_volume: float = 0.5
-    buffer_size: int = 1024 * 1024
+    fade_in_seconds: NonNegativeFloat = 0.5
+    default_volume: VolumeFloat = 0.5
+    buffer_size: PositiveInt = 1024 * 1024
 
     def get_before_options(self) -> str:
         opts = []

@@ -242,7 +242,7 @@ class TestAudioSettings:
 
     def test_queue_size_validation_minimum(self):
         """Should raise ValidationError for queue size below minimum."""
-        with pytest.raises(ValidationError, match="greater than or equal to 1"):
+        with pytest.raises(ValidationError, match="greater than 0"):
             AudioSettings(max_queue_size=0)
 
     def test_queue_size_validation_maximum(self):
@@ -365,7 +365,7 @@ class TestVotingSettings:
 
     def test_min_voters_validation(self):
         """Should raise ValidationError for min_voters below 1."""
-        with pytest.raises(ValidationError, match="greater than or equal to 1"):
+        with pytest.raises(ValidationError, match="greater than 0"):
             VotingSettings(min_voters=0)
 
 
@@ -386,12 +386,12 @@ class TestCleanupSettings:
 
     def test_stale_session_hours_validation(self):
         """Should raise ValidationError for stale_session_hours below 1."""
-        with pytest.raises(ValidationError, match="greater than or equal to 1"):
+        with pytest.raises(ValidationError, match="greater than 0"):
             CleanupSettings(stale_session_hours=0)
 
     def test_cleanup_interval_validation(self):
         """Should raise ValidationError for cleanup_interval_minutes below 1."""
-        with pytest.raises(ValidationError, match="greater than or equal to 1"):
+        with pytest.raises(ValidationError, match="greater than 0"):
             CleanupSettings(cleanup_interval_minutes=0)
 
     def test_custom_retention_periods(self):

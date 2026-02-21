@@ -14,6 +14,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.shared.datetime_utils import utcnow
+from discord_music_player.domain.shared.types import (
+    ChannelIdField,
+    DiscordSnowflake,
+    NonEmptyStr,
+    NonNegativeInt,
+    QueuePositionInt,
+    UserIdField,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,135 +42,135 @@ class DomainEvent(BaseModel):
 
 
 class TrackAddedToQueue(DomainEvent):
-    guild_id: int = 0
+    guild_id: DiscordSnowflake | None = None
     track_id: TrackId | None = None
-    track_title: str = ""
-    requested_by_id: int = 0
-    queue_position: int = 0
+    track_title: NonEmptyStr | None = None
+    requested_by_id: DiscordSnowflake | None = None
+    queue_position: QueuePositionInt = 0
 
 
 class TrackStartedPlaying(DomainEvent):
-    guild_id: int = 0
+    guild_id: DiscordSnowflake | None = None
     track_id: TrackId | None = None
-    track_title: str = ""
-    track_url: str = ""
-    duration_seconds: int | None = None
+    track_title: NonEmptyStr | None = None
+    track_url: NonEmptyStr | None = None
+    duration_seconds: NonNegativeInt | None = None
 
 
 class TrackFinishedPlaying(DomainEvent):
-    guild_id: int = 0
+    guild_id: DiscordSnowflake | None = None
     track_id: TrackId | None = None
-    track_title: str = ""
+    track_title: NonEmptyStr | None = None
     was_skipped: bool = False
 
 
 class TrackSkipped(DomainEvent):
-    guild_id: int = 0
+    guild_id: DiscordSnowflake | None = None
     track_id: TrackId | None = None
-    track_title: str = ""
-    skipped_by_id: int = 0
+    track_title: NonEmptyStr | None = None
+    skipped_by_id: DiscordSnowflake | None = None
     via_vote: bool = False
 
 
 class QueueCleared(DomainEvent):
-    guild_id: int = 0
-    cleared_by_id: int = 0
-    track_count: int = 0
+    guild_id: DiscordSnowflake | None = None
+    cleared_by_id: DiscordSnowflake | None = None
+    track_count: NonNegativeInt = 0
 
 
 class PlaybackStopped(DomainEvent):
-    guild_id: int = 0
-    stopped_by_id: int = 0
+    guild_id: DiscordSnowflake | None = None
+    stopped_by_id: DiscordSnowflake | None = None
 
 
 class PlaybackPaused(DomainEvent):
-    guild_id: int = 0
-    paused_by_id: int = 0
+    guild_id: DiscordSnowflake | None = None
+    paused_by_id: DiscordSnowflake | None = None
 
 
 class PlaybackResumed(DomainEvent):
-    guild_id: int = 0
-    resumed_by_id: int = 0
+    guild_id: DiscordSnowflake | None = None
+    resumed_by_id: DiscordSnowflake | None = None
 
 
 class QueueExhausted(DomainEvent):
-    guild_id: int = 0
+    guild_id: DiscordSnowflake | None = None
     last_track_id: TrackId | None = None
-    last_track_title: str = ""
+    last_track_title: NonEmptyStr | None = None
 
 
 # === Voice Events ===
 
 
 class BotJoinedVoiceChannel(DomainEvent):
-    guild_id: int = 0
-    channel_id: int = 0
-    channel_name: str = ""
+    guild_id: DiscordSnowflake | None = None
+    channel_id: ChannelIdField | None = None
+    channel_name: NonEmptyStr | None = None
 
 
 class BotLeftVoiceChannel(DomainEvent):
-    guild_id: int = 0
-    channel_id: int = 0
-    reason: str = ""
+    guild_id: DiscordSnowflake | None = None
+    channel_id: ChannelIdField | None = None
+    reason: NonEmptyStr | None = None
 
 
 class VoiceChannelEmpty(DomainEvent):
-    guild_id: int = 0
-    channel_id: int = 0
+    guild_id: DiscordSnowflake | None = None
+    channel_id: ChannelIdField | None = None
 
 
 class VoiceMemberJoinedVoiceChannel(DomainEvent):
-    guild_id: int = 0
-    channel_id: int = 0
-    user_id: int = 0
+    guild_id: DiscordSnowflake | None = None
+    channel_id: ChannelIdField | None = None
+    user_id: UserIdField | None = None
 
 
 class VoiceMemberLeftVoiceChannel(DomainEvent):
-    guild_id: int = 0
-    channel_id: int = 0
-    user_id: int = 0
+    guild_id: DiscordSnowflake | None = None
+    channel_id: ChannelIdField | None = None
+    user_id: UserIdField | None = None
 
 
 # === Vote Events ===
 
 
 class VoteSkipStarted(DomainEvent):
-    guild_id: int = 0
+    guild_id: DiscordSnowflake | None = None
     track_id: TrackId | None = None
-    initiated_by_id: int = 0
-    votes_needed: int = 0
+    initiated_by_id: DiscordSnowflake | None = None
+    votes_needed: NonNegativeInt = 0
 
 
 class VoteSkipCast(DomainEvent):
-    guild_id: int = 0
-    voter_id: int = 0
-    current_votes: int = 0
-    votes_needed: int = 0
+    guild_id: DiscordSnowflake | None = None
+    voter_id: UserIdField | None = None
+    current_votes: NonNegativeInt = 0
+    votes_needed: NonNegativeInt = 0
 
 
 class VoteSkipPassed(DomainEvent):
-    guild_id: int = 0
+    guild_id: DiscordSnowflake | None = None
     track_id: TrackId | None = None
-    total_votes: int = 0
+    total_votes: NonNegativeInt = 0
 
 
 class VoteSkipFailed(DomainEvent):
-    guild_id: int = 0
+    guild_id: DiscordSnowflake | None = None
     track_id: TrackId | None = None
-    total_votes: int = 0
-    votes_needed: int = 0
+    total_votes: NonNegativeInt = 0
+    votes_needed: NonNegativeInt = 0
 
 
 # === Session Events ===
 
 
 class SessionCreated(DomainEvent):
-    guild_id: int = 0
+    guild_id: DiscordSnowflake | None = None
 
 
 class SessionDestroyed(DomainEvent):
-    guild_id: int = 0
-    reason: str = ""
+    guild_id: DiscordSnowflake | None = None
+    reason: NonEmptyStr | None = None
 
 
 # === Event Bus ===

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict
 
 from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.shared.types import NonNegativeInt
+from discord_music_player.domain.shared.types import DiscordSnowflake, NonNegativeInt
 
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository
@@ -16,12 +16,12 @@ if TYPE_CHECKING:
 class GetCurrentTrackQuery(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    guild_id: int
+    guild_id: DiscordSnowflake
 
 
 class CurrentTrackInfo(BaseModel):
 
-    guild_id: int
+    guild_id: DiscordSnowflake
     track: Track | None = None
     is_playing: bool = False
     is_paused: bool = False

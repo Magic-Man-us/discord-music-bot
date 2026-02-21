@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import discord
 from pydantic import BaseModel, ConfigDict, Field
 
+from discord_music_player.domain.shared.types import DiscordSnowflake, NonEmptyStr, UserIdField
 from discord_music_player.utils.reply import format_duration, truncate
 
 if TYPE_CHECKING:
@@ -24,8 +25,8 @@ logger = logging.getLogger(__name__)
 class TrackKey(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    track_id: str
-    requested_by_id: int | None = None
+    track_id: NonEmptyStr
+    requested_by_id: UserIdField | None = None
     requested_at: datetime | None = None
 
     @classmethod
@@ -38,8 +39,8 @@ class TrackKey(BaseModel):
 
 
 class TrackedMessage(BaseModel):
-    channel_id: int
-    message_id: int
+    channel_id: DiscordSnowflake
+    message_id: DiscordSnowflake
     track_key: TrackKey
 
     @classmethod

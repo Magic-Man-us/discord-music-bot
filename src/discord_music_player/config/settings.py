@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ..domain.shared.types import DiscordSnowflake, PositiveInt, UnitInterval, VolumeFloat
 from ..domain.shared.validators import validate_discord_snowflake
 
 
@@ -55,13 +56,13 @@ class DiscordSettings(BaseModel):
         max_length=5,
         validation_alias=AliasChoices("command_prefix", "prefix"),
     )
-    owner_ids: tuple[int, ...] = Field(
+    owner_ids: tuple[DiscordSnowflake, ...] = Field(
         default_factory=tuple, validation_alias=AliasChoices("owner_ids", "owners")
     )
-    guild_ids: tuple[int, ...] = Field(
+    guild_ids: tuple[DiscordSnowflake, ...] = Field(
         default_factory=tuple, validation_alias=AliasChoices("guild_ids", "guilds")
     )
-    test_guild_ids: tuple[int, ...] = Field(
+    test_guild_ids: tuple[DiscordSnowflake, ...] = Field(
         default_factory=tuple, validation_alias=AliasChoices("test_guild_ids", "test_guilds")
     )
     sync_on_startup: bool = True
@@ -80,8 +81,8 @@ class AudioSettings(BaseModel):
 
     model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
 
-    default_volume: float = Field(default=0.5, ge=0.0, le=2.0)
-    max_queue_size: int = Field(default=50, ge=1, le=1000)
+    default_volume: VolumeFloat = 0.5
+    max_queue_size: PositiveInt = Field(default=50, le=1000)
     ffmpeg_options: dict[str, str] = Field(
         default_factory=lambda: {
             "before_options": (
@@ -131,25 +132,25 @@ class VotingSettings(BaseModel):
 
     model_config = SettingsConfigDict(frozen=True, strict=True)
 
-    skip_threshold_percentage: float = Field(default=0.5, ge=0.0, le=1.0)
-    min_voters: int = Field(default=1, ge=1)
-    auto_skip_listener_count: int = Field(default=2, ge=1)
+    skip_threshold_percentage: UnitInterval = 0.5
+    min_voters: PositiveInt = 1
+    auto_skip_listener_count: PositiveInt = 2
 
 
 class RadioSettings(BaseModel):
 
     model_config = SettingsConfigDict(frozen=True, strict=True)
 
-    default_count: int = Field(default=5, ge=1, le=10)
-    max_tracks_per_session: int = Field(default=50, ge=1, le=200)
+    default_count: PositiveInt = Field(default=5, le=10)
+    max_tracks_per_session: PositiveInt = Field(default=50, le=200)
 
 
 class CleanupSettings(BaseModel):
 
     model_config = SettingsConfigDict(frozen=True, strict=True)
 
-    stale_session_hours: int = Field(default=24, ge=1)
-    cleanup_interval_minutes: int = Field(default=30, ge=1)
+    stale_session_hours: PositiveInt = 24
+    cleanup_interval_minutes: PositiveInt = 30
 
 
 class Settings(BaseSettings):

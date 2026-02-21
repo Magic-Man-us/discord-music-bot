@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field
 
 from discord_music_player.domain.music.entities import Track
+from discord_music_player.domain.shared.types import DiscordSnowflake, NonNegativeInt
 
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository
@@ -15,15 +16,15 @@ if TYPE_CHECKING:
 class GetQueueQuery(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    guild_id: int
+    guild_id: DiscordSnowflake
 
 
 class QueueInfo(BaseModel):
 
-    guild_id: int
+    guild_id: DiscordSnowflake
     tracks: list[Track] = Field(default_factory=list)
     current_track: Track | None = None
-    total_duration: int | None = None
+    total_duration: NonNegativeInt | None = None
 
     @property
     def length(self) -> int:
