@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -65,7 +65,7 @@ class RecommendationSet(BaseModel):
     generated_at: datetime = Field(default_factory=utcnow)
     expires_at: datetime | None = None
 
-    DEFAULT_CACHE_HOURS: int = 24
+    DEFAULT_CACHE_HOURS: ClassVar[int] = 24
 
     @model_validator(mode="after")
     def _set_default_expires_at(self) -> RecommendationSet:

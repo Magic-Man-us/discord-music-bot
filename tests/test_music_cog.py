@@ -260,7 +260,7 @@ class TestTrackKey:
         """Should be immutable (frozen)."""
         key = TrackKey.from_track(sample_track)
 
-        with pytest.raises(AttributeError):
+        with pytest.raises(Exception):
             key.track_id = "modified"
 
 

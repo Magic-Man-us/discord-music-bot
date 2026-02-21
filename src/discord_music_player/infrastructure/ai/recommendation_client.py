@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -75,10 +74,9 @@ Format each recommendation with:
 """
 
 
-@dataclass
-class CacheEntry:
+class CacheEntry(BaseModel):
     data: list[dict[str, Any]]
-    created_at: float = field(default_factory=time.time)
+    created_at: float = Field(default_factory=time.time)
 
     def is_expired(self, ttl_seconds: int) -> bool:
         return (time.time() - self.created_at) > ttl_seconds

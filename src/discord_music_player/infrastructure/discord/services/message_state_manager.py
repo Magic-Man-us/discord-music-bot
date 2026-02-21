@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 import discord
+from pydantic import BaseModel, ConfigDict, Field
 
 from discord_music_player.utils.reply import format_duration, truncate
 
@@ -21,11 +21,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@dataclass(slots=True, frozen=True)
-class TrackKey:
+class TrackKey(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     track_id: str
-    requested_by_id: int | None
-    requested_at: datetime | None
+    requested_by_id: int | None = None
+    requested_at: datetime | None = None
 
     @classmethod
     def from_track(cls, track: Track) -> TrackKey:
@@ -36,8 +37,7 @@ class TrackKey:
         )
 
 
-@dataclass(slots=True)
-class TrackedMessage:
+class TrackedMessage(BaseModel):
     channel_id: int
     message_id: int
     track_key: TrackKey
@@ -51,10 +51,9 @@ class TrackedMessage:
         )
 
 
-@dataclass(slots=True)
-class GuildMessageState:
+class GuildMessageState(BaseModel):
     now_playing: TrackedMessage | None = None
-    queued: deque[TrackedMessage] = field(default_factory=deque)
+    queued: deque[TrackedMessage] = Field(default_factory=deque)
 
     def pop_matching_queued(self, track: Track) -> TrackedMessage | None:
         target = TrackKey.from_track(track)

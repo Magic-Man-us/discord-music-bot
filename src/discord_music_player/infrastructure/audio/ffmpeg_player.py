@@ -6,11 +6,11 @@ import asyncio
 import logging
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 import discord
+from pydantic import BaseModel
 
 from discord_music_player.config.settings import AudioSettings
 from discord_music_player.domain.shared.messages import LogTemplates
@@ -30,8 +30,7 @@ class PlayerState(Enum):
     ERROR = "error"
 
 
-@dataclass
-class FFmpegConfig:
+class FFmpegConfig(BaseModel):
     reconnect: bool = True
     reconnect_streamed: bool = True
     reconnect_delay_max: int = 5

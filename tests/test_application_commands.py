@@ -1355,8 +1355,8 @@ class TestVoteSkipHandler:
             track_id=TrackId("test123"),
             vote_type=VoteType.SKIP,
             threshold=2,
+            _voters={111},
         )
-        vote_session._voters = {111}
         mock_vote_repo.get_or_create.return_value = vote_session
 
         command = VoteSkipCommand(

@@ -59,8 +59,8 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
             vote_type=VoteType(row["vote_type"]),
             threshold=row["threshold"],
             started_at=UtcDateTime.from_iso(row["started_at"]).dt,
+            _voters=voters,
         )
-        session._voters = voters
 
         if session.is_expired:
             await self.delete(guild_id, session.vote_type)

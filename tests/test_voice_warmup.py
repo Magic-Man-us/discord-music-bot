@@ -42,7 +42,7 @@ class TestVoiceWarmupTracker:
             tracker.mark_joined(guild_id=1, user_id=2, joined_at=naive)
 
     def test_negative_warmup_seconds_raises(self) -> None:
-        with pytest.raises(ValueError, match="non-negative"):
+        with pytest.raises(ValueError):
             VoiceWarmupTracker(warmup_seconds=-1)
 
     def test_remaining_seconds_naive_now_raises(self) -> None:

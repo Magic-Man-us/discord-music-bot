@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -42,7 +43,7 @@ class VoteSession(BaseModel):
     expires_at: datetime | None = None
     _voters: set[int] = set()
 
-    DEFAULT_EXPIRATION_MINUTES: int = 5
+    DEFAULT_EXPIRATION_MINUTES: ClassVar[int] = 5
 
     def __init__(self, **kwargs: object) -> None:
         # Extract _voters before Pydantic init if passed

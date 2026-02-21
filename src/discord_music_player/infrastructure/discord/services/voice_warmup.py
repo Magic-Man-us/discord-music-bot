@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from math import ceil
 
+from pydantic import BaseModel, field_validator
 
-@dataclass
-class VoiceWarmupTracker:
+from discord_music_player.domain.shared.types import NonNegativeInt
+
+
+class VoiceWarmupTracker(BaseModel):
     """Blocks interactions until a user has been in voice for ``warmup_seconds``."""
 
-    warmup_seconds: int = 60
+    warmup_seconds: NonNegativeInt = 60
 
-    def __post_init__(self) -> None:
-        if self.warmup_seconds < 0:
-            raise ValueError("warmup_seconds must be non-negative")
-        self._joined_at: dict[tuple[int, int], datetime] = {}
+    def __init__(self, **kwargs: object) -> None:
+        super().__init__(**kwargs)
+        object.__setattr__(self, "_joined_at", {})
 
     def mark_joined(
         self,
