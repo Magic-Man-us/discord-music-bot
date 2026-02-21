@@ -422,6 +422,9 @@ class DiscordUIMessages:
     ANALYTICS_NO_DATA = "No music has been played yet in this server."
     ANALYTICS_GENRE_UNAVAILABLE = "Genre data unavailable (AI service not configured)."
 
+    # Up Next
+    UP_NEXT_NONE = "No Track Queued"
+
     # State Messages
     STATE_NOTHING_PLAYING = "Nothing is playing."
     STATE_NOTHING_PLAYING_OR_PAUSED = "Nothing is playing or already paused."

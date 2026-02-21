@@ -14,6 +14,9 @@ from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     send_ephemeral,
 )
+from discord_music_player.infrastructure.discord.services.message_state_manager import (
+    MessageStateManager,
+)
 from discord_music_player.utils.reply import format_duration, truncate
 
 if TYPE_CHECKING:
@@ -46,23 +49,9 @@ class NowPlayingCog(commands.Cog):
             return
 
         track = queue_info.current_track
+        upcoming = queue_info.tracks[0] if queue_info.tracks else None
 
-        embed = discord.Embed(
-            title=DiscordUIMessages.EMBED_NOW_PLAYING,
-            description=f"**{track.title}**",
-            color=discord.Color.green(),
-        )
-
-        if track.thumbnail_url:
-            embed.set_thumbnail(url=track.thumbnail_url)
-
-        embed.add_field(
-            name="\u23f1\ufe0f Duration", value=format_duration(track.duration_seconds), inline=True
-        )
-
-        embed.add_field(
-            name="\U0001f464 Requested by", value=track.requested_by_name or "Unknown", inline=True
-        )
+        embed = MessageStateManager.build_now_playing_embed(track, next_track=upcoming)
 
         from ..views.now_playing_view import NowPlayingView
 

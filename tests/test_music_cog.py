@@ -566,7 +566,20 @@ class TestMessageStateManagerFormatting:
         assert embed.title == "🎵 Now Playing"
         assert sample_track.title in embed.description
         assert embed.thumbnail.url == sample_track.thumbnail_url
-        assert len(embed.fields) == 3  # Duration, Artist, Likes
+        assert len(embed.fields) == 4  # Duration, Artist, Likes, Up Next
+        assert embed.fields[-1].name == "⏭️ Next Up"
+        assert embed.fields[-1].value == "No Track Queued"
+
+    def test_build_now_playing_embed_with_next_track(self, sample_track):
+        """Should build embed with next track info."""
+        next_track = Track(
+            id=TrackId("next"),
+            title="Next Song",
+            webpage_url="https://example.com/next",
+        )
+        embed = MessageStateManager.build_now_playing_embed(sample_track, next_track=next_track)
+        assert embed.fields[-1].name == "⏭️ Next Up"
+        assert "Next Song" in embed.fields[-1].value
 
     def test_build_now_playing_embed_minimal_track(self):
         """Should build embed for track with minimal info."""
@@ -578,6 +591,8 @@ class TestMessageStateManagerFormatting:
         embed = MessageStateManager.build_now_playing_embed(track)
         assert isinstance(embed, discord.Embed)
         assert track.title in embed.description
+        assert len(embed.fields) == 2  # Duration, Up Next
+        assert embed.fields[-1].value == "No Track Queued"
 
 
 # =============================================================================
@@ -936,9 +951,10 @@ class TestCurrentCommand:
     async def test_current_with_track(
         self, now_playing_cog, mock_interaction, mock_container, sample_track
     ):
-        """Should display current track."""
+        """Should display current track using canonical embed."""
         queue_info = MagicMock()
         queue_info.current_track = sample_track
+        queue_info.tracks = []
         mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
         await now_playing_cog.current.callback(now_playing_cog, mock_interaction)

@@ -16,6 +16,9 @@ from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     ensure_voice,
 )
+from discord_music_player.infrastructure.discord.services.message_state_manager import (
+    MessageStateManager,
+)
 from discord_music_player.utils.reply import format_duration, truncate
 
 if TYPE_CHECKING:
@@ -63,10 +66,19 @@ class QueueCog(commands.Cog):
         )
 
         if queue_info.current_track:
+            ct = queue_info.current_track
+            requester = MessageStateManager.format_requester(ct)
+            artist_or_uploader = ct.artist or ct.uploader
+
+            np_parts = [f"[{truncate(ct.title, 80)}]({ct.webpage_url})"]
+            np_parts.append(f"Requested by: {requester}")
+            if artist_or_uploader:
+                np_parts.append(f"Artist: {truncate(artist_or_uploader, 64)}")
+            np_parts.append(f"Duration: {format_duration(ct.duration_seconds)}")
+
             embed.add_field(
                 name="\U0001f3b5 Now Playing",
-                value=f"**{truncate(queue_info.current_track.title)}**\n"
-                f"Duration: {format_duration(queue_info.current_track.duration_seconds)}",
+                value="\n".join(np_parts),
                 inline=False,
             )
 

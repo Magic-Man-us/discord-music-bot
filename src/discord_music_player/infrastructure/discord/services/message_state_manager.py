@@ -197,6 +197,12 @@ class MessageStateManager:
                 value=truncate(next_track.title, 60),
                 inline=False,
             )
+        else:
+            embed.add_field(
+                name="\u23ed\ufe0f Next Up",
+                value=DiscordUIMessages.UP_NEXT_NONE,
+                inline=False,
+            )
 
         return embed
 
