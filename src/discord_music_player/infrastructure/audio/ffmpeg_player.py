@@ -13,7 +13,7 @@ import discord
 from pydantic import BaseModel
 
 from discord_music_player.config.settings import AudioSettings
-from discord_music_player.domain.shared.types import NonNegativeFloat, NonNegativeInt, PositiveInt, VolumeFloat
+from discord_music_player.domain.shared.types import DiscordSnowflake, NonNegativeFloat, NonNegativeInt, PositiveInt, VolumeFloat
 from discord_music_player.domain.shared.messages import LogTemplates
 
 if TYPE_CHECKING:
@@ -65,13 +65,13 @@ class FFmpegPlayer:
     ) -> None:
         self._settings = settings or AudioSettings()
         self._config = config or FFmpegConfig(default_volume=self._settings.default_volume)
-        self._active_sources: dict[int, discord.AudioSource] = {}
-        self._active_processes: dict[int, subprocess.Popen[bytes]] = {}
-        self._states: dict[int, PlayerState] = {}
-        self._on_error: Callable[[int, Exception], None] | None = None
+        self._active_sources: dict[DiscordSnowflake, discord.AudioSource] = {}
+        self._active_processes: dict[DiscordSnowflake, subprocess.Popen[bytes]] = {}
+        self._states: dict[DiscordSnowflake, PlayerState] = {}
+        self._on_error: Callable[[DiscordSnowflake, Exception], None] | None = None
 
     def create_source(
-        self, track: Track, volume: float | None = None
+        self, track: Track, volume: VolumeFloat | None = None
     ) -> discord.PCMVolumeTransformer:
         if not track.stream_url:
             raise ValueError(f"Track '{track.title}' has no stream URL")
@@ -102,8 +102,8 @@ class FFmpegPlayer:
         self,
         voice_client: discord.VoiceClient,
         track: Track,
-        guild_id: int,
-        volume: float | None = None,
+        guild_id: DiscordSnowflake,
+        volume: VolumeFloat | None = None,
         after: Callable[[Exception | None], Any] | None = None,
     ) -> bool:
         self._states[guild_id] = PlayerState.LOADING
@@ -146,7 +146,7 @@ class FFmpegPlayer:
             self._cleanup_guild(guild_id)
             return False
 
-    def stop(self, voice_client: discord.VoiceClient, guild_id: int) -> bool:
+    def stop(self, voice_client: discord.VoiceClient, guild_id: DiscordSnowflake) -> bool:
         self._states[guild_id] = PlayerState.STOPPING
 
         try:
@@ -162,7 +162,7 @@ class FFmpegPlayer:
             logger.error(LogTemplates.PLAYBACK_FAILED_STOP, e)
             return False
 
-    def pause(self, voice_client: discord.VoiceClient, guild_id: int) -> bool:
+    def pause(self, voice_client: discord.VoiceClient, guild_id: DiscordSnowflake) -> bool:
         try:
             if voice_client.is_playing():
                 voice_client.pause()
@@ -174,7 +174,7 @@ class FFmpegPlayer:
             logger.error(LogTemplates.PLAYBACK_FAILED_PAUSE, e)
             return False
 
-    def resume(self, voice_client: discord.VoiceClient, guild_id: int) -> bool:
+    def resume(self, voice_client: discord.VoiceClient, guild_id: DiscordSnowflake) -> bool:
         try:
             if voice_client.is_paused():
                 voice_client.resume()
@@ -186,7 +186,7 @@ class FFmpegPlayer:
             logger.error(LogTemplates.PLAYBACK_FAILED_RESUME, e)
             return False
 
-    def set_volume(self, voice_client: discord.VoiceClient, volume: float) -> bool:
+    def set_volume(self, voice_client: discord.VoiceClient, volume: VolumeFloat) -> bool:
         try:
             source = voice_client.source
             if isinstance(source, discord.PCMVolumeTransformer):
@@ -197,7 +197,7 @@ class FFmpegPlayer:
             logger.error(LogTemplates.PLAYBACK_FAILED_VOLUME, e)
             return False
 
-    def get_volume(self, voice_client: discord.VoiceClient) -> float | None:
+    def get_volume(self, voice_client: discord.VoiceClient) -> VolumeFloat | None:
         try:
             source = voice_client.source
             if isinstance(source, discord.PCMVolumeTransformer):
@@ -206,10 +206,10 @@ class FFmpegPlayer:
         except Exception:
             return None
 
-    def get_state(self, guild_id: int) -> PlayerState:
+    def get_state(self, guild_id: DiscordSnowflake) -> PlayerState:
         return self._states.get(guild_id, PlayerState.IDLE)
 
-    def _cleanup_guild(self, guild_id: int) -> None:
+    def _cleanup_guild(self, guild_id: DiscordSnowflake) -> None:
         source = self._active_sources.pop(guild_id, None)
         if source:
             try:
@@ -234,7 +234,7 @@ class FFmpegPlayer:
         logger.info(LogTemplates.FFMPEG_RESOURCES_CLEANED, len(guild_ids))
         return len(guild_ids)
 
-    def set_error_handler(self, handler: Callable[[int, Exception], None]) -> None:
+    def set_error_handler(self, handler: Callable[[DiscordSnowflake, Exception], None]) -> None:
         self._on_error = handler
 
     def get_active_count(self) -> int:

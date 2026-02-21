@@ -41,7 +41,7 @@ class VoteSession(BaseModel):
     threshold: PositiveInt
     started_at: datetime = Field(default_factory=utcnow)
     expires_at: datetime | None = None
-    _voters: set[int] = set()
+    _voters: set[DiscordSnowflake] = set()
 
     DEFAULT_EXPIRATION_MINUTES: ClassVar[int] = 5
 
@@ -77,10 +77,10 @@ class VoteSession(BaseModel):
         return utcnow() > self.expires_at
 
     @property
-    def voters(self) -> frozenset[int]:
+    def voters(self) -> frozenset[DiscordSnowflake]:
         return frozenset(self._voters)
 
-    def add_vote(self, user_id: int) -> bool:
+    def add_vote(self, user_id: DiscordSnowflake) -> bool:
         """Add a vote. Returns True if this vote caused the threshold to be met."""
         if self.has_voted(user_id):
             return False
@@ -88,13 +88,13 @@ class VoteSession(BaseModel):
         self._voters.add(user_id)
         return self.is_threshold_met
 
-    def remove_vote(self, user_id: int) -> bool:
+    def remove_vote(self, user_id: DiscordSnowflake) -> bool:
         if user_id in self._voters:
             self._voters.remove(user_id)
             return True
         return False
 
-    def has_voted(self, user_id: int) -> bool:
+    def has_voted(self, user_id: DiscordSnowflake) -> bool:
         return user_id in self._voters
 
     def reset(self, new_track_id: TrackId | None = None) -> None:
@@ -105,10 +105,10 @@ class VoteSession(BaseModel):
         if new_track_id is not None:
             self.track_id = new_track_id
 
-    def extend_expiration(self, minutes: int = 5) -> None:
+    def extend_expiration(self, minutes: PositiveInt = 5) -> None:
         self.expires_at = utcnow() + timedelta(minutes=minutes)
 
-    def update_threshold(self, new_threshold: int) -> None:
+    def update_threshold(self, new_threshold: PositiveInt) -> None:
         """Update threshold, e.g. when listeners join or leave the channel."""
         if new_threshold < 1:
             raise ValueError(ErrorMessages.INVALID_THRESHOLD)
@@ -119,7 +119,7 @@ class VoteSession(BaseModel):
 
     @classmethod
     def create_skip_session(
-        cls, guild_id: int, track_id: TrackId, listener_count: int
+        cls, guild_id: DiscordSnowflake, track_id: TrackId, listener_count: PositiveInt
     ) -> VoteSession:
         """Create a skip vote session with an auto-calculated threshold."""
         from .services import VotingDomainService

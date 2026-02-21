@@ -29,14 +29,16 @@ class TestYtDlpResolver:
 
     @pytest.fixture
     def mock_info_dict(self):
-        """Sample yt-dlp info dictionary."""
-        return {
-            "title": "Test Song",
-            "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            "url": "https://audio-stream.example.com/stream.mp3",
-            "duration": 180,
-            "thumbnail": "https://example.com/thumb.jpg",
-        }
+        """Sample yt-dlp info as a YtDlpTrackInfo model."""
+        from discord_music_player.infrastructure.audio.models import YtDlpTrackInfo
+
+        return YtDlpTrackInfo(
+            title="Test Song",
+            webpage_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            url="https://audio-stream.example.com/stream.mp3",
+            duration=180,
+            thumbnail="https://example.com/thumb.jpg",
+        )
 
     # Happy Path Tests
 
@@ -744,7 +746,7 @@ class TestYtDlpHelpers:
         from discord_music_player.infrastructure.audio.ytdlp_resolver import _generate_track_id
 
         url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-        track_id = _generate_track_id(url, "Test Song")
+        track_id = _generate_track_id(url)
 
         # Should extract the YouTube video ID
         assert track_id == "dQw4w9WgXcQ"
@@ -754,7 +756,7 @@ class TestYtDlpHelpers:
         from discord_music_player.infrastructure.audio.ytdlp_resolver import _generate_track_id
 
         url = "https://example.com/some-audio.mp3"
-        track_id = _generate_track_id(url, "Test Song")
+        track_id = _generate_track_id(url)
 
         # Should return hash of URL
         assert len(track_id) == 16

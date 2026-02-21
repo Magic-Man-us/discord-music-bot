@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from ...domain.music.entities import Track
-from ...domain.shared.types import NonNegativeInt
+from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, NonNegativeInt, QueuePositionInt
 from ...domain.music.value_objects import LoopMode
 from ...domain.shared.messages import LogTemplates
 
@@ -63,10 +63,10 @@ class QueueApplicationService:
 
     async def enqueue(
         self,
-        guild_id: int,
+        guild_id: DiscordSnowflake,
         track: Track,
-        user_id: int,
-        user_name: str,
+        user_id: DiscordSnowflake,
+        user_name: NonEmptyStr,
     ) -> EnqueueResult:
         session = await self._session_repo.get_or_create(guild_id)
 
@@ -111,10 +111,10 @@ class QueueApplicationService:
 
     async def enqueue_next(
         self,
-        guild_id: int,
+        guild_id: DiscordSnowflake,
         track: Track,
-        user_id: int,
-        user_name: str,
+        user_id: DiscordSnowflake,
+        user_name: NonEmptyStr,
     ) -> EnqueueResult:
         """Add a track to the front of the queue."""
         session = await self._session_repo.get_or_create(guild_id)
@@ -150,7 +150,7 @@ class QueueApplicationService:
             message="Added to play next",
         )
 
-    async def remove(self, guild_id: int, position: int) -> Track | None:
+    async def remove(self, guild_id: DiscordSnowflake, position: QueuePositionInt) -> Track | None:
         session = await self._session_repo.get(guild_id)
         if session is None:
             return None
@@ -162,7 +162,7 @@ class QueueApplicationService:
 
         return track
 
-    async def clear(self, guild_id: int) -> int:
+    async def clear(self, guild_id: DiscordSnowflake) -> int:
         session = await self._session_repo.get(guild_id)
         if session is None:
             return 0
@@ -172,7 +172,7 @@ class QueueApplicationService:
         logger.info(LogTemplates.QUEUE_CLEARED, count, guild_id)
         return count
 
-    async def clear_recommendations(self, guild_id: int) -> int:
+    async def clear_recommendations(self, guild_id: DiscordSnowflake) -> int:
         """Clear only AI-recommended tracks from the queue."""
         session = await self._session_repo.get(guild_id)
         if session is None:
@@ -183,7 +183,7 @@ class QueueApplicationService:
         logger.info("Cleared %d AI recommendations from queue in guild %s", count, guild_id)
         return count
 
-    async def shuffle(self, guild_id: int) -> bool:
+    async def shuffle(self, guild_id: DiscordSnowflake) -> bool:
         session = await self._session_repo.get(guild_id)
         if session is None or not session.queue:
             return False
@@ -193,7 +193,7 @@ class QueueApplicationService:
         logger.info(LogTemplates.QUEUE_SHUFFLED, guild_id)
         return True
 
-    async def move(self, guild_id: int, from_pos: int, to_pos: int) -> bool:
+    async def move(self, guild_id: DiscordSnowflake, from_pos: QueuePositionInt, to_pos: QueuePositionInt) -> bool:
         session = await self._session_repo.get(guild_id)
         if session is None:
             return False
@@ -205,7 +205,7 @@ class QueueApplicationService:
 
         return success
 
-    async def get_queue(self, guild_id: int) -> QueueInfo:
+    async def get_queue(self, guild_id: DiscordSnowflake) -> QueueInfo:
         session = await self._session_repo.get(guild_id)
         if session is None:
             return QueueInfo(
@@ -236,7 +236,7 @@ class QueueApplicationService:
             total_duration_seconds=total_duration if has_all_durations else None,
         )
 
-    async def toggle_loop(self, guild_id: int) -> LoopMode:
+    async def toggle_loop(self, guild_id: DiscordSnowflake) -> LoopMode:
         session = await self._session_repo.get_or_create(guild_id)
         new_mode = session.toggle_loop()
         await self._session_repo.save(session)

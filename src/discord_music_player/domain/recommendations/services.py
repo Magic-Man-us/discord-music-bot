@@ -1,25 +1,38 @@
-"""Domain services containing recommendation business logic."""
+"""Domain services containing recommendation business logic.
+
+Thin service that delegates to entity methods and title utilities.
+Most logic now lives on the Pydantic models themselves:
+- ``RecommendationRequest.from_track()`` — build request from a Track
+- ``RecommendationSet.deduplicate()`` — remove duplicate recommendations
+- ``RecommendationSet.validate_set()`` — check for empty / expired state
+
+The classmethods below are kept as a stable public API so that existing
+call-sites (radio_service, tests) don't break.  They forward to the models.
+"""
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING
 
 from .entities import (
+    DEFAULT_RECOMMENDATION_COUNT,
     Recommendation,
     RecommendationRequest,
     RecommendationSet,
 )
+from .title_utils import clean_title, extract_artist_from_title
 
 if TYPE_CHECKING:
     from ..music.entities import Track
 
 
 class RecommendationDomainService:
-    """Recommendation-related business rules and transformations."""
+    """Recommendation-related business rules and transformations.
 
-    DEFAULT_RECOMMENDATION_COUNT = 3
-    MAX_RECOMMENDATION_COUNT = 10
+    Delegates to entity methods; kept for backward-compatible call-sites.
+    """
+
+    # ── Forwarding helpers (stable public API) ─────────────────────────
 
     @classmethod
     def create_request_from_track(
@@ -28,97 +41,27 @@ class RecommendationDomainService:
         count: int = DEFAULT_RECOMMENDATION_COUNT,
         exclude_ids: list[str] | None = None,
     ) -> RecommendationRequest:
-        artist = cls.extract_artist_from_title(track.title)
-        title = cls.clean_title(track.title)
+        return RecommendationRequest.from_track(track, count=count, exclude_ids=exclude_ids)
 
-        exclude_set = frozenset(exclude_ids) if exclude_ids else frozenset()
+    @staticmethod
+    def extract_artist_from_title(title: str) -> str | None:
+        return extract_artist_from_title(title)
 
-        return RecommendationRequest(
-            base_track_title=title,
-            base_track_artist=artist,
-            count=min(count, cls.MAX_RECOMMENDATION_COUNT),
-            exclude_tracks=exclude_set,
-        )
+    @staticmethod
+    def clean_title(title: str) -> str:
+        return clean_title(title)
 
-    @classmethod
-    def extract_artist_from_title(cls, title: str) -> str | None:
-        """Try to extract artist name from a track title.
-
-        Common formats:
-        - "Artist - Song Title"
-        - "Artist: Song Title"
-        - "Song Title by Artist"
-        """
-        if " - " in title:
-            parts = title.split(" - ", 1)
-            if len(parts) == 2:
-                artist = parts[0].strip()
-                if not cls._is_common_prefix(artist):
-                    return artist
-
-        by_match = re.search(r"\s+by\s+(.+?)(?:\s*[\[\(]|$)", title, re.IGNORECASE)
-        if by_match:
-            return by_match.group(1).strip()
-
-        return None
-
-    @classmethod
-    def clean_title(cls, title: str) -> str:
-        """Remove common suffixes like "(Official Video)", "[Lyrics]", etc."""
-        patterns = [
-            r"\s*[\[\(](official\s*(video|audio|music\s*video|lyric\s*video|visualizer))\s*[\]\)]",
-            r"\s*[\[\(](lyrics?|with\s*lyrics?|letra)\s*[\]\)]",
-            r"\s*[\[\(](hd|hq|4k|1080p|720p)\s*[\]\)]",
-            r"\s*[\[\(](audio)\s*[\]\)]",
-            r"\s*[\[\(](remaster(ed)?|remix)\s*[\]\)]",
-            r"\s*[\[\(](ft\.?|feat\.?|featuring)\s+[^\]\)]+[\]\)]",
-        ]
-
-        result = title
-        for pattern in patterns:
-            result = re.sub(pattern, "", result, flags=re.IGNORECASE)
-
-        return result.strip()
-
-    @classmethod
-    def _is_common_prefix(cls, text: str) -> bool:
-        """Check if text is a common non-artist prefix."""
-        common_prefixes = {
-            "official",
-            "vevo",
-            "music",
-            "audio",
-            "video",
-            "topic",
-            "lyrics",
-            "lyric",
-            "hd",
-            "hq",
-        }
-        return text.lower() in common_prefixes
-
-    @classmethod
-    def filter_duplicates(cls, recommendations: list[Recommendation]) -> list[Recommendation]:
-        seen_keys: set[str] = set()
+    @staticmethod
+    def filter_duplicates(recommendations: list[Recommendation]) -> list[Recommendation]:
+        """Deduplicate a free-standing list (not yet in a RecommendationSet)."""
+        seen: set[str] = set()
         unique: list[Recommendation] = []
-
         for rec in recommendations:
-            key = f"{(rec.artist or '').lower()}|{rec.title.lower()}"
-            if key not in seen_keys:
-                seen_keys.add(key)
+            if rec.dedup_key not in seen:
+                seen.add(rec.dedup_key)
                 unique.append(rec)
-
         return unique
 
-    @classmethod
-    def validate_recommendations(cls, recommendation_set: RecommendationSet) -> list[str]:
-        """Validate a recommendation set, returning error messages."""
-        errors: list[str] = []
-
-        if recommendation_set.is_empty:
-            errors.append("No recommendations in set")
-
-        if recommendation_set.is_expired:
-            errors.append("Recommendation set has expired")
-
-        return errors
+    @staticmethod
+    def validate_recommendations(recommendation_set: RecommendationSet) -> list[str]:
+        return recommendation_set.validate_set()

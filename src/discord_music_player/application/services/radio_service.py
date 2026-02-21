@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from ...domain.music.entities import Track
-from ...domain.shared.types import NonNegativeInt
+from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, NonNegativeInt, PositiveInt, TrackTitleStr
 from ...domain.recommendations.services import RecommendationDomainService
 from ...domain.shared.messages import LogTemplates
 
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class _RadioState(BaseModel):
 
     enabled: bool = False
-    seed_track_title: str = ""
+    seed_track_title: TrackTitleStr | None = None
     tracks_generated: NonNegativeInt = 0
 
 
@@ -33,8 +33,8 @@ class RadioToggleResult(BaseModel):
 
     enabled: bool
     tracks_added: NonNegativeInt = 0
-    seed_title: str = ""
-    message: str = ""
+    seed_title: TrackTitleStr | None = None
+    message: NonEmptyStr = "Radio toggled."
 
 
 class RadioApplicationService:
@@ -54,17 +54,17 @@ class RadioApplicationService:
         self._queue_service = queue_service
         self._session_repo = session_repository
         self._settings = settings
-        self._states: dict[int, _RadioState] = {}
+        self._states: dict[DiscordSnowflake, _RadioState] = {}
 
-    def is_enabled(self, guild_id: int) -> bool:
+    def is_enabled(self, guild_id: DiscordSnowflake) -> bool:
         state = self._states.get(guild_id)
         return state is not None and state.enabled
 
     async def toggle_radio(
         self,
-        guild_id: int,
-        user_id: int,
-        user_name: str,
+        guild_id: DiscordSnowflake,
+        user_id: DiscordSnowflake,
+        user_name: NonEmptyStr,
     ) -> RadioToggleResult:
         """Toggle radio on/off, seeding from the currently playing track when enabling."""
         if self.is_enabled(guild_id):
@@ -105,13 +105,13 @@ class RadioApplicationService:
             seed_title=current_track.title,
         )
 
-    def disable_radio(self, guild_id: int) -> None:
+    def disable_radio(self, guild_id: DiscordSnowflake) -> None:
         had_state = guild_id in self._states
         self._states.pop(guild_id, None)
         if had_state:
             logger.info(LogTemplates.RADIO_DISABLED, guild_id)
 
-    async def refill_queue(self, guild_id: int) -> int:
+    async def refill_queue(self, guild_id: DiscordSnowflake) -> int:
         """Refill the queue with more radio tracks when the queue is exhausted."""
         state = self._states.get(guild_id)
         if state is None or not state.enabled:
@@ -162,11 +162,11 @@ class RadioApplicationService:
     async def _generate_and_enqueue(
         self,
         *,
-        guild_id: int,
+        guild_id: DiscordSnowflake,
         base_track: Track,
-        user_id: int,
-        user_name: str,
-        count: int,
+        user_id: DiscordSnowflake,
+        user_name: NonEmptyStr,
+        count: PositiveInt,
     ) -> int:
         """Generate recommendations and enqueue resolved tracks."""
         session = await self._session_repo.get(guild_id)

@@ -13,6 +13,7 @@ import pytest
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.recommendations.entities import (
+    MAX_RECOMMENDATION_COUNT,
     Recommendation,
     RecommendationRequest,
     RecommendationSet,
@@ -287,7 +288,7 @@ class TestRecommendationDomainService:
     def test_create_request_caps_count(self, track):
         """Should cap count at MAX_RECOMMENDATION_COUNT."""
         request = RecommendationDomainService.create_request_from_track(track, count=100)
-        assert request.count <= RecommendationDomainService.MAX_RECOMMENDATION_COUNT
+        assert request.count <= MAX_RECOMMENDATION_COUNT
 
     def test_create_request_with_exclude_ids(self, track):
         """Should include exclude IDs."""

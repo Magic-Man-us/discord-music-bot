@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from discord_music_player.domain.music.value_objects import TrackId
+from discord_music_player.domain.shared.types import DiscordSnowflake, NonNegativeInt, PositiveInt
 from discord_music_player.domain.voting.entities import VoteSession
 from discord_music_player.domain.voting.value_objects import VoteResult
 
@@ -19,7 +20,7 @@ class VotingDomainService:
     SMALL_AUDIENCE_SIZE = 2  # If <= this many listeners, anyone can skip
 
     @classmethod
-    def calculate_threshold(cls, listener_count: int) -> int:
+    def calculate_threshold(cls, listener_count: NonNegativeInt) -> PositiveInt:
         """Calculate the vote threshold (majority rule: more than half must vote)."""
         if listener_count <= 0:
             return cls.MINIMUM_THRESHOLD
@@ -28,7 +29,7 @@ class VotingDomainService:
         return max(cls.MINIMUM_THRESHOLD, threshold)
 
     @classmethod
-    def can_auto_skip(cls, user_id: int, track: "Track", listener_count: int) -> bool:
+    def can_auto_skip(cls, user_id: DiscordSnowflake, track: Track, listener_count: NonNegativeInt) -> bool:
         """Check if a user can skip without voting (requester or small audience)."""
         if track.was_requested_by(user_id):
             return True
@@ -42,9 +43,9 @@ class VotingDomainService:
     def evaluate_vote(
         cls,
         session: VoteSession,
-        user_id: int,
-        track: "Track | None" = None,
-        listener_count: int = 0,
+        user_id: DiscordSnowflake,
+        track: Track | None = None,
+        listener_count: NonNegativeInt = 0,
         user_in_channel: bool = True,
     ) -> tuple[VoteResult, VoteSession]:
         """Evaluate a vote and return the result with the updated session."""

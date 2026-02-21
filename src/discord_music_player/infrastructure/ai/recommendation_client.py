@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
-from typing import Any
+from typing import Final
 
-from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
 from discord_music_player.application.interfaces.ai_client import AIClient
@@ -17,38 +15,18 @@ from discord_music_player.domain.recommendations.entities import (
     RecommendationRequest,
 )
 from discord_music_player.domain.shared.messages import LogTemplates
-
-
-class AIRecommendationItem(BaseModel):
-    title: str = Field(..., min_length=1)
-    artist: str | None = None
-    query: str = ""
-    url: str | None = None
-
-    def to_domain(self) -> Recommendation:
-        query = self.query or f"{self.artist or ''} {self.title}".strip()
-        return Recommendation(
-            title=self.title,
-            artist=self.artist,
-            query=query,
-            url=self.url,
-        )
-
-
-class AIRecommendationResponse(BaseModel):
-    """Structured output returned by the AI agent."""
-
-    recs: list[AIRecommendationItem] = Field(default_factory=list)
-
-    def to_domain_list(self) -> list[Recommendation]:
-        return [item.to_domain() for item in self.recs]
-
+from discord_music_player.domain.shared.types import NonEmptyStr, PositiveInt
+from discord_music_player.infrastructure.ai.models import (
+    AI_TIMEOUT,
+    AICacheEntry,
+    AICacheStats,
+    AIRecommendationItem,
+    AIRecommendationResponse,
+)
 
 logger = logging.getLogger(__name__)
 
-AI_TIMEOUT: float = 20.0
-
-SYSTEM_PROMPT = """You are an expert music recommender specializing in finding highly similar tracks.
+SYSTEM_PROMPT: Final[str] = """You are an expert music recommender specializing in finding highly similar tracks.
 
 Your goal: Recommend songs that share MULTIPLE characteristics with the base track:
 - Same or very similar genre
@@ -74,23 +52,15 @@ Format each recommendation with:
 """
 
 
-class CacheEntry(BaseModel):
-    data: list[dict[str, Any]]
-    created_at: float = Field(default_factory=time.time)
-
-    def is_expired(self, ttl_seconds: int) -> bool:
-        return (time.time() - self.created_at) > ttl_seconds
-
-
 class AIRecommendationClient(AIClient):
     def __init__(self, settings: AISettings | None = None) -> None:
         self._settings = settings or AISettings()
         self._agent: Agent[None, AIRecommendationResponse] | None = None
 
-        self._cache: dict[str, CacheEntry] = {}
+        self._cache: dict[NonEmptyStr, AICacheEntry] = {}
         self._cache_hits: int = 0
         self._cache_misses: int = 0
-        self._inflight: dict[str, asyncio.Future[list[dict[str, Any]]]] = {}
+        self._inflight: dict[NonEmptyStr, asyncio.Future[list[AIRecommendationItem]]] = {}
 
     def _get_agent(self) -> Agent[None, AIRecommendationResponse]:
         if self._agent is not None:
@@ -104,7 +74,7 @@ class AIRecommendationClient(AIClient):
         logger.info(LogTemplates.AI_CLIENT_INITIALIZED, self._settings.model, AI_TIMEOUT)
         return self._agent
 
-    def _cache_key(self, request: RecommendationRequest) -> str:
+    def _cache_key(self, request: RecommendationRequest) -> NonEmptyStr:
         title = request.base_track_title.strip().lower()
         artist = (request.base_track_artist or "").strip().lower()
         return f"{title}|{artist}|{request.count}|{self._settings.model}"
@@ -136,7 +106,7 @@ class AIRecommendationClient(AIClient):
 
     async def _fetch_recommendations_raw(
         self, request: RecommendationRequest
-    ) -> list[dict[str, Any]]:
+    ) -> list[AIRecommendationItem]:
         cache_key = self._cache_key(request)
 
         if cache_key in self._cache:
@@ -155,7 +125,7 @@ class AIRecommendationClient(AIClient):
             logger.debug(LogTemplates.CACHE_JOIN_INFLIGHT, request.base_track_title)
             return await self._inflight[cache_key]
 
-        future: asyncio.Future[list[dict[str, Any]]] = asyncio.Future()
+        future: asyncio.Future[list[AIRecommendationItem]] = asyncio.Future()
         self._inflight[cache_key] = future
 
         try:
@@ -171,16 +141,14 @@ class AIRecommendationClient(AIClient):
 
             response = await self._call_api(user_prompt)
 
-            recs = [item.model_dump() for item in response.recs]
-
-            self._cache[cache_key] = CacheEntry(data=recs)
-            future.set_result(recs)
+            self._cache[cache_key] = AICacheEntry(data=response.recs)
+            future.set_result(response.recs)
 
             logger.debug(
-                LogTemplates.AI_GENERATED_RECOMMENDATIONS, len(recs), request.base_track_title
+                LogTemplates.AI_GENERATED_RECOMMENDATIONS, len(response.recs), request.base_track_title
             )
 
-            return recs
+            return response.recs
 
         except Exception as e:
             future.set_exception(e)
@@ -190,8 +158,8 @@ class AIRecommendationClient(AIClient):
 
     async def get_recommendations(self, request: RecommendationRequest) -> list[Recommendation]:
         try:
-            raw_recs = await self._fetch_recommendations_raw(request)
-            response = AIRecommendationResponse.model_validate({"recs": raw_recs})
+            items = await self._fetch_recommendations_raw(request)
+            response = AIRecommendationResponse(recs=items)
             recommendations = response.to_domain_list()
 
             return recommendations[: request.count]
@@ -215,10 +183,9 @@ class AIRecommendationClient(AIClient):
         logger.info(LogTemplates.CACHE_CLEARED, count)
         return count
 
-    def prune_cache(self, max_age_seconds: int) -> int:
-        now = time.time()
+    def prune_cache(self, max_age_seconds: PositiveInt) -> int:
         expired_keys = [
-            key for key, entry in self._cache.items() if (now - entry.created_at) > max_age_seconds
+            key for key, entry in self._cache.items() if entry.is_expired(max_age_seconds)
         ]
 
         for key in expired_keys:
@@ -229,13 +196,13 @@ class AIRecommendationClient(AIClient):
 
         return len(expired_keys)
 
-    def get_cache_stats(self) -> dict[str, int]:
-        return {
-            "size": len(self._cache),
-            "hits": self._cache_hits,
-            "misses": self._cache_misses,
-            "hit_rate": int(
+    def get_cache_stats(self) -> AICacheStats:
+        return AICacheStats(
+            size=len(self._cache),
+            hits=self._cache_hits,
+            misses=self._cache_misses,
+            hit_rate=int(
                 (self._cache_hits / max(1, self._cache_hits + self._cache_misses)) * 100
             ),
-            "inflight": len(self._inflight),
-        }
+            inflight=len(self._inflight),
+        )

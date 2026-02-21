@@ -9,7 +9,6 @@ import re
 import time
 from typing import Any, Final, cast
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 from yt_dlp import YoutubeDL
 
 from discord_music_player.application.interfaces.audio_resolver import AudioResolver
@@ -20,157 +19,30 @@ from discord_music_player.domain.shared.messages import LogTemplates
 from discord_music_player.domain.shared.types import (
     HttpUrlStr,
     NonEmptyStr,
-    NonNegativeFloat,
-    NonNegativeInt,
     PositiveInt,
+)
+from discord_music_player.infrastructure.audio.models import (
+    CACHE_MAX_SIZE,
+    CACHE_TTL,
+    DEFAULT_SEARCH_LIMIT,
+    HASH_ID_LENGTH,
+    LOG_URL_TRUNCATE,
+    RESOLVE_BATCH_DELAY,
+    RESOLVE_BATCH_SIZE,
+    AudioFormatInfo,
+    CacheEntry,
+    ExtractorArgs,
+    YouTubeExtractorConfig,
+    YtDlpOpts,
+    YtDlpTrackInfo,
 )
 
 logger = logging.getLogger(__name__)
 
-CACHE_TTL: Final[int] = 3600
-CACHE_MAX_SIZE: Final[int] = 500
-DEFAULT_RETRIES: Final[int] = 3
-DEFAULT_SOCKET_TIMEOUT: Final[int] = 10
-DEFAULT_HTTP_CHUNK_SIZE: Final[int] = 1024 * 1024  # 1 MiB
-DEFAULT_SEARCH_LIMIT: Final[int] = 5
-HASH_ID_LENGTH: Final[int] = 16
-LOG_URL_TRUNCATE: Final[int] = 60
-RESOLVE_BATCH_SIZE: Final[int] = 5
-RESOLVE_BATCH_DELAY: Final[float] = 0.5
-
-
-# ── Pydantic models for yt-dlp data ────────────────────────────────────
-
-
-class AudioFormatInfo(BaseModel):
-    """A single audio format entry from yt-dlp extraction."""
-
-    model_config = ConfigDict(frozen=True, extra="ignore")
-
-    url: NonEmptyStr | None = None
-    acodec: NonEmptyStr | None = None
-
-
-class YtDlpTrackInfo(BaseModel):
-    """Trimmed yt-dlp extraction result for caching and track conversion.
-
-    Extra fields from yt-dlp are silently ignored, keeping memory usage low.
-    Before-validators coerce garbage from external yt-dlp data gracefully.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="ignore")
-
-    webpage_url: HttpUrlStr | None = None
-    url: NonEmptyStr | None = None
-    title: NonEmptyStr = "Unknown Title"
-    duration: NonNegativeInt | None = None
-    thumbnail: HttpUrlStr | None = None
-    artist: NonEmptyStr | None = None
-    creator: NonEmptyStr | None = None
-    uploader: NonEmptyStr | None = None
-    channel: NonEmptyStr | None = None
-    like_count: NonNegativeInt | None = None
-    view_count: NonNegativeInt | None = None
-    formats: list[AudioFormatInfo] = Field(default_factory=list)
-
-    @field_validator(
-        "webpage_url", "url", "thumbnail",
-        "artist", "creator", "uploader", "channel",
-        mode="before",
-    )
-    @classmethod
-    def _coerce_empty_to_none(cls, v: Any) -> str | None:
-        """Convert empty / whitespace-only / non-string values to None."""
-        if not isinstance(v, str) or not v.strip():
-            return None
-        return v
-
-    @field_validator("title", mode="before")
-    @classmethod
-    def _coerce_title(cls, v: Any) -> str:
-        """Fall back to default when yt-dlp sends empty or non-string title."""
-        if not isinstance(v, str) or not v.strip():
-            return "Unknown Title"
-        return v
-
-    @field_validator("like_count", "view_count", mode="before")
-    @classmethod
-    def _coerce_count(cls, v: Any) -> int | None:
-        """Coerce to non-negative int; return None for garbage values."""
-        if v is None:
-            return None
-        try:
-            val = int(v)
-            return val if val >= 0 else None
-        except (TypeError, ValueError):
-            return None
-
-    @field_validator("duration", mode="before")
-    @classmethod
-    def _coerce_duration(cls, v: Any) -> int | None:
-        """Coerce to non-negative int; return None for garbage values."""
-        if v is None:
-            return None
-        try:
-            val = int(v)
-            return val if val >= 0 else None
-        except (TypeError, ValueError):
-            return None
-
-
-class CacheEntry(BaseModel):
-    """Cached yt-dlp extraction result with expiry timestamp."""
-
-    model_config = ConfigDict(frozen=True)
-
-    info: YtDlpTrackInfo | None = None
-    cached_at: NonNegativeFloat
-
-
-# ── yt-dlp option models ───────────────────────────────────────────────
-
-
-class YouTubeExtractorConfig(BaseModel):
-    """YouTube-specific yt-dlp extractor arguments."""
-
-    model_config = ConfigDict(frozen=True)
-
-    pot_server_url: HttpUrlStr
-    player_client: list[NonEmptyStr] = Field(
-        default_factory=lambda: ["android", "web"], min_length=1,
-    )
-
-
-class ExtractorArgs(BaseModel):
-    """Container for yt-dlp extractor arguments."""
-
-    model_config = ConfigDict(frozen=True)
-
-    youtube: YouTubeExtractorConfig
-
-
-class YtDlpOpts(BaseModel):
-    """Typed yt-dlp configuration options passed to YoutubeDL."""
-
-    model_config = ConfigDict(frozen=True)
-
-    quiet: bool = True
-    noprogress: bool = True
-    noplaylist: bool = True
-    default_search: NonEmptyStr = "ytsearch"
-    forceipv4: bool = True
-    retries: PositiveInt = DEFAULT_RETRIES
-    socket_timeout: PositiveInt = DEFAULT_SOCKET_TIMEOUT
-    http_chunk_size: PositiveInt = DEFAULT_HTTP_CHUNK_SIZE
-    format: NonEmptyStr | None = None
-    skip_download: bool = True
-    extract_flat: NonEmptyStr | bool = False
-    extractor_args: ExtractorArgs | None = None
-
 
 # ── Module-level state and patterns ────────────────────────────────────
 
-_info_cache: dict[str, CacheEntry] = {}
+_info_cache: dict[HttpUrlStr, CacheEntry] = {}
 
 URL_PATTERNS: Final[list[re.Pattern[str]]] = [
     re.compile(r"https?://"),
@@ -188,7 +60,7 @@ YOUTUBE_ID_PATTERN: Final[re.Pattern[str]] = re.compile(
 )
 
 
-def _generate_track_id(url: str, title: str) -> str:
+def _generate_track_id(url: HttpUrlStr) -> str:
     match = YOUTUBE_ID_PATTERN.search(url)
     if match:
         return match.group(1)
@@ -242,7 +114,7 @@ class YtDlpResolver(AudioResolver):
                 logger.warning(LogTemplates.YTDLP_NO_STREAM_URL, title)
                 return None
 
-            track_id = _generate_track_id(url, title)
+            track_id = _generate_track_id(url)
 
             artist = info.artist or info.creator
             uploader = info.uploader or info.channel
@@ -289,7 +161,7 @@ class YtDlpResolver(AudioResolver):
         """
         return YtDlpTrackInfo.model_validate(data)
 
-    def _extract_info_sync(self, url: str) -> YtDlpTrackInfo | None:
+    def _extract_info_sync(self, url: HttpUrlStr) -> YtDlpTrackInfo | None:
         now = time.time()
         cached = _info_cache.get(url)
         if cached is not None:
@@ -321,7 +193,7 @@ class YtDlpResolver(AudioResolver):
             logger.exception(LogTemplates.YTDLP_FAILED_EXTRACT_INFO, url)
             return None
 
-    def _search_sync(self, query: str, limit: int = 1) -> list[YtDlpTrackInfo]:
+    def _search_sync(self, query: NonEmptyStr, limit: PositiveInt = 1) -> list[YtDlpTrackInfo]:
         try:
             search_query = f"ytsearch{limit}:{query}"
             with YoutubeDL(params=cast(Any, self._get_opts().model_dump())) as ydl:
@@ -339,7 +211,7 @@ class YtDlpResolver(AudioResolver):
             logger.exception(LogTemplates.YTDLP_FAILED_SEARCH, query)
             return []
 
-    def _extract_playlist_sync(self, url: str) -> list[YtDlpTrackInfo]:
+    def _extract_playlist_sync(self, url: HttpUrlStr) -> list[YtDlpTrackInfo]:
         try:
             with YoutubeDL(params=cast(Any, self._get_playlist_opts().model_dump())) as ydl:
                 data = ydl.extract_info(url, download=False)
@@ -356,7 +228,7 @@ class YtDlpResolver(AudioResolver):
             logger.exception(LogTemplates.YTDLP_FAILED_EXTRACT_PLAYLIST, url)
             return []
 
-    async def resolve(self, query: str) -> Track | None:
+    async def resolve(self, query: NonEmptyStr) -> Track | None:
         try:
             if self.is_url(query):
                 info = await asyncio.to_thread(self._extract_info_sync, query)
@@ -372,7 +244,7 @@ class YtDlpResolver(AudioResolver):
             logger.exception(LogTemplates.YTDLP_FAILED_RESOLVE, query)
             return None
 
-    async def resolve_many(self, queries: list[str]) -> list[Track]:
+    async def resolve_many(self, queries: list[NonEmptyStr]) -> list[Track]:
         tracks: list[Track] = []
 
         # Process in batches to avoid overwhelming yt-dlp
@@ -399,7 +271,7 @@ class YtDlpResolver(AudioResolver):
 
         return tracks
 
-    async def search(self, query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[Track]:
+    async def search(self, query: NonEmptyStr, limit: PositiveInt = DEFAULT_SEARCH_LIMIT) -> list[Track]:
         try:
             results = await asyncio.to_thread(self._search_sync, query, limit)
 
@@ -414,7 +286,7 @@ class YtDlpResolver(AudioResolver):
             logger.error(LogTemplates.SEARCH_FAILED.format(query=query, error=e))
             return []
 
-    async def extract_playlist(self, url: str) -> list[Track]:
+    async def extract_playlist(self, url: HttpUrlStr) -> list[Track]:
         try:
             entries = await asyncio.to_thread(self._extract_playlist_sync, url)
 
@@ -433,8 +305,8 @@ class YtDlpResolver(AudioResolver):
             logger.error(LogTemplates.PLAYLIST_FAILED.format(url=url, error=e))
             return []
 
-    def is_url(self, query: str) -> bool:
+    def is_url(self, query: NonEmptyStr) -> bool:
         return any(pattern.search(query) for pattern in URL_PATTERNS)
 
-    def is_playlist(self, url: str) -> bool:
+    def is_playlist(self, url: HttpUrlStr) -> bool:
         return any(pattern.search(url) for pattern in PLAYLIST_PATTERNS)

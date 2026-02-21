@@ -139,25 +139,25 @@ class TestTrackIDGeneration:
     def test_generate_track_id_from_youtube_watch_url(self):
         """Should extract YouTube ID from watch URL."""
         url = "https://youtube.com/watch?v=dQw4w9WgXcQ"
-        track_id = _generate_track_id(url, "Test Title")
+        track_id = _generate_track_id(url)
         assert track_id == "dQw4w9WgXcQ"
 
     def test_generate_track_id_from_youtube_short_url(self):
         """Should extract YouTube ID from short URL."""
         url = "https://youtu.be/dQw4w9WgXcQ"
-        track_id = _generate_track_id(url, "Test Title")
+        track_id = _generate_track_id(url)
         assert track_id == "dQw4w9WgXcQ"
 
     def test_generate_track_id_from_youtube_embed_url(self):
         """Should extract YouTube ID from embed URL."""
         url = "https://youtube.com/embed/dQw4w9WgXcQ"
-        track_id = _generate_track_id(url, "Test Title")
+        track_id = _generate_track_id(url)
         assert track_id == "dQw4w9WgXcQ"
 
     def test_generate_track_id_from_non_youtube_url(self):
         """Should generate hash for non-YouTube URLs."""
         url = "https://example.com/song.mp3"
-        track_id = _generate_track_id(url, "Test Title")
+        track_id = _generate_track_id(url)
         assert len(track_id) == 16
         assert track_id.isalnum()
 

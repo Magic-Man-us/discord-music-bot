@@ -5,11 +5,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+from discord_music_player.domain.shared.types import PositiveInt
+
 if TYPE_CHECKING:
     from ...domain.recommendations.entities import (
         Recommendation,
         RecommendationRequest,
     )
+    from ...infrastructure.ai.models import AICacheStats
 
 
 class AIClient(ABC):
@@ -30,11 +33,11 @@ class AIClient(ABC):
         ...
 
     @abstractmethod
-    def prune_cache(self, max_age_seconds: int) -> int:
+    def prune_cache(self, max_age_seconds: PositiveInt) -> int:
         """Remove cache entries older than max_age_seconds."""
         ...
 
     @abstractmethod
-    def get_cache_stats(self) -> dict[str, int]:
+    def get_cache_stats(self) -> AICacheStats:
         """Get cache statistics."""
         ...

@@ -18,10 +18,12 @@ from discord_music_player.domain.recommendations.entities import (
     Recommendation,
     RecommendationRequest,
 )
-from discord_music_player.infrastructure.ai.recommendation_client import (
-    AIRecommendationClient,
+from discord_music_player.infrastructure.ai.models import (
     AIRecommendationItem,
     AIRecommendationResponse,
+)
+from discord_music_player.infrastructure.ai.recommendation_client import (
+    AIRecommendationClient,
 )
 
 # ============================================================================
@@ -365,7 +367,7 @@ class TestCaching:
         with patch.object(client, "_call_api", return_value=mock_response2):
             result = await client._fetch_recommendations_raw(sample_request)
 
-        assert result == [{"title": "Song 2", "artist": None, "query": "", "url": None}]
+        assert result == [AIRecommendationItem(title="Song 2")]
 
     @pytest.mark.asyncio
     async def test_singleflight_deduplication(self, client, sample_request):
@@ -511,7 +513,7 @@ class TestCacheManagement:
 
     def test_prune_cache_removes_old_entries(self, client):
         """Should remove entries older than specified age."""
-        from discord_music_player.infrastructure.ai.recommendation_client import CacheEntry
+        from discord_music_player.infrastructure.ai.models import AICacheEntry as CacheEntry
 
         # Add entries with different ages
         client._cache["old1"] = CacheEntry(data=[], created_at=time.time() - 400)
@@ -534,15 +536,15 @@ class TestCacheManagement:
 
         stats = client.get_cache_stats()
 
-        assert stats["size"] == 2
-        assert stats["hits"] == 8
-        assert stats["misses"] == 2
-        assert stats["hit_rate"] == 80
-        assert "inflight" in stats
+        assert stats.size == 2
+        assert stats.hits == 8
+        assert stats.misses == 2
+        assert stats.hit_rate == 80
+        assert stats.inflight is not None
 
     def test_prune_cache_nothing_expired(self, client):
         """Should return 0 when no entries are expired."""
-        from discord_music_player.infrastructure.ai.recommendation_client import CacheEntry
+        from discord_music_player.infrastructure.ai.models import AICacheEntry as CacheEntry
 
         client._cache["fresh"] = CacheEntry(data=[], created_at=time.time())
 

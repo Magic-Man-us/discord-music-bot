@@ -34,6 +34,8 @@ def mock_settings():
     settings.database.url = "sqlite:///:memory:"
     settings.audio = Mock()
     settings.audio.default_volume = 0.5
+    settings.audio.pot_server_url = "http://127.0.0.1:4416"
+    settings.audio.ytdlp_format = "bestaudio/best"
     settings.ai = Mock()
     settings.ai.api_key = Mock()
     settings.ai.model = "gpt-4o-mini"

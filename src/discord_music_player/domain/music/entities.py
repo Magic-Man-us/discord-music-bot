@@ -25,6 +25,7 @@ from discord_music_player.domain.shared.types import (
     HttpUrlStr,
     NonEmptyStr,
     NonNegativeInt,
+    QueuePositionInt,
     TrackTitleStr,
     UtcDatetimeField,
 )
@@ -77,7 +78,7 @@ class Track(BaseModel):
         return self.title
 
     def with_requester(
-        self, user_id: int, user_name: str, requested_at: datetime | None = None
+        self, user_id: DiscordSnowflake, user_name: NonEmptyStr, requested_at: datetime | None = None
     ) -> Track:
         """Return a copy of this track with requester metadata populated."""
         return self.model_copy(
@@ -88,7 +89,7 @@ class Track(BaseModel):
             }
         )
 
-    def was_requested_by(self, user_id: int) -> bool:
+    def was_requested_by(self, user_id: DiscordSnowflake) -> bool:
         return self.requested_by_id == user_id
 
 
@@ -190,7 +191,7 @@ class GuildPlaybackSession(BaseModel):
         """Look at the next track without removing it."""
         return self.queue[0] if self.queue else None
 
-    def remove_at(self, position: int) -> Track | None:
+    def remove_at(self, position: QueuePositionInt) -> Track | None:
         """Remove a track at a specific queue position."""
         if 0 <= position < len(self.queue):
             track = self.queue.pop(position)
@@ -288,7 +289,7 @@ class GuildPlaybackSession(BaseModel):
         random.shuffle(self.queue)
         self.touch()
 
-    def move_track(self, from_pos: int, to_pos: int) -> bool:
+    def move_track(self, from_pos: QueuePositionInt, to_pos: QueuePositionInt) -> bool:
         """Move a track from one queue position to another."""
         if not (0 <= from_pos < len(self.queue) and 0 <= to_pos < len(self.queue)):
             return False

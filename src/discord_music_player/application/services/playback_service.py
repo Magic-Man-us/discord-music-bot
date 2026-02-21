@@ -7,10 +7,11 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from ...domain.music.entities import Track
+from ...domain.music.entities import GuildPlaybackSession, Track
 from ...domain.music.value_objects import PlaybackState
 from ...domain.shared.events import QueueExhausted, get_event_bus
 from ...domain.shared.messages import ErrorMessages, LogTemplates
+from ...domain.shared.types import DiscordSnowflake
 
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository, TrackHistoryRepository
@@ -40,18 +41,18 @@ class PlaybackApplicationService:
         self._audio_resolver = audio_resolver
         self._playback_service = playback_domain_service
 
-        self._on_track_finished_callback: Callable[[int, Track], Any] | None = None
+        self._on_track_finished_callback: Callable[[DiscordSnowflake, Track], Any] | None = None
 
         # Optional seek offset consumed on next playback start per guild.
-        self._pending_start_seconds: dict[int, StartSeconds] = {}
+        self._pending_start_seconds: dict[DiscordSnowflake, StartSeconds] = {}
 
         # When we intentionally stop audio (skip/stop), discord.py still fires
         # the "after" callback. Suppress the next event per guild to avoid double-advancing.
-        self._ignore_next_voice_track_end: set[int] = set()
+        self._ignore_next_voice_track_end: set[DiscordSnowflake] = set()
 
         self._voice_adapter.set_on_track_end_callback(self._on_voice_track_end)
 
-    async def _on_voice_track_end(self, guild_id: int) -> None:
+    async def _on_voice_track_end(self, guild_id: DiscordSnowflake) -> None:
         if guild_id in self._ignore_next_voice_track_end:
             self._ignore_next_voice_track_end.discard(guild_id)
             logger.debug(LogTemplates.PLAYBACK_IGNORING_CALLBACK, guild_id)
@@ -65,13 +66,13 @@ class PlaybackApplicationService:
         if current_track:
             await self.handle_track_finished(guild_id, current_track)
 
-    def set_track_finished_callback(self, callback: Callable[[int, Track], Any]) -> None:
+    def set_track_finished_callback(self, callback: Callable[[DiscordSnowflake, Track], Any]) -> None:
         self._on_track_finished_callback = callback
 
     _MAX_RESOLVE_RETRIES: int = 3
 
     async def start_playback(
-        self, guild_id: int, *, start_seconds: StartSeconds | None = None
+        self, guild_id: DiscordSnowflake, *, start_seconds: StartSeconds | None = None
     ) -> bool:
         """Start playback of the next track in queue.
 
@@ -137,7 +138,7 @@ class PlaybackApplicationService:
         )
         return False
 
-    async def _get_next_track(self, session: Any) -> Track | None:
+    async def _get_next_track(self, session: GuildPlaybackSession) -> Track | None:
         if session.current_track is not None:
             return session.current_track
 
@@ -146,7 +147,9 @@ class PlaybackApplicationService:
             session.set_current_track(track)
         return track
 
-    async def _ensure_stream_url(self, session: Any, track: Track, guild_id: int) -> Track | None:
+    async def _ensure_stream_url(
+        self, session: GuildPlaybackSession, track: Track, guild_id: DiscordSnowflake
+    ) -> Track | None:
         """Resolve and attach a stream URL. Returns None on failure (caller retries)."""
         if track.stream_url:
             return track
@@ -183,7 +186,9 @@ class PlaybackApplicationService:
             )
             return None
 
-    async def _start_voice_playback(self, session: Any, track: Track, guild_id: int) -> bool:
+    async def _start_voice_playback(
+        self, session: GuildPlaybackSession, track: Track, guild_id: DiscordSnowflake
+    ) -> bool:
         try:
             seek = self._pending_start_seconds.pop(guild_id, None)
             success = await self._voice_adapter.play(
@@ -229,7 +234,7 @@ class PlaybackApplicationService:
             )
             return False
 
-    async def stop_playback(self, guild_id: int) -> bool:
+    async def stop_playback(self, guild_id: DiscordSnowflake) -> bool:
         session = await self._session_repo.get(guild_id)
         if session is None:
             return False
@@ -252,7 +257,7 @@ class PlaybackApplicationService:
             logger.exception("Error stopping playback")
             return False
 
-    async def pause_playback(self, guild_id: int) -> bool:
+    async def pause_playback(self, guild_id: DiscordSnowflake) -> bool:
         session = await self._session_repo.get(guild_id)
         if session is None or not session.is_playing:
             return False
@@ -271,7 +276,7 @@ class PlaybackApplicationService:
             logger.exception("Error pausing playback")
             return False
 
-    async def resume_playback(self, guild_id: int) -> bool:
+    async def resume_playback(self, guild_id: DiscordSnowflake) -> bool:
         session = await self._session_repo.get(guild_id)
         if session is None or not session.is_paused:
             return False
@@ -290,7 +295,7 @@ class PlaybackApplicationService:
             logger.exception("Error resuming playback")
             return False
 
-    async def skip_track(self, guild_id: int) -> Track | None:
+    async def skip_track(self, guild_id: DiscordSnowflake) -> Track | None:
         """Skip the current track and return it, or None if nothing was playing."""
         session = await self._session_repo.get(guild_id)
         if session is None or session.current_track is None:
@@ -323,7 +328,7 @@ class PlaybackApplicationService:
         logger.info(LogTemplates.TRACK_SKIPPED, skipped_track.title, guild_id)
         return skipped_track
 
-    async def handle_track_finished(self, guild_id: int, track: Track) -> None:
+    async def handle_track_finished(self, guild_id: DiscordSnowflake, track: Track) -> None:
         logger.debug(LogTemplates.TRACK_FINISHED, track.title, guild_id)
 
         session = await self._session_repo.get(guild_id)
@@ -361,7 +366,7 @@ class PlaybackApplicationService:
             except Exception:
                 logger.exception("Error in track finished callback")
 
-    def _handle_track_finished(self, guild_id: int, track: Track) -> None:
+    def _handle_track_finished(self, guild_id: DiscordSnowflake, track: Track) -> None:
         asyncio.create_task(self.handle_track_finished(guild_id, track))
 
     def _tracks_match(self, left: Track, right: Track) -> bool:
@@ -383,7 +388,7 @@ class PlaybackApplicationService:
 
     async def _persist_playback_state(
         self,
-        guild_id: int,
+        guild_id: DiscordSnowflake,
         *,
         current_track: Track | None,
         state: PlaybackState | None = None,
@@ -408,7 +413,7 @@ class PlaybackApplicationService:
         session.touch()
         await self._session_repo.save(session)
 
-    async def cleanup_guild(self, guild_id: int) -> None:
+    async def cleanup_guild(self, guild_id: DiscordSnowflake) -> None:
         """Release voice and session resources for a guild."""
         try:
             await self._voice_adapter.stop(guild_id)
