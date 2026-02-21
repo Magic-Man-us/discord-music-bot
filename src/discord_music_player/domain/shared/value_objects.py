@@ -2,20 +2,23 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from pydantic import BaseModel, ConfigDict
 
 from discord_music_player.domain.shared.messages import ErrorMessages
+from discord_music_player.domain.shared.types import DiscordSnowflake
 
 
-@dataclass(frozen=True)
-class GuildId:
+class GuildId(BaseModel):
     """Strongly-typed Discord guild (server) identifier."""
 
-    value: int
+    model_config = ConfigDict(frozen=True)
 
-    def __post_init__(self) -> None:
-        if self.value <= 0:
-            raise ValueError(ErrorMessages.INVALID_GUILD_ID)
+    value: DiscordSnowflake
+
+    def __init__(self, value: int | None = None, /, **kwargs: object) -> None:
+        if value is not None and "value" not in kwargs:
+            kwargs["value"] = value
+        super().__init__(**kwargs)
 
     def __str__(self) -> str:
         return str(self.value)
@@ -23,16 +26,26 @@ class GuildId:
     def __int__(self) -> int:
         return self.value
 
+    def __hash__(self) -> int:
+        return hash(self.value)
 
-@dataclass(frozen=True)
-class UserId:
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, GuildId):
+            return self.value == other.value
+        return NotImplemented
+
+
+class UserId(BaseModel):
     """Strongly-typed Discord user identifier."""
 
-    value: int
+    model_config = ConfigDict(frozen=True)
 
-    def __post_init__(self) -> None:
-        if self.value <= 0:
-            raise ValueError(ErrorMessages.INVALID_USER_ID)
+    value: DiscordSnowflake
+
+    def __init__(self, value: int | None = None, /, **kwargs: object) -> None:
+        if value is not None and "value" not in kwargs:
+            kwargs["value"] = value
+        super().__init__(**kwargs)
 
     def __str__(self) -> str:
         return str(self.value)
@@ -40,19 +53,37 @@ class UserId:
     def __int__(self) -> int:
         return self.value
 
+    def __hash__(self) -> int:
+        return hash(self.value)
 
-@dataclass(frozen=True)
-class ChannelId:
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, UserId):
+            return self.value == other.value
+        return NotImplemented
+
+
+class ChannelId(BaseModel):
     """Strongly-typed Discord channel identifier."""
 
-    value: int
+    model_config = ConfigDict(frozen=True)
 
-    def __post_init__(self) -> None:
-        if self.value <= 0:
-            raise ValueError(ErrorMessages.INVALID_CHANNEL_ID)
+    value: DiscordSnowflake
+
+    def __init__(self, value: int | None = None, /, **kwargs: object) -> None:
+        if value is not None and "value" not in kwargs:
+            kwargs["value"] = value
+        super().__init__(**kwargs)
 
     def __str__(self) -> str:
         return str(self.value)
 
     def __int__(self) -> int:
         return self.value
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, ChannelId):
+            return self.value == other.value
+        return NotImplemented

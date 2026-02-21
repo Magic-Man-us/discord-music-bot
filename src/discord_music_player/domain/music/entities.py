@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import ClassVar
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from discord_music_player.domain.music.value_objects import (
     LoopMode,
@@ -20,6 +19,15 @@ from discord_music_player.domain.shared.exceptions import (
     InvalidOperationError,
 )
 from discord_music_player.domain.shared.messages import ErrorMessages
+from discord_music_player.domain.shared.types import (
+    DiscordSnowflake,
+    DurationSeconds,
+    HttpUrlStr,
+    NonEmptyStr,
+    NonNegativeInt,
+    TrackTitleStr,
+    UtcDatetimeField,
+)
 
 
 class Track(BaseModel):
@@ -28,41 +36,25 @@ class Track(BaseModel):
     model_config = ConfigDict(frozen=True, strict=True)
 
     id: TrackId
-    title: str
-    webpage_url: str
-    stream_url: str | None = None
-    duration_seconds: int | None = None
-    thumbnail_url: str | None = None
+    title: TrackTitleStr
+    webpage_url: HttpUrlStr
+    stream_url: HttpUrlStr | None = None
+    duration_seconds: DurationSeconds | None = None
+    thumbnail_url: HttpUrlStr | None = None
 
     # Track metadata (resolver-provided)
-    artist: str | None = None
-    uploader: str | None = None
-    like_count: int | None = None
-    view_count: int | None = None
+    artist: NonEmptyStr | None = None
+    uploader: NonEmptyStr | None = None
+    like_count: NonNegativeInt | None = None
+    view_count: NonNegativeInt | None = None
 
     # Request metadata (set when queued)
-    requested_by_id: int | None = None
-    requested_by_name: str | None = None
-    requested_at: datetime | None = None
+    requested_by_id: DiscordSnowflake | None = None
+    requested_by_name: NonEmptyStr | None = None
+    requested_at: UtcDatetimeField | None = None
 
     # Playback metadata
     is_from_recommendation: bool = False
-
-    @field_validator("title")
-    @classmethod
-    def validate_title(cls, v: str) -> str:
-        """Validate title is not empty."""
-        if not v:
-            raise ValueError(ErrorMessages.EMPTY_TRACK_TITLE)
-        return v
-
-    @field_validator("webpage_url")
-    @classmethod
-    def validate_webpage_url(cls, v: str) -> str:
-        """Validate webpage URL is not empty."""
-        if not v:
-            raise ValueError(ErrorMessages.EMPTY_TRACK_URL)
-        return v
 
     @property
     def duration_formatted(self) -> str:
@@ -100,26 +92,23 @@ class Track(BaseModel):
         return self.requested_by_id == user_id
 
 
-@dataclass
-class GuildPlaybackSession:
+class GuildPlaybackSession(BaseModel):
     """Aggregate root managing playback state for a single Discord guild."""
+
+    model_config = ConfigDict(strict=True)
 
     MAX_QUEUE_SIZE: ClassVar[int] = 50
 
-    guild_id: int
-    queue: list[Track] = field(default_factory=list)
+    guild_id: DiscordSnowflake
+    queue: list[Track] = Field(default_factory=list)
     current_track: Track | None = None
     state: PlaybackState = PlaybackState.IDLE
     loop_mode: LoopMode = LoopMode.OFF
-    created_at: datetime = field(default_factory=utcnow)
-    last_activity: datetime = field(default_factory=utcnow)
+    created_at: UtcDatetimeField = Field(default_factory=utcnow)
+    last_activity: UtcDatetimeField = Field(default_factory=utcnow)
 
     # Version for optimistic concurrency
-    version: int = 0
-
-    def __post_init__(self) -> None:
-        if self.guild_id <= 0:
-            raise ValueError(ErrorMessages.INVALID_GUILD_ID)
+    version: NonNegativeInt = 0
 
     @property
     def queue_length(self) -> int:

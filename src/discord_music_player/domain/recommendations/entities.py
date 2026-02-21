@@ -2,30 +2,25 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from discord_music_player.domain.shared.datetime_utils import utcnow
-from discord_music_player.domain.shared.messages import ErrorMessages
+from discord_music_player.domain.shared.types import NonEmptyStr, UnitInterval
 
 
-@dataclass(frozen=True)
-class RecommendationRequest:
+class RecommendationRequest(BaseModel):
     """Value object for a recommendation request."""
 
-    base_track_title: str
-    base_track_artist: str | None = None
-    count: int = 3
-    genre_hint: str | None = None
-    exclude_tracks: frozenset[str] = field(default_factory=frozenset)
+    model_config = ConfigDict(frozen=True)
 
-    def __post_init__(self) -> None:
-        if not self.base_track_title:
-            raise ValueError(ErrorMessages.EMPTY_BASE_TRACK_TITLE)
-        if self.count < 1:
-            raise ValueError(ErrorMessages.INVALID_RECOMMENDATION_COUNT_MIN)
-        if self.count > 10:
-            raise ValueError(ErrorMessages.INVALID_RECOMMENDATION_COUNT_MAX)
+    base_track_title: NonEmptyStr
+    base_track_artist: str | None = None
+    count: Annotated[int, Field(ge=1, le=10)] = 3
+    genre_hint: str | None = None
+    exclude_tracks: frozenset[str] = Field(default_factory=frozenset)
 
     @property
     def cache_key(self) -> str:
@@ -35,27 +30,24 @@ class RecommendationRequest:
         return f"{title_normalized}|{artist_normalized}|{self.count}"
 
 
-@dataclass
-class Recommendation:
+class Recommendation(BaseModel):
     """A single track recommendation that hasn't been resolved yet."""
 
-    title: str
+    title: NonEmptyStr
     artist: str | None = None
     query: str = ""  # Search query for resolution
     url: str | None = None  # Optional direct URL
-    confidence: float = 1.0  # Confidence score from AI
+    confidence: UnitInterval = 1.0  # Confidence score from AI
     reason: str | None = None  # Why this was recommended
 
-    def __post_init__(self) -> None:
-        if not self.title:
-            raise ValueError(ErrorMessages.EMPTY_RECOMMENDATION_TITLE)
+    @model_validator(mode="after")
+    def _set_default_query(self) -> Recommendation:
         if not self.query:
             if self.artist:
                 self.query = f"{self.artist} - {self.title}"
             else:
                 self.query = self.title
-        if not 0 <= self.confidence <= 1:
-            raise ValueError(ErrorMessages.INVALID_CONFIDENCE)
+        return self
 
     @property
     def display_text(self) -> str:
@@ -64,21 +56,22 @@ class Recommendation:
         return self.title
 
 
-@dataclass
-class RecommendationSet:
+class RecommendationSet(BaseModel):
     """Aggregate grouping recommendations for a specific base track."""
 
-    base_track_title: str
-    base_track_artist: str | None
-    recommendations: list[Recommendation] = field(default_factory=list)
-    generated_at: datetime = field(default_factory=utcnow)
-    expires_at: datetime = field(default_factory=lambda: utcnow() + timedelta(hours=24))
+    base_track_title: NonEmptyStr
+    base_track_artist: str | None = None
+    recommendations: list[Recommendation] = Field(default_factory=list)
+    generated_at: datetime = Field(default_factory=utcnow)
+    expires_at: datetime | None = None
 
-    DEFAULT_CACHE_HOURS = 24
+    DEFAULT_CACHE_HOURS: int = 24
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def _set_default_expires_at(self) -> RecommendationSet:
         if self.expires_at is None:
             self.expires_at = self.generated_at + timedelta(hours=self.DEFAULT_CACHE_HOURS)
+        return self
 
     @property
     def is_expired(self) -> bool:

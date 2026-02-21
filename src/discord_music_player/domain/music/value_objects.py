@@ -2,30 +2,49 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import Enum
 from typing import Annotated
 
-from pydantic import PlainSerializer, PlainValidator
+from pydantic import BaseModel, ConfigDict, PlainSerializer, PlainValidator, field_validator
 
 from discord_music_player.domain.shared.messages import ErrorMessages
+from discord_music_player.domain.shared.types import DurationSeconds, NonEmptyStr, NonNegativeInt
 
 
-@dataclass(frozen=True)
-class TrackId:
-    """Typically a YouTube video ID or a hash of the URL."""
+class TrackId(BaseModel):
+    """Typically a YouTube video ID or a hash of the URL.
 
-    value: str
+    Accepts both ``TrackId("abc")`` (positional str) and ``TrackId(value="abc")``
+    for backward compatibility with the former dataclass API.
+    """
 
-    def __post_init__(self) -> None:
-        if not self.value or not self.value.strip():
+    model_config = ConfigDict(frozen=True)
+
+    value: NonEmptyStr
+
+    def __init__(self, value: str | None = None, /, **kwargs: object) -> None:
+        """Accept ``TrackId("abc")`` positional syntax for backward compat."""
+        if value is not None and "value" not in kwargs:
+            kwargs["value"] = value
+        super().__init__(**kwargs)
+
+    @field_validator("value")
+    @classmethod
+    def _reject_whitespace_only(cls, v: str) -> str:
+        if not v.strip():
             raise ValueError(ErrorMessages.EMPTY_TRACK_ID)
+        return v
 
     def __str__(self) -> str:
         return self.value
 
     def __hash__(self) -> int:
         return hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, TrackId):
+            return self.value == other.value
+        return NotImplemented
 
     @classmethod
     def from_url(cls, url: str) -> TrackId:
@@ -41,42 +60,52 @@ class TrackId:
         for pattern in youtube_patterns:
             match = re.search(pattern, url)
             if match:
-                return cls(match.group(1))
+                return cls(value=match.group(1))
 
         url_hash = hashlib.md5(url.encode()).hexdigest()[:16]
-        return cls(url_hash)
+        return cls(value=url_hash)
 
 
 # Pydantic-compatible type aliases for TrackId fields.
 # Serializes as plain string in JSON, stores as TrackId in the model.
 TrackIdField = Annotated[
     TrackId,
-    PlainValidator(lambda v: TrackId(v) if isinstance(v, str) else v),
+    PlainValidator(lambda v: TrackId(value=v) if isinstance(v, str) else v),
     PlainSerializer(lambda v: v.value, return_type=str),
 ]
 
 OptionalTrackIdField = Annotated[
     TrackId | None,
-    PlainValidator(lambda v: TrackId(v) if isinstance(v, str) else v),
+    PlainValidator(lambda v: TrackId(value=v) if isinstance(v, str) else v),
     PlainSerializer(lambda v: v.value if v is not None else None, return_type=str | None),
 ]
 
 
-@dataclass(frozen=True)
-class QueuePosition:
+class QueuePosition(BaseModel):
     """Value object for queue positioning."""
 
-    value: int
+    model_config = ConfigDict(frozen=True)
 
-    def __post_init__(self) -> None:
-        if self.value < 0:
-            raise ValueError(ErrorMessages.INVALID_QUEUE_POSITION)
+    value: NonNegativeInt
+
+    def __init__(self, value: int | None = None, /, **kwargs: object) -> None:
+        if value is not None and "value" not in kwargs:
+            kwargs["value"] = value
+        super().__init__(**kwargs)
 
     def __str__(self) -> str:
         return str(self.value)
 
     def __int__(self) -> int:
         return self.value
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, QueuePosition):
+            return self.value == other.value
+        return NotImplemented
 
     def next(self) -> QueuePosition:
         """Return the next position in queue."""
@@ -87,27 +116,31 @@ class QueuePosition:
         return QueuePosition(max(0, self.value - 1))
 
 
-@dataclass(frozen=True)
-class StartSeconds:
+class StartSeconds(BaseModel):
     """Validated seek offset for starting playback at a specific timestamp."""
 
-    value: int
+    model_config = ConfigDict(frozen=True)
 
-    def __post_init__(self) -> None:
-        from ..shared.constants import AudioConstants
+    value: DurationSeconds
 
-        if self.value < 0:
-            raise ValueError("Start seconds cannot be negative")
-        if self.value > AudioConstants.MAX_SEEK_SECONDS:
-            raise ValueError(
-                f"Start seconds cannot exceed {AudioConstants.MAX_SEEK_SECONDS}"
-            )
+    def __init__(self, value: int | None = None, /, **kwargs: object) -> None:
+        if value is not None and "value" not in kwargs:
+            kwargs["value"] = value
+        super().__init__(**kwargs)
 
     def __int__(self) -> int:
         return self.value
 
     def __str__(self) -> str:
         return str(self.value)
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, StartSeconds):
+            return self.value == other.value
+        return NotImplemented
 
     @classmethod
     def from_optional(cls, seconds: int | None) -> StartSeconds | None:

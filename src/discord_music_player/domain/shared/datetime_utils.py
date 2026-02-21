@@ -2,23 +2,34 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from pydantic import BaseModel, ConfigDict
+
 from .messages import ErrorMessages
+from .types import UtcDatetimeField
 
 
-@dataclass(frozen=True, slots=True)
-class UtcDateTime:
-    """A tiny value-object wrapper around a timezone-aware UTC `datetime`."""
+class UtcDateTime(BaseModel):
+    """A tiny value-object wrapper around a timezone-aware UTC ``datetime``."""
 
-    dt: datetime
+    model_config = ConfigDict(frozen=True)
 
-    def __post_init__(self) -> None:
-        if self.dt.tzinfo is None:
-            raise ValueError(ErrorMessages.TIMEZONE_REQUIRED_UTC_DATETIME)
-        # Normalize to UTC
-        object.__setattr__(self, "dt", self.dt.astimezone(UTC))
+    dt: UtcDatetimeField
+
+    def __init__(self, dt: datetime | None = None, /, **kwargs: object) -> None:
+        """Accept ``UtcDateTime(some_dt)`` positional syntax for backward compat."""
+        if dt is not None and "dt" not in kwargs:
+            kwargs["dt"] = dt
+        super().__init__(**kwargs)
+
+    def __hash__(self) -> int:
+        return hash(self.dt)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, UtcDateTime):
+            return self.dt == other.dt
+        return NotImplemented
 
     # ---- Constructors ----
 

@@ -2,22 +2,25 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from discord_music_player.domain.shared.datetime_utils import utcnow
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from discord_music_player.domain.music.value_objects import TrackId
+from discord_music_player.domain.shared.datetime_utils import utcnow
 from discord_music_player.domain.shared.messages import ErrorMessages
+from discord_music_player.domain.shared.types import DiscordSnowflake, PositiveInt
 from discord_music_player.domain.voting.value_objects import VoteType
 
 
-@dataclass(frozen=True)
-class Vote:
+class Vote(BaseModel):
     """Immutable value object representing a single vote."""
 
-    user_id: int
+    model_config = ConfigDict(frozen=True)
+
+    user_id: DiscordSnowflake
     vote_type: VoteType
-    timestamp: datetime = field(default_factory=utcnow)
+    timestamp: datetime = Field(default_factory=utcnow)
 
     def __hash__(self) -> int:
         return hash((self.user_id, self.vote_type))
@@ -28,28 +31,31 @@ class Vote:
         return self.user_id == other.user_id and self.vote_type == other.vote_type
 
 
-@dataclass
-class VoteSession:
+class VoteSession(BaseModel):
     """Aggregate tracking votes for an action on a specific track in a guild."""
 
-    guild_id: int
+    guild_id: DiscordSnowflake
     track_id: TrackId
     vote_type: VoteType
-    threshold: int
-    started_at: datetime = field(default_factory=utcnow)
+    threshold: PositiveInt
+    started_at: datetime = Field(default_factory=utcnow)
     expires_at: datetime | None = None
-    _voters: set[int] = field(default_factory=set)
+    _voters: set[int] = set()
 
-    DEFAULT_EXPIRATION_MINUTES = 5
+    DEFAULT_EXPIRATION_MINUTES: int = 5
 
-    def __post_init__(self) -> None:
-        if self.guild_id <= 0:
-            raise ValueError(ErrorMessages.INVALID_GUILD_ID)
-        if self.threshold < 1:
-            raise ValueError(ErrorMessages.INVALID_THRESHOLD)
+    def __init__(self, **kwargs: object) -> None:
+        # Extract _voters before Pydantic init if passed
+        voters = kwargs.pop("_voters", None)
+        super().__init__(**kwargs)
+        # Pydantic ignores _ prefixed attrs, so set manually
+        object.__setattr__(self, "_voters", set(voters) if voters else set())
 
+    @model_validator(mode="after")
+    def _set_default_expires_at(self) -> VoteSession:
         if self.expires_at is None:
             self.expires_at = self.started_at + timedelta(minutes=self.DEFAULT_EXPIRATION_MINUTES)
+        return self
 
     @property
     def vote_count(self) -> int:
