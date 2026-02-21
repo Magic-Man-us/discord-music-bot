@@ -23,9 +23,12 @@ from discord_music_player.config.settings import AudioSettings
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.infrastructure.audio.ytdlp_resolver import (
+    CACHE_MAX_SIZE,
     CACHE_TTL,
+    RESOLVE_BATCH_SIZE,
     AudioFormatInfo,
     CacheEntry,
+    YouTubeExtractorConfig,
     YtDlpOpts,
     YtDlpResolver,
     YtDlpTrackInfo,
@@ -486,8 +489,8 @@ class TestResolveMany:
     @pytest.mark.asyncio
     async def test_resolve_many_batching(self, resolver):
         """Should process queries in batches."""
-        # Create 12 queries to test batching (batch_size=5)
-        queries = [f"query{i}" for i in range(12)]
+        # Create enough queries to span multiple batches
+        queries = [f"query{i}" for i in range(RESOLVE_BATCH_SIZE * 2 + 2)]
 
         mock_track = Track(
             id=TrackId(value="test"),
@@ -499,7 +502,7 @@ class TestResolveMany:
         with patch.object(resolver, "resolve", return_value=mock_track):
             tracks = await resolver.resolve_many(queries)
 
-        assert len(tracks) == 12
+        assert len(tracks) == len(queries)
 
     @pytest.mark.asyncio
     async def test_resolve_many_with_exceptions(self, resolver):
@@ -521,7 +524,7 @@ class TestResolveMany:
             tracks = await resolver.resolve_many(queries)
 
         # When TaskGroup raises exception, entire batch is lost
-        # Since batch_size=5, all 3 queries are in one batch
+        # All 3 queries fit in one batch (RESOLVE_BATCH_SIZE), so all are lost
         assert len(tracks) == 0
 
 
@@ -727,17 +730,19 @@ class TestCaching:
 
     def test_cache_cleanup(self, resolver):
         """Should clean up expired entries when cache grows."""
-        # Fill cache with 501 entries (triggers cleanup at >500)
+        fill_count = CACHE_MAX_SIZE + 1  # triggers cleanup at > CACHE_MAX_SIZE
+        expired_count = 100
+
         with patch(
             "discord_music_player.infrastructure.audio.ytdlp_resolver.YoutubeDL"
         ) as mock_ydl:
-            for i in range(501):
+            for i in range(fill_count):
                 url = f"https://youtube.com/watch?v=test{i}"
                 mock_raw = {"webpage_url": url, "title": f"Song {i}", "url": "stream.m4a"}
                 mock_ydl.return_value.__enter__.return_value.extract_info.return_value = mock_raw
 
-                # Make first 100 entries expired
-                if i < 100:
+                # Make first batch of entries expired
+                if i < expired_count:
                     info = YtDlpTrackInfo.model_validate(mock_raw)
                     _info_cache[url] = CacheEntry(
                         info=info, cached_at=time.time() - CACHE_TTL - 1
@@ -746,7 +751,7 @@ class TestCaching:
                     resolver._extract_info_sync(url)
 
         # Cache should have cleaned up expired entries
-        assert len(_info_cache) <= 501
+        assert len(_info_cache) <= fill_count
 
     def test_extract_info_sync_exception(self, resolver):
         """Should return None when YoutubeDL raises exception."""
@@ -912,6 +917,48 @@ class TestModelValidation:
         assert info.like_count is None
         assert info.view_count is None
 
+    def test_ytdlp_track_info_nullifies_negative_counts(self):
+        """Should coerce negative counts to None."""
+        raw = {"title": "Test", "like_count": -1, "view_count": -999}
+        info = YtDlpTrackInfo.model_validate(raw)
+        assert info.like_count is None
+        assert info.view_count is None
+
+    def test_ytdlp_track_info_empty_strings_become_none(self):
+        """Should coerce empty / whitespace-only strings to None."""
+        raw = {
+            "title": "Test",
+            "webpage_url": "",
+            "url": "   ",
+            "thumbnail": "",
+            "artist": "  ",
+            "uploader": "",
+        }
+        info = YtDlpTrackInfo.model_validate(raw)
+        assert info.webpage_url is None
+        assert info.url is None
+        assert info.thumbnail is None
+        assert info.artist is None
+        assert info.uploader is None
+
+    def test_ytdlp_track_info_empty_title_gets_default(self):
+        """Should fall back to 'Unknown Title' for empty title."""
+        info = YtDlpTrackInfo.model_validate({"title": ""})
+        assert info.title == "Unknown Title"
+
+        info2 = YtDlpTrackInfo.model_validate({"title": None})
+        assert info2.title == "Unknown Title"
+
+    def test_ytdlp_track_info_negative_duration_becomes_none(self):
+        """Should coerce negative duration to None."""
+        info = YtDlpTrackInfo.model_validate({"title": "Test", "duration": -30})
+        assert info.duration is None
+
+    def test_ytdlp_track_info_string_duration_coerced(self):
+        """Should coerce string duration to int."""
+        info = YtDlpTrackInfo.model_validate({"title": "Test", "duration": "180"})
+        assert info.duration == 180
+
     def test_cache_entry_immutable(self):
         """CacheEntry should be immutable (frozen)."""
         entry = CacheEntry(info=None, cached_at=time.time())
@@ -938,3 +985,18 @@ class TestModelValidation:
         assert dumped["quiet"] is True
         assert dumped["extractor_args"]["youtube"]["pot_server_url"] == "http://localhost:4416"
         assert dumped["extractor_args"]["youtube"]["player_client"] == ["android", "web"]
+
+    def test_ytdlp_opts_rejects_empty_format(self):
+        """Should reject empty format string."""
+        with pytest.raises(Exception):
+            YtDlpOpts(format="")
+
+    def test_ytdlp_opts_rejects_zero_retries(self):
+        """Should reject non-positive retries."""
+        with pytest.raises(Exception):
+            YtDlpOpts(retries=0)
+
+    def test_youtube_extractor_config_rejects_empty_player_clients(self):
+        """Should reject empty player_client list."""
+        with pytest.raises(Exception):
+            YouTubeExtractorConfig(pot_server_url="http://localhost:4416", player_client=[])
