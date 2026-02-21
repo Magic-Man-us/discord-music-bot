@@ -299,6 +299,17 @@ class LogTemplates:
     # Shuffle
     SHUFFLE_ERROR = "Error in shuffle button handler"
 
+    # Playback Retries
+    PLAYBACK_RESOLVE_RETRY = "Stream resolve failed for '%s' in guild %s, skipping to next (%d/%d)"
+    PLAYBACK_RESOLVE_RETRIES_EXHAUSTED = "Exhausted %d resolve retries in guild %s, stopping"
+
+    # Empty Channel Disconnect
+    EMPTY_CHANNEL_DISCONNECT_SCHEDULED = (
+        "No users left in voice channel, scheduling disconnect in %ss for guild %s"
+    )
+    EMPTY_CHANNEL_DISCONNECT_CANCELLED = "Cancelled empty-channel timer for guild %s"
+    EMPTY_CHANNEL_DISCONNECT_EXECUTING = "Empty-channel timeout reached, disconnecting guild %s"
+
 
 class DiscordUIMessages:
     """User-facing Discord messages and responses.

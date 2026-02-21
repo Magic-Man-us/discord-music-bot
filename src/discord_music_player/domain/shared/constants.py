@@ -225,6 +225,9 @@ class TimeConstants:
     # Idle disconnect — leave voice after this many seconds with no playback
     IDLE_DISCONNECT_SECONDS = 300  # 5 minutes
 
+    # Empty channel disconnect — leave voice after all users leave the channel
+    EMPTY_CHANNEL_DISCONNECT_SECONDS = 30
+
     # Busy timeout for SQLite
     DEFAULT_BUSY_TIMEOUT_MS = 5000
 

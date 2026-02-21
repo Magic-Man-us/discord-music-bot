@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import re
-from functools import cache
+from functools import lru_cache
 from urllib.parse import parse_qs, urlparse
 
 
-@cache
+@lru_cache(maxsize=512)
 def format_duration(seconds: int | float | None) -> str:
     if seconds is None:
         return "–"
@@ -97,7 +97,7 @@ def extract_youtube_timestamp(url: str) -> int | None:
     return None
 
 
-@cache
+@lru_cache(maxsize=512)
 def truncate(text: str, max_length: int = 90) -> str:
     if len(text) <= max_length:
         return text

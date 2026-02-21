@@ -11,7 +11,7 @@ import discord
 from discord.ext import commands
 
 from discord_music_player.domain.shared.constants import ConfigKeys
-from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
+from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages, LogTemplates
 
 if TYPE_CHECKING:
     from ....config.container import Container
@@ -27,6 +27,8 @@ class EventCog(commands.Cog):
 
         # Idle disconnect timers per guild
         self._idle_timers: dict[int, asyncio.Task[None]] = {}
+        # Empty-channel disconnect timers per guild
+        self._empty_channel_timers: dict[int, asyncio.Task[None]] = {}
 
         from ....domain.shared.events import get_event_bus
 
@@ -206,6 +208,11 @@ class EventCog(commands.Cog):
                 user_id=member.id,
             )
 
+            # Cancel pending empty-channel disconnect if user joined the bot's channel
+            bot_channel = self._get_bot_voice_channel(member.guild)
+            if bot_channel is not None and after.channel.id == bot_channel.id:
+                self._cancel_empty_channel_timer(member.guild.id)
+
             from ....domain.shared.events import VoiceMemberJoinedVoiceChannel
 
             await self._event_bus.publish(
@@ -275,28 +282,43 @@ class EventCog(commands.Cog):
         return any(not m.bot for m in channel.members)
 
     async def _schedule_empty_channel_disconnect(self, guild: discord.Guild) -> None:
-        logger.info("No users left in voice channel, scheduling disconnect in guild %s", guild.id)
-        await asyncio.sleep(30)
+        """Fire-and-forget: schedule a delayed disconnect if the channel stays empty."""
+        self._cancel_empty_channel_timer(guild.id)
+
+        from ....domain.shared.constants import TimeConstants
+
+        timeout = getattr(TimeConstants, "EMPTY_CHANNEL_DISCONNECT_SECONDS", 30)
+        logger.info(LogTemplates.EMPTY_CHANNEL_DISCONNECT_SCHEDULED, timeout, guild.id)
+        self._empty_channel_timers[guild.id] = asyncio.create_task(
+            self._empty_channel_disconnect(guild, timeout)
+        )
+
+    def _cancel_empty_channel_timer(self, guild_id: int) -> None:
+        timer = self._empty_channel_timers.pop(guild_id, None)
+        if timer is not None and not timer.done():
+            timer.cancel()
+            logger.debug(LogTemplates.EMPTY_CHANNEL_DISCONNECT_CANCELLED, guild_id)
+
+    async def _empty_channel_disconnect(self, guild: discord.Guild, timeout: int) -> None:
+        """Wait *timeout* seconds, then disconnect if the channel is still empty."""
+        try:
+            await asyncio.sleep(timeout)
+        except asyncio.CancelledError:
+            return
 
         bot_channel = self._get_bot_voice_channel(guild)
         if bot_channel is None or self._has_non_bot_members(bot_channel):
             return
 
+        logger.info(LogTemplates.EMPTY_CHANNEL_DISCONNECT_EXECUTING, guild.id)
         await self._disconnect_and_cleanup(guild)
 
     async def _disconnect_and_cleanup(self, guild: discord.Guild) -> None:
-        voice_client = discord.utils.get(self.bot.voice_clients, guild=guild)
-        if voice_client is None:
-            return
-
         try:
-            await voice_client.disconnect(force=False)
-            logger.info("Disconnected from empty voice channel in guild %s", guild.id)
-
-            repo = self.container.session_repository
-            await repo.delete(guild.id)
+            await self.container.playback_service.cleanup_guild(guild.id)
+            self.container.message_state_manager.reset(guild.id)
         except Exception:
-            logger.exception("Failed to disconnect from voice channel")
+            logger.exception("Failed to disconnect and cleanup guild %s", guild.id)
 
     # ─────────────────────────────────────────────────────────────────
     # Message Events

@@ -673,37 +673,52 @@ class TestVoiceStateUpdate:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_schedule_empty_channel_disconnect_disconnects(
+    async def test_schedule_empty_channel_disconnect_creates_task(
+        self, event_cog, mock_guild, mock_voice_channel
+    ):
+        """Should create a background task instead of blocking."""
+        mock_voice_client = MagicMock()
+        mock_voice_client.channel = mock_voice_channel
+        mock_voice_client.guild = mock_guild
+        event_cog.bot.voice_clients = [mock_voice_client]
+        mock_voice_channel.members = []
+
+        await event_cog._schedule_empty_channel_disconnect(mock_guild)
+
+        assert mock_guild.id in event_cog._empty_channel_timers
+        timer = event_cog._empty_channel_timers[mock_guild.id]
+        assert not timer.done()
+        timer.cancel()
+
+    @pytest.mark.asyncio
+    async def test_empty_channel_disconnect_disconnects(
         self, event_cog, mock_guild, mock_container, mock_voice_channel
     ):
         """Should disconnect after delay if still empty."""
         mock_voice_client = MagicMock()
         mock_voice_client.channel = mock_voice_channel
         mock_voice_client.guild = mock_guild
-        mock_voice_client.disconnect = AsyncMock()
         event_cog.bot.voice_clients = [mock_voice_client]
-
-        # Empty channel
         mock_voice_channel.members = []
 
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            await event_cog._schedule_empty_channel_disconnect(mock_guild)
+        mock_container.playback_service = MagicMock()
+        mock_container.playback_service.cleanup_guild = AsyncMock()
 
-        mock_voice_client.disconnect.assert_called_once()
-        mock_container.session_repository.delete.assert_called_once_with(mock_guild.id)
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            await event_cog._empty_channel_disconnect(mock_guild, 30)
+
+        mock_container.playback_service.cleanup_guild.assert_called_once_with(mock_guild.id)
 
     @pytest.mark.asyncio
-    async def test_schedule_empty_channel_disconnect_cancels_if_rejoined(
+    async def test_empty_channel_disconnect_cancels_if_rejoined(
         self, event_cog, mock_guild, mock_voice_channel
     ):
         """Should not disconnect if someone rejoined."""
         mock_voice_client = MagicMock()
         mock_voice_client.channel = mock_voice_channel
         mock_voice_client.guild = mock_guild
-        mock_voice_client.disconnect = AsyncMock()
         event_cog.bot.voice_clients = [mock_voice_client]
 
-        # Add member after sleep
         human = MagicMock()
         human.bot = False
 
@@ -711,22 +726,24 @@ class TestVoiceStateUpdate:
             mock_voice_channel.members = [human]
 
         with patch("asyncio.sleep", new_callable=AsyncMock, side_effect=add_member_after_sleep):
-            await event_cog._schedule_empty_channel_disconnect(mock_guild)
+            await event_cog._empty_channel_disconnect(mock_guild, 30)
 
-        mock_voice_client.disconnect.assert_not_called()
+        # playback_service.cleanup_guild should not be called
+        if hasattr(event_cog.container, "playback_service"):
+            event_cog.container.playback_service.cleanup_guild.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_disconnect_and_cleanup_handles_exception(self, event_cog, mock_guild, caplog):
-        """Should handle disconnect exception gracefully."""
-        mock_voice_client = MagicMock()
-        mock_voice_client.disconnect = AsyncMock(side_effect=Exception("Disconnect error"))
-        mock_voice_client.guild = mock_guild
-        event_cog.bot.voice_clients = [mock_voice_client]
+    async def test_disconnect_and_cleanup_handles_exception(self, event_cog, mock_guild, mock_container, caplog):
+        """Should handle cleanup exception gracefully."""
+        mock_container.playback_service = MagicMock()
+        mock_container.playback_service.cleanup_guild = AsyncMock(
+            side_effect=Exception("Cleanup error")
+        )
 
         with caplog.at_level(logging.ERROR):
             await event_cog._disconnect_and_cleanup(mock_guild)
 
-        assert any("Failed to disconnect" in record.message for record in caplog.records)
+        assert any("Failed to disconnect and cleanup" in record.message for record in caplog.records)
 
 
 # =============================================================================

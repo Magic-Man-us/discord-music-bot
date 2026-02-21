@@ -68,51 +68,74 @@ class PlaybackApplicationService:
     def set_track_finished_callback(self, callback: Callable[[int, Track], Any]) -> None:
         self._on_track_finished_callback = callback
 
+    _MAX_RESOLVE_RETRIES: int = 3
+
     async def start_playback(
         self, guild_id: int, *, start_seconds: StartSeconds | None = None
     ) -> bool:
-        """Start playback of the next track in queue."""
+        """Start playback of the next track in queue.
+
+        If stream-URL resolution fails, the track is discarded and the next
+        track in the queue is tried, up to ``_MAX_RESOLVE_RETRIES`` times.
+        """
         if start_seconds is not None:
             self._pending_start_seconds[guild_id] = start_seconds
         logger.info(LogTemplates.PLAYBACK_START_CALLED, guild_id)
 
-        session = await self._session_repo.get(guild_id)
-        if session is None:
-            logger.warning(LogTemplates.SESSION_NOT_FOUND, guild_id)
-            return False
+        for attempt in range(self._MAX_RESOLVE_RETRIES):
+            session = await self._session_repo.get(guild_id)
+            if session is None:
+                logger.warning(LogTemplates.SESSION_NOT_FOUND, guild_id)
+                return False
 
-        logger.info(
-            "Session state=%s is_playing=%s has_current=%s queue_length=%s",
-            session.state,
-            session.is_playing,
-            session.current_track is not None,
-            session.queue_length,
-        )
+            logger.info(
+                "Session state=%s is_playing=%s has_current=%s queue_length=%s",
+                session.state,
+                session.is_playing,
+                session.current_track is not None,
+                session.queue_length,
+            )
 
-        if session.is_playing:
-            logger.info(LogTemplates.PLAYBACK_ALREADY_PLAYING, guild_id)
-            return True
+            if session.is_playing:
+                logger.info(LogTemplates.PLAYBACK_ALREADY_PLAYING, guild_id)
+                return True
 
-        had_current = session.current_track is not None
-        track = await self._get_next_track(session)
-        if track is None:
-            logger.warning(LogTemplates.QUEUE_NO_TRACKS, guild_id)
-            return False
+            had_current = session.current_track is not None
+            track = await self._get_next_track(session)
+            if track is None:
+                logger.warning(LogTemplates.QUEUE_NO_TRACKS, guild_id)
+                return False
 
-        logger.info(LogTemplates.TRACK_GOT_TO_PLAY, track.title)
+            logger.info(LogTemplates.TRACK_GOT_TO_PLAY, track.title)
 
-        await self._persist_playback_state(
+            await self._persist_playback_state(
+                guild_id,
+                current_track=track,
+                state=PlaybackState.IDLE,
+                remove_from_queue=not had_current,
+            )
+
+            track = await self._ensure_stream_url(session, track, guild_id)
+            if track is None:
+                # Resolution failed — _ensure_stream_url already cleared current_track.
+                # Loop back to try the next track in the queue.
+                logger.warning(
+                    LogTemplates.PLAYBACK_RESOLVE_RETRY,
+                    track if track else "unknown",
+                    guild_id,
+                    attempt + 1,
+                    self._MAX_RESOLVE_RETRIES,
+                )
+                continue
+
+            return await self._start_voice_playback(session, track, guild_id)
+
+        logger.error(
+            LogTemplates.PLAYBACK_RESOLVE_RETRIES_EXHAUSTED,
+            self._MAX_RESOLVE_RETRIES,
             guild_id,
-            current_track=track,
-            state=PlaybackState.IDLE,
-            remove_from_queue=not had_current,
         )
-
-        track = await self._ensure_stream_url(session, track, guild_id)
-        if track is None:
-            return False
-
-        return await self._start_voice_playback(session, track, guild_id)
+        return False
 
     async def _get_next_track(self, session: Any) -> Track | None:
         if session.current_track is not None:
@@ -124,7 +147,7 @@ class PlaybackApplicationService:
         return track
 
     async def _ensure_stream_url(self, session: Any, track: Track, guild_id: int) -> Track | None:
-        """Resolve and attach a stream URL, retrying with the next track on failure."""
+        """Resolve and attach a stream URL. Returns None on failure (caller retries)."""
         if track.stream_url:
             return track
 
@@ -158,7 +181,6 @@ class PlaybackApplicationService:
                 current_track=None,
                 state=PlaybackState.IDLE,
             )
-            await self.start_playback(guild_id)  # Retry with next track
             return None
 
     async def _start_voice_playback(self, session: Any, track: Track, guild_id: int) -> bool:
@@ -212,8 +234,8 @@ class PlaybackApplicationService:
         if session is None:
             return False
 
+        self._ignore_next_voice_track_end.add(guild_id)
         try:
-            self._ignore_next_voice_track_end.add(guild_id)
             await self._voice_adapter.stop(guild_id)
             session.stop()
             await self._persist_playback_state(
@@ -224,6 +246,9 @@ class PlaybackApplicationService:
             logger.info(LogTemplates.PLAYBACK_STOPPED, guild_id)
             return True
         except Exception:
+            # Stop failed — the voice callback may still fire normally,
+            # so remove the suppression flag to avoid stalling the queue.
+            self._ignore_next_voice_track_end.discard(guild_id)
             logger.exception("Error stopping playback")
             return False
 
@@ -274,7 +299,12 @@ class PlaybackApplicationService:
         skipped_track = session.current_track
 
         self._ignore_next_voice_track_end.add(guild_id)
-        await self._voice_adapter.stop(guild_id)
+        try:
+            await self._voice_adapter.stop(guild_id)
+        except Exception:
+            self._ignore_next_voice_track_end.discard(guild_id)
+            logger.exception("Error stopping voice during skip")
+            return None
 
         next_track = session.advance_to_next_track()
         if next_track:

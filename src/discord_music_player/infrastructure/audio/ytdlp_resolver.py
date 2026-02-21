@@ -20,6 +20,11 @@ from discord_music_player.domain.shared.messages import LogTemplates
 logger = logging.getLogger(__name__)
 
 CACHE_TTL: Final[int] = 3600
+_CACHE_FIELDS: Final[tuple[str, ...]] = (
+    "webpage_url", "url", "title", "duration", "thumbnail",
+    "artist", "creator", "uploader", "channel",
+    "like_count", "view_count", "formats",
+)
 _info_cache: dict[str, tuple[dict[str, Any] | None, float]] = {}
 
 URL_PATTERNS: Final[list[re.Pattern[str]]] = [
@@ -159,26 +164,40 @@ class YtDlpResolver(AudioResolver):
             return audio_formats[-1].get("url")
         return None
 
+    @staticmethod
+    def _trim_info(data: dict[str, Any]) -> dict[str, Any]:
+        """Keep only the fields we need to reduce memory usage."""
+        trimmed = {k: data[k] for k in _CACHE_FIELDS if k in data}
+        # Trim formats to only audio-relevant entries
+        if "formats" in trimmed and isinstance(trimmed["formats"], list):
+            trimmed["formats"] = [
+                {"url": f.get("url"), "acodec": f.get("acodec")}
+                for f in trimmed["formats"]
+                if f.get("url")
+            ]
+        return trimmed
+
     def _extract_info_sync(self, url: str) -> dict[str, Any] | None:
         now = time.time()
-        if url in _info_cache:
-            info, timestamp = _info_cache[url]
+        cached = _info_cache.get(url)
+        if cached is not None:
+            info, timestamp = cached
             if now - timestamp < CACHE_TTL:
                 logger.debug(LogTemplates.CACHE_HIT_URL, url[:60])
                 return info
-            del _info_cache[url]
+            _info_cache.pop(url, None)
 
         try:
             with YoutubeDL(params=cast(Any, self._get_opts())) as ydl:
                 data = ydl.extract_info(url, download=False)
-                result = dict(data) if isinstance(data, dict) else None
+                result = self._trim_info(dict(data)) if isinstance(data, dict) else None
 
                 _info_cache[url] = (result, now)
 
                 if len(_info_cache) > 500:
                     expired = [k for k, (_, ts) in _info_cache.items() if now - ts >= CACHE_TTL]
                     for k in expired:
-                        del _info_cache[k]
+                        _info_cache.pop(k, None)
                     if expired:
                         logger.debug(LogTemplates.CACHE_EXPIRED_CLEANED, len(expired))
 
