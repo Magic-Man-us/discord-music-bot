@@ -692,48 +692,6 @@ class TestDiscordVoiceAdapter:
 
 
 # ============================================================================
-# FFmpegConfig Tests
-# ============================================================================
-
-
-class TestFFmpegConfig:
-    """Tests for FFmpegConfig - FFmpeg audio configuration."""
-
-    def test_default_config(self):
-        """Test default FFmpeg configuration."""
-        from discord_music_player.infrastructure.audio.ffmpeg_player import FFmpegConfig
-
-        config = FFmpegConfig()
-
-        assert config.reconnect is True
-        assert config.reconnect_streamed is True
-        assert config.reconnect_delay_max == 5
-        assert config.disable_video is True
-        assert config.default_volume == 0.5
-
-    def test_get_before_options(self):
-        """Test getting FFmpeg before options."""
-        from discord_music_player.infrastructure.audio.ffmpeg_player import FFmpegConfig
-
-        config = FFmpegConfig()
-        opts = config.get_before_options()
-
-        assert "-reconnect 1" in opts
-        assert "-reconnect_streamed 1" in opts
-        assert "-reconnect_delay_max 5" in opts
-
-    def test_get_options(self):
-        """Test getting FFmpeg options."""
-        from discord_music_player.infrastructure.audio.ffmpeg_player import FFmpegConfig
-
-        config = FFmpegConfig()
-        opts = config.get_options()
-
-        assert "-vn" in opts
-        assert "afade" in opts
-
-
-# ============================================================================
 # Helper Function Tests
 # ============================================================================
 

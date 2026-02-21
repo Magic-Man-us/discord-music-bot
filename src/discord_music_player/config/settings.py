@@ -101,6 +101,9 @@ class AudioSettings(BaseModel):
         }
     )
     ytdlp_format: NonEmptyStr = "bestaudio/best"
+    player_client: list[NonEmptyStr] = Field(
+        default_factory=lambda: ["web", "android"],
+    )
     pot_server_url: HttpUrlStr = Field(
         default="http://127.0.0.1:4416",
         validation_alias=AliasChoices("pot_server_url", "bgutil_pot_server_url"),

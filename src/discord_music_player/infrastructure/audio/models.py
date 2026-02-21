@@ -127,9 +127,7 @@ class YouTubeExtractorConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     pot_server_url: HttpUrlStr
-    player_client: list[NonEmptyStr] = Field(
-        default_factory=lambda: ["android", "web"], min_length=1,
-    )
+    player_client: list[NonEmptyStr] = Field(min_length=1)
 
 
 class ExtractorArgs(BaseModel):

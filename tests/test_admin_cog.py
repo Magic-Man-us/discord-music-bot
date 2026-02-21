@@ -27,6 +27,13 @@ from discord_music_player.infrastructure.discord.cogs.admin_cog import (
     require_owner,
     require_owner_or_admin,
 )
+from discord_music_player.infrastructure.persistence.database import (
+    ColumnValidation,
+    CountValidation,
+    DatabaseStats,
+    PragmaValidation,
+    SchemaValidationResult,
+)
 
 # =============================================================================
 # Fixtures
@@ -81,27 +88,27 @@ def mock_container():
     # Mock database
     container.database = MagicMock()
     container.database.get_stats = AsyncMock(
-        return_value={
-            "initialized": True,
-            "file_size_mb": 2.5,
-            "page_count": 1024,
-            "db_path": "/tmp/test.db",
-            "tables": {
+        return_value=DatabaseStats(
+            initialized=True,
+            file_size_mb=2.5,
+            page_count=1024,
+            db_path="/tmp/test.db",
+            tables={
                 "sessions": 10,
                 "history": 100,
                 "votes": 5,
             },
-        }
+        )
     )
 
     container.database.validate_schema = AsyncMock(
-        return_value={
-            "tables": {"expected": 7, "found": 7, "missing": []},
-            "columns": {"expected": 47, "found": 47, "missing": {}},
-            "indexes": {"expected": 9, "found": 9, "missing": []},
-            "pragmas": {"journal_mode": "wal", "foreign_keys": 1},
-            "issues": [],
-        }
+        return_value=SchemaValidationResult(
+            tables=CountValidation(expected=7, found=7, missing=[]),
+            columns=ColumnValidation(expected=47, found=47, missing={}),
+            indexes=CountValidation(expected=9, found=9, missing=[]),
+            pragmas=PragmaValidation(journal_mode="wal", foreign_keys=1),
+            issues=[],
+        )
     )
 
     # Mock cleanup job
@@ -867,13 +874,12 @@ class TestDatabaseCommands:
     async def test_db_stats_shows_filename_only(self, admin_cog, mock_admin_ctx, mock_container):
         """Should show only filename, not full filesystem path (security)."""
         mock_container.database.get_stats = AsyncMock(
-            return_value={
-                "initialized": True,
-                "file_size_mb": 1.0,
-                "page_count": 100,
-                "db_path": "/home/user/secret/path/data/bot.db",
-                "tables": {},
-            }
+            return_value=DatabaseStats(
+                initialized=True,
+                file_size_mb=1.0,
+                page_count=100,
+                db_path="/home/user/secret/path/data/bot.db",
+            )
         )
 
         await admin_cog.db_stats.callback(admin_cog, mock_admin_ctx)
@@ -919,17 +925,17 @@ class TestDatabaseCommands:
     async def test_db_validate_with_issues(self, admin_cog, mock_admin_ctx, mock_container):
         """Should display orange embed when issues are found."""
         mock_container.database.validate_schema = AsyncMock(
-            return_value={
-                "tables": {"expected": 7, "found": 6, "missing": ["track_genres"]},
-                "columns": {"expected": 47, "found": 44, "missing": {"track_genres": ["track_id", "genre", "classified_at"]}},
-                "indexes": {"expected": 9, "found": 8, "missing": ["idx_track_genres_genre"]},
-                "pragmas": {"journal_mode": "wal", "foreign_keys": 1},
-                "issues": [
+            return_value=SchemaValidationResult(
+                tables=CountValidation(expected=7, found=6, missing=["track_genres"]),
+                columns=ColumnValidation(expected=47, found=44, missing={"track_genres": ["track_id", "genre", "classified_at"]}),
+                indexes=CountValidation(expected=9, found=8, missing=["idx_track_genres_genre"]),
+                pragmas=PragmaValidation(journal_mode="wal", foreign_keys=1),
+                issues=[
                     "Missing tables: track_genres",
                     "Missing columns in track_genres: track_id, genre, classified_at",
                     "Missing indexes: idx_track_genres_genre",
                 ],
-            }
+            )
         )
 
         await admin_cog.db_validate.callback(admin_cog, mock_admin_ctx)
@@ -948,16 +954,16 @@ class TestDatabaseCommands:
     async def test_db_validate_pragma_failures(self, admin_cog, mock_admin_ctx, mock_container):
         """Should show failed pragmas."""
         mock_container.database.validate_schema = AsyncMock(
-            return_value={
-                "tables": {"expected": 7, "found": 7, "missing": []},
-                "columns": {"expected": 47, "found": 47, "missing": {}},
-                "indexes": {"expected": 9, "found": 9, "missing": []},
-                "pragmas": {"journal_mode": "delete", "foreign_keys": 0},
-                "issues": [
+            return_value=SchemaValidationResult(
+                tables=CountValidation(expected=7, found=7, missing=[]),
+                columns=ColumnValidation(expected=47, found=47, missing={}),
+                indexes=CountValidation(expected=9, found=9, missing=[]),
+                pragmas=PragmaValidation(journal_mode="delete", foreign_keys=0),
+                issues=[
                     "journal_mode is 'delete', expected 'wal'",
                     "foreign_keys is 0, expected 1",
                 ],
-            }
+            )
         )
 
         await admin_cog.db_validate.callback(admin_cog, mock_admin_ctx)
@@ -1118,13 +1124,12 @@ class TestEdgeCases:
     async def test_db_stats_with_empty_tables(self, admin_cog, mock_admin_ctx, mock_container):
         """Should handle database with no tables."""
         mock_container.database.get_stats = AsyncMock(
-            return_value={
-                "initialized": True,
-                "file_size_mb": 0.1,
-                "page_count": 0,
-                "db_path": "/tmp/empty.db",
-                "tables": {},
-            }
+            return_value=DatabaseStats(
+                initialized=True,
+                file_size_mb=0.1,
+                page_count=0,
+                db_path="/tmp/empty.db",
+            )
         )
 
         await admin_cog.db_stats.callback(admin_cog, mock_admin_ctx)

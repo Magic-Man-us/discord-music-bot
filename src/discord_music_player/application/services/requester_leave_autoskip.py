@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from ...domain.shared.events import VoiceMemberLeftVoiceChannel, get_event_bus
 from ...domain.shared.messages import LogTemplates
+from ...domain.shared.types import DiscordSnowflake
 
 if TYPE_CHECKING:
     from ...application.interfaces.voice_adapter import VoiceAdapter
@@ -33,11 +34,11 @@ class AutoSkipOnRequesterLeave:
         self._playback_service = playback_service
         self._voice_adapter = voice_adapter
         self._bus = get_event_bus()
-        self._guild_locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._guild_locks: dict[DiscordSnowflake, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._started = False
-        self._on_requester_left_callback: Callable[[int, int, Track], Any] | None = None
+        self._on_requester_left_callback: Callable[[DiscordSnowflake, DiscordSnowflake, Track], Any] | None = None
 
-    def set_on_requester_left_callback(self, callback: Callable[[int, int, Track], Any]) -> None:
+    def set_on_requester_left_callback(self, callback: Callable[[DiscordSnowflake, DiscordSnowflake, Track], Any]) -> None:
         self._on_requester_left_callback = callback
 
     def start(self) -> None:

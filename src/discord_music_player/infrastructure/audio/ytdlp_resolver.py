@@ -79,6 +79,7 @@ class YtDlpResolver(AudioResolver):
         self._extractor_args = ExtractorArgs(
             youtube=YouTubeExtractorConfig(
                 pot_server_url=self._settings.pot_server_url,
+                player_client=self._settings.player_client,
             )
         )
 

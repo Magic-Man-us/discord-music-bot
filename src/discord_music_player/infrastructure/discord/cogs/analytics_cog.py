@@ -30,9 +30,10 @@ class AnalyticsCog(commands.Cog):
     @app_commands.command(name="stats", description="Show server music statistics")
     @app_commands.guild_only()
     async def stats(self, interaction: discord.Interaction) -> None:
+        assert interaction.guild is not None
         await interaction.response.defer()
 
-        guild_id = interaction.guild_id
+        guild_id = interaction.guild.id
         history_repo = self.container.history_repository
 
         total = await history_repo.get_total_tracks(guild_id)
@@ -97,9 +98,10 @@ class AnalyticsCog(commands.Cog):
         interaction: discord.Interaction,
         category: app_commands.Choice[str] | None = None,
     ) -> None:
+        assert interaction.guild is not None
         await interaction.response.defer()
 
-        guild_id = interaction.guild_id
+        guild_id = interaction.guild.id
         history_repo = self.container.history_repository
         cat = category.value if category else "tracks"
 
@@ -155,9 +157,10 @@ class AnalyticsCog(commands.Cog):
     @app_commands.command(name="mystats", description="Show your personal music stats")
     @app_commands.guild_only()
     async def mystats(self, interaction: discord.Interaction) -> None:
+        assert interaction.guild is not None
         await interaction.response.defer()
 
-        guild_id = interaction.guild_id
+        guild_id = interaction.guild.id
         user_id = interaction.user.id
         history_repo = self.container.history_repository
 
@@ -274,9 +277,10 @@ class AnalyticsCog(commands.Cog):
         interaction: discord.Interaction,
         period: app_commands.Choice[str] | None = None,
     ) -> None:
+        assert interaction.guild is not None
         await interaction.response.defer()
 
-        guild_id = interaction.guild_id
+        guild_id = interaction.guild.id
         history_repo = self.container.history_repository
         chart_gen = self.container.chart_generator
         p = period.value if period else "daily"

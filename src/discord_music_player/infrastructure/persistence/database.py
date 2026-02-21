@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import aiosqlite
+from pydantic import BaseModel, ConfigDict, Field
 
 from discord_music_player.domain.shared.constants import SQLPragmas
 from discord_music_player.domain.shared.messages import LogTemplates
@@ -18,8 +19,68 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-EXPECTED_SCHEMA: dict[str, dict[str, Any]] = {
-    "tables": {
+
+class DatabaseStats(BaseModel):
+    """Result of get_stats() — typed instead of dict[str, Any]."""
+
+    model_config = ConfigDict(frozen=False)
+    db_path: str = ""
+    initialized: bool = False
+    tables: dict[str, int] = Field(default_factory=dict)
+    file_size_bytes: int | None = None
+    file_size_mb: float | None = None
+    page_count: int | None = None
+    page_size: int | None = None
+    error: str | None = None
+
+
+class ExpectedSchema(BaseModel):
+    """Expected database schema definition."""
+
+    model_config = ConfigDict(frozen=True)
+    tables: dict[str, list[str]]
+    indexes: list[str]
+
+
+class CountValidation(BaseModel):
+    """Validation counts for a schema element category."""
+
+    model_config = ConfigDict(frozen=False)
+    expected: int = 0
+    found: int = 0
+    missing: list[str] = Field(default_factory=list)
+
+
+class ColumnValidation(BaseModel):
+    """Validation counts for columns, with per-table missing info."""
+
+    model_config = ConfigDict(frozen=False)
+    expected: int = 0
+    found: int = 0
+    missing: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class PragmaValidation(BaseModel):
+    """SQLite pragma check results."""
+
+    model_config = ConfigDict(frozen=False)
+    journal_mode: str | None = None
+    foreign_keys: int | None = None
+
+
+class SchemaValidationResult(BaseModel):
+    """Result of validate_schema() — typed instead of dict[str, Any]."""
+
+    model_config = ConfigDict(frozen=False)
+    tables: CountValidation = Field(default_factory=CountValidation)
+    columns: ColumnValidation = Field(default_factory=ColumnValidation)
+    indexes: CountValidation = Field(default_factory=CountValidation)
+    pragmas: PragmaValidation = Field(default_factory=PragmaValidation)
+    issues: list[str] = Field(default_factory=list)
+
+
+EXPECTED_SCHEMA = ExpectedSchema(
+    tables={
         "guild_sessions": [
             "guild_id", "state", "loop_mode", "created_at", "last_activity",
         ],
@@ -45,7 +106,7 @@ EXPECTED_SCHEMA: dict[str, dict[str, Any]] = {
         ],
         "track_genres": ["track_id", "genre", "classified_at"],
     },
-    "indexes": [
+    indexes=[
         "idx_queue_tracks_guild_pos",
         "idx_queue_tracks_guild_current",
         "idx_track_history_guild_played",
@@ -56,7 +117,7 @@ EXPECTED_SCHEMA: dict[str, dict[str, Any]] = {
         "idx_reco_cache_expires",
         "idx_track_genres_genre",
     ],
-}
+)
 
 
 class Database:
@@ -345,17 +406,17 @@ class Database:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
-    async def get_stats(self) -> dict[str, Any]:
-        stats: dict[str, Any] = {
-            "db_path": self._db_path,
-            "initialized": self._initialized,
-            "tables": {},
-        }
+    async def get_stats(self) -> DatabaseStats:
+        stats = DatabaseStats(
+            db_path=self._db_path,
+            initialized=self._initialized,
+        )
 
         db_file = Path(self._db_path)
         if db_file.exists():
-            stats["file_size_bytes"] = db_file.stat().st_size
-            stats["file_size_mb"] = round(db_file.stat().st_size / (1024 * 1024), 2)
+            st = db_file.stat()
+            stats.file_size_bytes = st.st_size
+            stats.file_size_mb = round(st.st_size / (1024 * 1024), 2)
 
         if not self._initialized:
             return stats
@@ -363,7 +424,7 @@ class Database:
         try:
             async with self.connection() as conn:
                 cursor = await conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '%_%'"
+                    "SELECT name FROM sqlite_master WHERE type='table'"
                 )
                 tables = await cursor.fetchall()
 
@@ -372,39 +433,33 @@ class Database:
                         f"SELECT COUNT(*) FROM {table_name}"  # noqa: S608
                     )
                     count_row = await count_cursor.fetchone()
-                    stats["tables"][table_name] = count_row[0] if count_row else 0
+                    stats.tables[table_name] = count_row[0] if count_row else 0
 
                 page_cursor = await conn.execute(SQLPragmas.PAGE_COUNT)
                 page_count_row = await page_cursor.fetchone()
-                stats["page_count"] = page_count_row[0] if page_count_row else 0
+                stats.page_count = page_count_row[0] if page_count_row else 0
 
                 page_size_cursor = await conn.execute(SQLPragmas.PAGE_SIZE)
                 page_size_row = await page_size_cursor.fetchone()
-                stats["page_size"] = page_size_row[0] if page_size_row else 0
+                stats.page_size = page_size_row[0] if page_size_row else 0
 
         except Exception as e:
             logger.error(LogTemplates.DATABASE_STATS_FAILED, e)
-            stats["error"] = str(e)
+            stats.error = str(e)
 
         return stats
 
-    async def validate_schema(self) -> dict[str, Any]:
-        result: dict[str, Any] = {
-            "tables": {"expected": 0, "found": 0, "missing": []},
-            "columns": {"expected": 0, "found": 0, "missing": {}},
-            "indexes": {"expected": 0, "found": 0, "missing": []},
-            "pragmas": {"journal_mode": None, "foreign_keys": None},
-            "issues": [],
-        }
+    async def validate_schema(self) -> SchemaValidationResult:
+        result = SchemaValidationResult()
 
-        expected_tables = EXPECTED_SCHEMA["tables"]
-        expected_indexes = EXPECTED_SCHEMA["indexes"]
+        expected_tables = EXPECTED_SCHEMA.tables
+        expected_indexes = EXPECTED_SCHEMA.indexes
 
-        result["tables"]["expected"] = len(expected_tables)
-        result["indexes"]["expected"] = len(expected_indexes)
+        result.tables.expected = len(expected_tables)
+        result.indexes.expected = len(expected_indexes)
 
         total_expected_cols = sum(len(cols) for cols in expected_tables.values())
-        result["columns"]["expected"] = total_expected_cols
+        result.columns.expected = total_expected_cols
 
         async with self.connection() as conn:
             # Check tables
@@ -416,17 +471,17 @@ class Database:
 
             found_tables = [t for t in expected_tables if t in existing_tables]
             missing_tables = [t for t in expected_tables if t not in existing_tables]
-            result["tables"]["found"] = len(found_tables)
-            result["tables"]["missing"] = missing_tables
+            result.tables.found = len(found_tables)
+            result.tables.missing = missing_tables
 
             if missing_tables:
-                result["issues"].append(f"Missing tables: {', '.join(missing_tables)}")
+                result.issues.append(f"Missing tables: {', '.join(missing_tables)}")
 
             # Check columns per table
             total_found_cols = 0
             for table, expected_cols in expected_tables.items():
                 if table not in existing_tables:
-                    result["columns"]["missing"][table] = expected_cols
+                    result.columns.missing[table] = expected_cols
                     continue
 
                 col_rows = await conn.execute_fetchall(
@@ -437,12 +492,12 @@ class Database:
 
                 missing_cols = [c for c in expected_cols if c not in existing_cols]
                 if missing_cols:
-                    result["columns"]["missing"][table] = missing_cols
-                    result["issues"].append(
+                    result.columns.missing[table] = missing_cols
+                    result.issues.append(
                         f"Missing columns in {table}: {', '.join(missing_cols)}"
                     )
 
-            result["columns"]["found"] = total_found_cols
+            result.columns.found = total_found_cols
 
             # Check indexes
             idx_cursor = await conn.execute(
@@ -453,11 +508,11 @@ class Database:
 
             found_indexes = [i for i in expected_indexes if i in existing_indexes]
             missing_indexes = [i for i in expected_indexes if i not in existing_indexes]
-            result["indexes"]["found"] = len(found_indexes)
-            result["indexes"]["missing"] = missing_indexes
+            result.indexes.found = len(found_indexes)
+            result.indexes.missing = missing_indexes
 
             if missing_indexes:
-                result["issues"].append(
+                result.issues.append(
                     f"Missing indexes: {', '.join(missing_indexes)}"
                 )
 
@@ -465,19 +520,19 @@ class Database:
             jm_cursor = await conn.execute("PRAGMA journal_mode")
             jm_row = await jm_cursor.fetchone()
             journal_mode = jm_row[0] if jm_row else None
-            result["pragmas"]["journal_mode"] = journal_mode
+            result.pragmas.journal_mode = journal_mode
 
             fk_cursor = await conn.execute("PRAGMA foreign_keys")
             fk_row = await fk_cursor.fetchone()
             foreign_keys = fk_row[0] if fk_row else None
-            result["pragmas"]["foreign_keys"] = foreign_keys
+            result.pragmas.foreign_keys = foreign_keys
 
             if journal_mode != "wal":
-                result["issues"].append(
+                result.issues.append(
                     f"journal_mode is '{journal_mode}', expected 'wal'"
                 )
             if foreign_keys != 1:
-                result["issues"].append(
+                result.issues.append(
                     f"foreign_keys is {foreign_keys}, expected 1"
                 )
 

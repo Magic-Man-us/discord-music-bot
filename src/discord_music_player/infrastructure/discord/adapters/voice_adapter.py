@@ -12,6 +12,7 @@ import discord
 
 from discord_music_player.application.interfaces.voice_adapter import VoiceAdapter
 from discord_music_player.config.settings import AudioSettings
+from discord_music_player.domain.shared.constants import AudioConstants
 from discord_music_player.domain.shared.messages import LogTemplates
 
 if TYPE_CHECKING:
@@ -24,9 +25,6 @@ CONNECT_TIMEOUT: float = 10.0
 FADE_IN_SECONDS: float = 0.5
 DEFAULT_VOLUME: float = 0.2
 
-# Matches yt-dlp's Android client user-agent to avoid YouTube 403 responses
-ANDROID_USER_AGENT = "com.google.android.youtube/19.44.38 (Linux; U; Android 14) gzip"
-
 
 class DiscordVoiceAdapter(VoiceAdapter):
     def __init__(self, bot: discord.Client, settings: AudioSettings | None = None) -> None:
@@ -36,6 +34,13 @@ class DiscordVoiceAdapter(VoiceAdapter):
         self._on_track_end: Callable[[int], Awaitable[None]] | None = None
         self._current_track: dict[int, Track] = {}
         self._ffmpeg_options = self._settings.ffmpeg_options
+        # Resolve User-Agent from primary player_client
+        primary_client = self._settings.player_client[0] if self._settings.player_client else "web"
+        self._user_agent = (
+            AudioConstants.ANDROID_USER_AGENT
+            if primary_client == "android"
+            else AudioConstants.WEB_USER_AGENT
+        )
 
     def _get_voice_client(self, guild_id: int) -> discord.VoiceClient | None:
         guild = self._bot.get_guild(guild_id)
@@ -182,9 +187,9 @@ class DiscordVoiceAdapter(VoiceAdapter):
             vc.stop()
 
         try:
-            # User-Agent must match yt-dlp's Android client to prevent YouTube 403
+            # User-Agent must match yt-dlp's primary player_client to prevent YouTube 403
             base_before_opts = self._ffmpeg_options.get("before_options", "")
-            before_opts = f'{base_before_opts} -headers "User-Agent: {ANDROID_USER_AGENT}"'
+            before_opts = f'{base_before_opts} -headers "User-Agent: {self._user_agent}"'
             if start_seconds is not None:
                 before_opts = f"-ss {start_seconds.value} {before_opts}"
             base_opts = self._ffmpeg_options.get("options", "")

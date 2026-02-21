@@ -90,6 +90,7 @@ from discord_music_player.infrastructure.discord.cogs.health_cog import (
     DetailedStats,
     HealthCog,
 )
+from discord_music_player.infrastructure.persistence.database import DatabaseStats
 
 # =============================================================================
 # Fixtures
@@ -126,7 +127,7 @@ def mock_container():
 
     # Mock database
     database = MagicMock()
-    database.get_stats = AsyncMock(return_value={"initialized": True, "file_size_mb": 2.5})
+    database.get_stats = AsyncMock(return_value=DatabaseStats(initialized=True, file_size_mb=2.5))
     container.database = database
 
     return container
@@ -526,7 +527,7 @@ class TestDetailedStatsCollection:
     async def test_collect_detailed_stats_database(self, health_cog, mock_container):
         """Should include database statistics."""
         mock_container.database.get_stats = AsyncMock(
-            return_value={"initialized": True, "file_size_mb": 5.2}
+            return_value=DatabaseStats(initialized=True, file_size_mb=5.2)
         )
 
         stats = await health_cog._collect_detailed_stats()

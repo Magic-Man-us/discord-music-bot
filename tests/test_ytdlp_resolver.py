@@ -835,7 +835,7 @@ class TestPOTProviderConfiguration:
         assert isinstance(opts, YtDlpOpts)
         assert opts.extractor_args is not None
         assert opts.extractor_args.youtube.pot_server_url == settings.pot_server_url
-        assert opts.extractor_args.youtube.player_client == ["android", "web"]
+        assert opts.extractor_args.youtube.player_client == ["web", "android"]
 
     def test_pot_config_included_in_opts(self):
         """Should include POT configuration in yt-dlp options."""
@@ -975,7 +975,10 @@ class TestModelValidation:
         opts = YtDlpOpts(
             format="bestaudio/best",
             extractor_args=ExtractorArgs(
-                youtube=YouTubeExtractorConfig(pot_server_url="http://localhost:4416")
+                youtube=YouTubeExtractorConfig(
+                    pot_server_url="http://localhost:4416",
+                    player_client=["web", "android"],
+                )
             ),
         )
         dumped = opts.model_dump()
@@ -984,7 +987,7 @@ class TestModelValidation:
         assert dumped["format"] == "bestaudio/best"
         assert dumped["quiet"] is True
         assert dumped["extractor_args"]["youtube"]["pot_server_url"] == "http://localhost:4416"
-        assert dumped["extractor_args"]["youtube"]["player_client"] == ["android", "web"]
+        assert dumped["extractor_args"]["youtube"]["player_client"] == ["web", "android"]
 
     def test_ytdlp_opts_rejects_empty_format(self):
         """Should reject empty format string."""

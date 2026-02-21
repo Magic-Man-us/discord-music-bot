@@ -11,6 +11,7 @@ from discord.ext import commands
 
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.shared.messages import DiscordUIMessages
+from discord_music_player.domain.shared.types import DiscordSnowflake
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     get_member,
@@ -279,7 +280,7 @@ class PlaybackCog(commands.Cog):
     # Callbacks
     # ─────────────────────────────────────────────────────────────────
 
-    async def _on_requester_left(self, guild_id: int, user_id: int, track: Track) -> None:
+    async def _on_requester_left(self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake, track: Track) -> None:
         from ....domain.shared.messages import LogTemplates
         from ..views.requester_left_view import RequesterLeftView
 
@@ -316,7 +317,7 @@ class PlaybackCog(commands.Cog):
         message = await channel.send(content, view=view)
         view.set_message(message)
 
-    async def _on_track_finished(self, guild_id: int, track: Track) -> None:
+    async def _on_track_finished(self, guild_id: DiscordSnowflake, track: Track) -> None:
         msm = self.container.message_state_manager
         await msm.on_track_finished(guild_id, track)
 

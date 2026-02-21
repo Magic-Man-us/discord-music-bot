@@ -194,8 +194,8 @@ class HealthCog(commands.Cog):
         try:
             db = self.container.database
             db_stats = await db.get_stats()
-            payload["db_initialized"] = db_stats.get("initialized", False)
-            payload["db_size_mb"] = db_stats.get("file_size_mb", 0)
+            payload["db_initialized"] = db_stats.initialized
+            payload["db_size_mb"] = db_stats.file_size_mb or 0
         except Exception:
             pass
 

@@ -18,7 +18,6 @@ from discord_music_player.domain.shared.exceptions import (
     BusinessRuleViolationError,
     InvalidOperationError,
 )
-from discord_music_player.domain.shared.messages import ErrorMessages
 from discord_music_player.domain.shared.types import (
     DiscordSnowflake,
     DurationSeconds,

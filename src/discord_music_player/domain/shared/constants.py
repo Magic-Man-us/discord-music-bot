@@ -148,6 +148,10 @@ class AudioConstants:
 
     # User Agents
     ANDROID_USER_AGENT = "com.google.android.youtube/19.44.38 (Linux; U; Android 14) gzip"
+    WEB_USER_AGENT = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    )
 
     # yt-dlp Options
     YTDLP_FORMAT_DEFAULT = "bestaudio/best"

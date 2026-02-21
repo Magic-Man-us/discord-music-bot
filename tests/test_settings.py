@@ -263,6 +263,18 @@ class TestAudioSettings:
 
         assert audio.ytdlp_format == "bestaudio[ext=m4a]"
 
+    def test_player_client_default(self):
+        """Should default player_client to web-first order for PoToken compatibility."""
+        audio = AudioSettings()
+
+        assert audio.player_client == ["web", "android"]
+
+    def test_player_client_custom(self):
+        """Should accept custom player_client list."""
+        audio = AudioSettings(player_client=["android"])
+
+        assert audio.player_client == ["android"]
+
 
 # =============================================================================
 # AISettings Tests

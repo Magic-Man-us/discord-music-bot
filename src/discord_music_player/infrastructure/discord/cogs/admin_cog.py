@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import discord
@@ -305,21 +306,18 @@ class AdminCog(commands.Cog):
                 title=DiscordUIMessages.EMBED_DATABASE_STATISTICS, color=discord.Color.gold()
             )
             embed.add_field(
-                name="Initialized", value="✅" if stats.get("initialized") else "❌", inline=True
+                name="Initialized", value="✅" if stats.initialized else "❌", inline=True
             )
             embed.add_field(
-                name="File Size", value=f"{stats.get('file_size_mb', 0)} MB", inline=True
+                name="File Size", value=f"{stats.file_size_mb or 0} MB", inline=True
             )
-            embed.add_field(name="Page Count", value=str(stats.get("page_count", 0)), inline=True)
-            from pathlib import Path
+            embed.add_field(name="Page Count", value=str(stats.page_count or 0), inline=True)
 
-            db_path = stats.get("db_path", "Unknown")
-            db_name = Path(db_path).name if db_path != "Unknown" else "Unknown"
+            db_name = Path(stats.db_path).name if stats.db_path else "Unknown"
             embed.add_field(name="Database", value=db_name, inline=True)
 
-            tables = stats.get("tables", {})
-            if tables:
-                table_info = "\n".join(f"{name}: {count} rows" for name, count in tables.items())
+            if stats.tables:
+                table_info = "\n".join(f"{name}: {count} rows" for name, count in stats.tables.items())
                 embed.add_field(name="Tables", value=table_info or "No tables", inline=False)
 
             await self._reply(ctx, embed=embed)
@@ -334,37 +332,33 @@ class AdminCog(commands.Cog):
             db = self.container.database
             result = await db.validate_schema()
 
-            issues = result.get("issues", [])
+            issues = result.issues
             color = discord.Color.green() if not issues else discord.Color.orange()
 
             embed = discord.Embed(
                 title=DiscordUIMessages.EMBED_DATABASE_VALIDATION, color=color
             )
 
-            tables = result["tables"]
             embed.add_field(
                 name="Tables",
-                value=f"{tables['found']}/{tables['expected']}",
+                value=f"{result.tables.found}/{result.tables.expected}",
                 inline=True,
             )
 
-            columns = result["columns"]
             embed.add_field(
                 name="Columns",
-                value=f"{columns['found']}/{columns['expected']}",
+                value=f"{result.columns.found}/{result.columns.expected}",
                 inline=True,
             )
 
-            indexes = result["indexes"]
             embed.add_field(
                 name="Indexes",
-                value=f"{indexes['found']}/{indexes['expected']}",
+                value=f"{result.indexes.found}/{result.indexes.expected}",
                 inline=True,
             )
 
-            pragmas = result["pragmas"]
-            wal_ok = pragmas["journal_mode"] == "wal"
-            fk_ok = pragmas["foreign_keys"] == 1
+            wal_ok = result.pragmas.journal_mode == "wal"
+            fk_ok = result.pragmas.foreign_keys == 1
             pragma_text = f"WAL: {'✅' if wal_ok else '❌'}  FK: {'✅' if fk_ok else '❌'}"
             embed.add_field(name="Pragmas", value=pragma_text, inline=True)
 

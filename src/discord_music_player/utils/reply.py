@@ -51,6 +51,15 @@ def parse_timestamp(value: str) -> int | None:
     return int_parts[0] * 3600 + int_parts[1] * 60 + int_parts[2]
 
 
+_YOUTUBE_DOMAINS = {
+    "youtube.com",
+    "www.youtube.com",
+    "m.youtube.com",
+    "youtu.be",
+    "www.youtube-nocookie.com",
+}
+
+
 def extract_youtube_timestamp(url: str) -> int | None:
     """Extract the ``t=`` parameter (seconds) from a YouTube URL.
 
@@ -64,8 +73,6 @@ def extract_youtube_timestamp(url: str) -> int | None:
         return None
 
     host = (parsed.hostname or "").lower()
-    _YOUTUBE_DOMAINS = {"youtube.com", "www.youtube.com", "m.youtube.com",
-                        "youtu.be", "www.youtube-nocookie.com"}
     if host not in _YOUTUBE_DOMAINS:
         return None
 
