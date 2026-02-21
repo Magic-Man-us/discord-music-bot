@@ -60,6 +60,36 @@ QueuePositionInt = Annotated[int, Field(ge=0)]
 """Zero-based queue position."""
 
 
+# ── Settings-specific constraints ──────────────────────────────────
+
+PoolSize = Annotated[int, Field(ge=1, le=100)]
+"""Database connection pool size: 1 … 100."""
+
+BusyTimeoutMs = Annotated[int, Field(ge=1000, le=30000)]
+"""Database busy timeout in milliseconds: 1 000 … 30 000."""
+
+ConnectionTimeoutS = Annotated[int, Field(ge=1, le=60)]
+"""Database connection timeout in seconds: 1 … 60."""
+
+CommandPrefixStr = Annotated[str, Field(min_length=1, max_length=5)]
+"""Bot command prefix: 1-5 characters."""
+
+MaxQueueSize = Annotated[int, Field(gt=0, le=1000)]
+"""Maximum queue size: 1 … 1 000."""
+
+MaxTokens = Annotated[int, Field(ge=1, le=4096)]
+"""AI max tokens: 1 … 4 096."""
+
+TemperatureFloat = Annotated[float, Field(ge=0.0, le=2.0)]
+"""AI temperature: 0.0 … 2.0."""
+
+RadioCount = Annotated[int, Field(gt=0, le=10)]
+"""Radio tracks per batch: 1 … 10."""
+
+RadioMaxTracks = Annotated[int, Field(gt=0, le=200)]
+"""Radio max tracks per session: 1 … 200."""
+
+
 # ── Datetime constraints ────────────────────────────────────────────
 
 def _ensure_utc(v: datetime) -> datetime:

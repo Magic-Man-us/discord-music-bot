@@ -8,8 +8,24 @@ from typing import Literal
 from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ..domain.shared.types import DiscordSnowflake, PositiveInt, UnitInterval, VolumeFloat
-from ..domain.shared.validators import validate_discord_snowflake
+from ..domain.shared.types import (
+    BusyTimeoutMs,
+    CommandPrefixStr,
+    ConnectionTimeoutS,
+    DiscordSnowflake,
+    HttpUrlStr,
+    MaxQueueSize,
+    MaxTokens,
+    NonEmptyStr,
+    NonNegativeInt,
+    PoolSize,
+    PositiveInt,
+    RadioCount,
+    RadioMaxTracks,
+    TemperatureFloat,
+    UnitInterval,
+    VolumeFloat,
+)
 
 
 class DatabaseSettings(BaseModel):
@@ -20,18 +36,14 @@ class DatabaseSettings(BaseModel):
         default="sqlite:///data/bot.db",
         validation_alias=AliasChoices("url", "database_url", "db_url"),
     )
-    pool_size: int = Field(default=5, ge=1, le=100)
+    pool_size: PoolSize = 5
     echo: bool = False
-    busy_timeout_ms: int = Field(
+    busy_timeout_ms: BusyTimeoutMs = Field(
         default=5000,
-        ge=1000,
-        le=30000,
         validation_alias=AliasChoices("busy_timeout_ms", "busy_timeout"),
     )
-    connection_timeout_s: int = Field(
+    connection_timeout_s: ConnectionTimeoutS = Field(
         default=10,
-        ge=1,
-        le=60,
         validation_alias=AliasChoices("connection_timeout_s", "connection_timeout"),
     )
 
@@ -50,10 +62,8 @@ class DiscordSettings(BaseModel):
     token: SecretStr = Field(
         default=SecretStr(""), validation_alias=AliasChoices("token", "bot_token", "discord_token")
     )
-    command_prefix: str = Field(
+    command_prefix: CommandPrefixStr = Field(
         default="!",
-        min_length=1,
-        max_length=5,
         validation_alias=AliasChoices("command_prefix", "prefix"),
     )
     owner_ids: tuple[DiscordSnowflake, ...] = Field(
@@ -69,11 +79,9 @@ class DiscordSettings(BaseModel):
 
     @field_validator("owner_ids", "guild_ids", "test_guild_ids", mode="before")
     @classmethod
-    def validate_snowflake_ids(cls, v: tuple[int, ...] | list[int]) -> tuple[int, ...]:
+    def _coerce_list_to_tuple(cls, v: tuple[int, ...] | list[int]) -> tuple[int, ...]:
         if isinstance(v, list):
-            v = tuple(v)
-        for snowflake in v:
-            validate_discord_snowflake(snowflake)
+            return tuple(v)
         return v
 
 
@@ -82,7 +90,7 @@ class AudioSettings(BaseModel):
     model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
 
     default_volume: VolumeFloat = 0.5
-    max_queue_size: PositiveInt = Field(default=50, le=1000)
+    max_queue_size: MaxQueueSize = 50
     ffmpeg_options: dict[str, str] = Field(
         default_factory=lambda: {
             "before_options": (
@@ -92,8 +100,8 @@ class AudioSettings(BaseModel):
             "options": "-vn -bufsize 64k",
         }
     )
-    ytdlp_format: str = "bestaudio/best"
-    pot_server_url: str = Field(
+    ytdlp_format: NonEmptyStr = "bestaudio/best"
+    pot_server_url: HttpUrlStr = Field(
         default="http://127.0.0.1:4416",
         validation_alias=AliasChoices("pot_server_url", "bgutil_pot_server_url"),
     )
@@ -103,15 +111,15 @@ class AISettings(BaseModel):
 
     model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
 
-    model: str = Field(
+    model: NonEmptyStr = Field(
         default="openai:gpt-5-mini", validation_alias=AliasChoices("model", "ai_model")
     )
-    max_tokens: int = Field(default=500, ge=1, le=4096)
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    cache_ttl_seconds: int = Field(
-        default=3600, ge=0, validation_alias=AliasChoices("cache_ttl_seconds", "cache_ttl")
+    max_tokens: MaxTokens = 500
+    temperature: TemperatureFloat = 0.7
+    cache_ttl_seconds: NonNegativeInt = Field(
+        default=3600, validation_alias=AliasChoices("cache_ttl_seconds", "cache_ttl")
     )
-    shuffle_model: str = Field(
+    shuffle_model: NonEmptyStr = Field(
         default="anthropic:claude-haiku-4-5-20251001",
         validation_alias=AliasChoices("shuffle_model", "ai_shuffle_model"),
     )
@@ -141,8 +149,8 @@ class RadioSettings(BaseModel):
 
     model_config = SettingsConfigDict(frozen=True, strict=True)
 
-    default_count: PositiveInt = Field(default=5, le=10)
-    max_tracks_per_session: PositiveInt = Field(default=50, le=200)
+    default_count: RadioCount = 5
+    max_tracks_per_session: RadioMaxTracks = 50
 
 
 class CleanupSettings(BaseModel):

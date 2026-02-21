@@ -168,17 +168,17 @@ class TestDiscordSettings:
 
     def test_invalid_owner_id_negative(self):
         """Should raise ValidationError for negative owner ID."""
-        with pytest.raises(ValidationError, match="snowflake ID must be positive"):
+        with pytest.raises(ValidationError, match="greater than 0"):
             DiscordSettings(owner_ids=(-1,))
 
     def test_invalid_owner_id_zero(self):
         """Should raise ValidationError for zero owner ID."""
-        with pytest.raises(ValidationError, match="snowflake ID must be positive"):
+        with pytest.raises(ValidationError, match="greater than 0"):
             DiscordSettings(owner_ids=(0,))
 
     def test_invalid_owner_id_too_large(self):
         """Should raise ValidationError for owner ID exceeding 64-bit limit."""
-        with pytest.raises(ValidationError, match="exceeds maximum value"):
+        with pytest.raises(ValidationError, match="less than"):
             DiscordSettings(owner_ids=(2**64,))
 
     def test_valid_guild_ids(self):

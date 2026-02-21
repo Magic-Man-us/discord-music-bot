@@ -24,7 +24,11 @@ from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.infrastructure.audio.ytdlp_resolver import (
     CACHE_TTL,
+    AudioFormatInfo,
+    CacheEntry,
+    YtDlpOpts,
     YtDlpResolver,
+    YtDlpTrackInfo,
     _generate_track_id,
     _info_cache,
 )
@@ -42,21 +46,21 @@ def resolver():
 
 
 @pytest.fixture
-def mock_info_dict():
-    """Create a mock yt-dlp info dictionary."""
-    return {
-        "webpage_url": "https://youtube.com/watch?v=dQw4w9WgXcQ",
-        "title": "Test Song",
-        "url": "https://example.com/stream.m4a",
-        "duration": 180,
-        "thumbnail": "https://example.com/thumb.jpg",
-        "artist": "Test Artist",
-        "creator": None,
-        "uploader": "Test Channel",
-        "channel": None,
-        "like_count": 1000,
-        "view_count": 50000,
-    }
+def mock_info():
+    """Create a mock yt-dlp info model."""
+    return YtDlpTrackInfo(
+        webpage_url="https://youtube.com/watch?v=dQw4w9WgXcQ",
+        title="Test Song",
+        url="https://example.com/stream.m4a",
+        duration=180,
+        thumbnail="https://example.com/thumb.jpg",
+        artist="Test Artist",
+        creator=None,
+        uploader="Test Channel",
+        channel=None,
+        like_count=1000,
+        view_count=50000,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -161,11 +165,11 @@ class TestTrackIDGeneration:
 
 
 class TestInfoToTrack:
-    """Tests for converting yt-dlp info dicts to Track entities."""
+    """Tests for converting YtDlpTrackInfo models to Track entities."""
 
-    def test_info_to_track_success(self, resolver, mock_info_dict):
-        """Should convert valid info dict to Track."""
-        track = resolver._info_to_track(mock_info_dict)
+    def test_info_to_track_success(self, resolver, mock_info):
+        """Should convert valid info model to Track."""
+        track = resolver._info_to_track(mock_info)
 
         assert track is not None
         assert isinstance(track, Track)
@@ -180,58 +184,72 @@ class TestInfoToTrack:
 
     def test_info_to_track_with_missing_url(self, resolver):
         """Should return None when URL is missing."""
-        info = {"title": "Test"}
+        info = YtDlpTrackInfo(title="Test")
         track = resolver._info_to_track(info)
         assert track is None
 
     def test_info_to_track_with_missing_stream_url(self, resolver):
         """Should return None when stream URL is missing."""
-        info = {"webpage_url": "https://youtube.com/watch?v=abc", "title": "Test"}
+        info = YtDlpTrackInfo(
+            webpage_url="https://youtube.com/watch?v=abc",
+            title="Test",
+        )
         track = resolver._info_to_track(info)
         assert track is None
 
-    def test_info_to_track_with_creator_instead_of_artist(self, resolver, mock_info_dict):
+    def test_info_to_track_with_creator_instead_of_artist(self, resolver, mock_info):
         """Should use creator when artist is None."""
-        mock_info_dict["artist"] = None
-        mock_info_dict["creator"] = "Test Creator"
-        track = resolver._info_to_track(mock_info_dict)
+        raw = mock_info.model_dump()
+        raw["artist"] = None
+        raw["creator"] = "Test Creator"
+        info = YtDlpTrackInfo.model_validate(raw)
+
+        track = resolver._info_to_track(info)
 
         assert track is not None
         assert track.artist == "Test Creator"
 
-    def test_info_to_track_with_channel_instead_of_uploader(self, resolver, mock_info_dict):
+    def test_info_to_track_with_channel_instead_of_uploader(self, resolver, mock_info):
         """Should use channel when uploader is None."""
-        mock_info_dict["uploader"] = None
-        mock_info_dict["channel"] = "Test Channel Name"
-        track = resolver._info_to_track(mock_info_dict)
+        raw = mock_info.model_dump()
+        raw["uploader"] = None
+        raw["channel"] = "Test Channel Name"
+        info = YtDlpTrackInfo.model_validate(raw)
+
+        track = resolver._info_to_track(info)
 
         assert track is not None
         assert track.uploader == "Test Channel Name"
 
-    def test_info_to_track_with_invalid_like_count(self, resolver, mock_info_dict):
-        """Should handle invalid like count gracefully."""
-        mock_info_dict["like_count"] = "invalid"
-        track = resolver._info_to_track(mock_info_dict)
+    def test_info_to_track_with_invalid_like_count(self, resolver, mock_info):
+        """Should handle invalid like count gracefully via model coercion."""
+        raw = mock_info.model_dump()
+        raw["like_count"] = "invalid"
+        info = YtDlpTrackInfo.model_validate(raw)
+
+        track = resolver._info_to_track(info)
 
         assert track is not None
         assert track.like_count is None
 
-    def test_info_to_track_with_invalid_view_count(self, resolver, mock_info_dict):
-        """Should handle invalid view count gracefully."""
-        mock_info_dict["view_count"] = "not_a_number"
-        track = resolver._info_to_track(mock_info_dict)
+    def test_info_to_track_with_invalid_view_count(self, resolver, mock_info):
+        """Should handle invalid view count gracefully via model coercion."""
+        raw = mock_info.model_dump()
+        raw["view_count"] = "not_a_number"
+        info = YtDlpTrackInfo.model_validate(raw)
+
+        track = resolver._info_to_track(info)
 
         assert track is not None
         assert track.view_count is None
 
     def test_info_to_track_with_exception_during_construction(self, resolver):
         """Should return None when Track construction raises exception."""
-        # Create an info dict that will pass initial validation but fail Track construction
-        info = {
-            "webpage_url": "https://youtube.com/watch?v=abc",
-            "title": "Test",
-            "url": "https://example.com/stream.m4a",
-        }
+        info = YtDlpTrackInfo(
+            webpage_url="https://youtube.com/watch?v=abc",
+            title="Test",
+            url="https://example.com/stream.m4a",
+        )
 
         # Mock Track to raise an exception during construction
         with patch(
@@ -249,23 +267,23 @@ class TestInfoToTrack:
 
 
 class TestURLExtraction:
-    """Tests for extracting URLs from info dicts."""
+    """Tests for extracting URLs from info models."""
 
     def test_extract_webpage_url_from_webpage_url_field(self, resolver):
         """Should extract from webpage_url field."""
-        info = {"webpage_url": "https://youtube.com/watch?v=abc"}
+        info = YtDlpTrackInfo(webpage_url="https://youtube.com/watch?v=abc")
         url = resolver._extract_webpage_url(info)
         assert url == "https://youtube.com/watch?v=abc"
 
     def test_extract_webpage_url_from_url_field(self, resolver):
         """Should fallback to url field."""
-        info = {"url": "https://youtube.com/watch?v=abc"}
+        info = YtDlpTrackInfo(url="https://youtube.com/watch?v=abc")
         url = resolver._extract_webpage_url(info)
         assert url == "https://youtube.com/watch?v=abc"
 
     def test_extract_webpage_url_missing(self, resolver):
         """Should return None when both fields missing."""
-        info = {"title": "Test"}
+        info = YtDlpTrackInfo(title="Test")
         url = resolver._extract_webpage_url(info)
         assert url is None
 
@@ -276,35 +294,37 @@ class TestURLExtraction:
 
 
 class TestStreamURLExtraction:
-    """Tests for extracting stream URLs from info dicts."""
+    """Tests for extracting stream URLs from info models."""
 
     def test_extract_stream_url_from_url_field(self, resolver):
         """Should extract from url field."""
-        info = {"url": "https://example.com/stream.m4a"}
+        info = YtDlpTrackInfo(url="https://example.com/stream.m4a")
         url = resolver._extract_stream_url(info)
         assert url == "https://example.com/stream.m4a"
 
     def test_extract_stream_url_from_formats(self, resolver):
         """Should extract from formats list."""
-        info = {
-            "formats": [
-                {"acodec": "none", "url": "video_only.mp4"},
-                {"acodec": "opus", "url": "audio1.webm"},
-                {"acodec": "aac", "url": "audio2.m4a"},
+        info = YtDlpTrackInfo(
+            formats=[
+                AudioFormatInfo(acodec="none", url="video_only.mp4"),
+                AudioFormatInfo(acodec="opus", url="audio1.webm"),
+                AudioFormatInfo(acodec="aac", url="audio2.m4a"),
             ]
-        }
+        )
         url = resolver._extract_stream_url(info)
         assert url == "audio2.m4a"  # Last audio format
 
     def test_extract_stream_url_from_empty_formats(self, resolver):
         """Should return None for empty formats."""
-        info = {"formats": []}
+        info = YtDlpTrackInfo(formats=[])
         url = resolver._extract_stream_url(info)
         assert url is None
 
     def test_extract_stream_url_with_no_audio(self, resolver):
         """Should return None when no audio formats."""
-        info = {"formats": [{"acodec": "none", "url": "video.mp4"}]}
+        info = YtDlpTrackInfo(
+            formats=[AudioFormatInfo(acodec="none", url="video.mp4")]
+        )
         url = resolver._extract_stream_url(info)
         assert url is None
 
@@ -318,18 +338,18 @@ class TestResolve:
     """Tests for resolve method."""
 
     @pytest.mark.asyncio
-    async def test_resolve_url(self, resolver, mock_info_dict):
+    async def test_resolve_url(self, resolver, mock_info):
         """Should resolve URL to track."""
-        with patch.object(resolver, "_extract_info_sync", return_value=mock_info_dict):
+        with patch.object(resolver, "_extract_info_sync", return_value=mock_info):
             track = await resolver.resolve("https://youtube.com/watch?v=abc")
 
         assert track is not None
         assert track.title == "Test Song"
 
     @pytest.mark.asyncio
-    async def test_resolve_search_query(self, resolver, mock_info_dict):
+    async def test_resolve_search_query(self, resolver, mock_info):
         """Should resolve search query to track."""
-        with patch.object(resolver, "_search_sync", return_value=[mock_info_dict]):
+        with patch.object(resolver, "_search_sync", return_value=[mock_info]):
             track = await resolver.resolve("never gonna give you up")
 
         assert track is not None
@@ -364,11 +384,11 @@ class TestSearch:
     async def test_search_multiple_results(self, resolver):
         """Should return multiple search results."""
         mock_results = [
-            {
-                "webpage_url": f"https://youtube.com/watch?v=abc{i}",
-                "title": f"Song {i}",
-                "url": f"https://example.com/stream{i}.m4a",
-            }
+            YtDlpTrackInfo(
+                webpage_url=f"https://youtube.com/watch?v=abc{i}",
+                title=f"Song {i}",
+                url=f"https://example.com/stream{i}.m4a",
+            )
             for i in range(3)
         ]
 
@@ -514,11 +534,11 @@ class TestPlaylistExtraction:
     """Tests for extract_playlist method."""
 
     @pytest.mark.asyncio
-    async def test_extract_playlist_success(self, resolver, mock_info_dict):
+    async def test_extract_playlist_success(self, resolver, mock_info):
         """Should extract playlist entries."""
         playlist_entries = [
-            {"url": "https://youtube.com/watch?v=abc1"},
-            {"webpage_url": "https://youtube.com/watch?v=abc2"},
+            YtDlpTrackInfo(url="https://youtube.com/watch?v=abc1"),
+            YtDlpTrackInfo(webpage_url="https://youtube.com/watch?v=abc2"),
         ]
 
         with patch.object(resolver, "_extract_playlist_sync", return_value=playlist_entries):
@@ -580,8 +600,8 @@ class TestPlaylistExtraction:
             result = resolver._extract_playlist_sync(url)
 
         assert len(result) == 2
-        assert result[0]["title"] == "Song 1"
-        assert result[1]["title"] == "Song 2"
+        assert result[0].title == "Song 1"
+        assert result[1].title == "Song 2"
 
     def test_extract_playlist_sync_invalid_data_type(self, resolver):
         """Should return empty list when data is not a dict."""
@@ -628,8 +648,8 @@ class TestPlaylistExtraction:
             result = resolver._extract_playlist_sync(url)
 
         assert len(result) == 2
-        assert result[0]["title"] == "Song 1"
-        assert result[1]["title"] == "Song 3"
+        assert result[0].title == "Song 1"
+        assert result[1].title == "Song 3"
 
     def test_extract_playlist_sync_exception(self, resolver):
         """Should return empty list when YoutubeDL raises exception."""
@@ -657,13 +677,13 @@ class TestCaching:
     def test_cache_hit(self, resolver):
         """Should use cached result on second call."""
         url = "https://youtube.com/watch?v=abc"
-        mock_info = {"webpage_url": url, "title": "Cached Song", "url": "stream.m4a"}
+        mock_raw = {"webpage_url": url, "title": "Cached Song", "url": "stream.m4a"}
 
         # First call - cache miss
         with patch(
             "discord_music_player.infrastructure.audio.ytdlp_resolver.YoutubeDL"
         ) as mock_ydl:
-            mock_ydl.return_value.__enter__.return_value.extract_info.return_value = mock_info
+            mock_ydl.return_value.__enter__.return_value.extract_info.return_value = mock_raw
             result1 = resolver._extract_info_sync(url)
 
         # Second call - should use cache
@@ -676,33 +696,34 @@ class TestCaching:
             result2 = resolver._extract_info_sync(url)
 
         assert result1 == result2
-        assert result2["title"] == "Cached Song"
+        assert result2.title == "Cached Song"
 
     def test_cache_expiry(self, resolver):
         """Should refetch after cache expiry."""
         url = "https://youtube.com/watch?v=abc"
-        mock_info1 = {"webpage_url": url, "title": "Original", "url": "stream.m4a"}
-        mock_info2 = {"webpage_url": url, "title": "Updated", "url": "stream.m4a"}
+        mock_raw1 = {"webpage_url": url, "title": "Original", "url": "stream.m4a"}
+        mock_raw2 = {"webpage_url": url, "title": "Updated", "url": "stream.m4a"}
 
         # First call
         with patch(
             "discord_music_player.infrastructure.audio.ytdlp_resolver.YoutubeDL"
         ) as mock_ydl:
-            mock_ydl.return_value.__enter__.return_value.extract_info.return_value = mock_info1
+            mock_ydl.return_value.__enter__.return_value.extract_info.return_value = mock_raw1
             result1 = resolver._extract_info_sync(url)
 
         # Simulate cache expiry
-        _info_cache[url] = (_info_cache[url][0], time.time() - CACHE_TTL - 1)
+        cached = _info_cache[url]
+        _info_cache[url] = CacheEntry(info=cached.info, cached_at=time.time() - CACHE_TTL - 1)
 
         # Second call after expiry
         with patch(
             "discord_music_player.infrastructure.audio.ytdlp_resolver.YoutubeDL"
         ) as mock_ydl:
-            mock_ydl.return_value.__enter__.return_value.extract_info.return_value = mock_info2
+            mock_ydl.return_value.__enter__.return_value.extract_info.return_value = mock_raw2
             result2 = resolver._extract_info_sync(url)
 
-        assert result1["title"] == "Original"
-        assert result2["title"] == "Updated"
+        assert result1.title == "Original"
+        assert result2.title == "Updated"
 
     def test_cache_cleanup(self, resolver):
         """Should clean up expired entries when cache grows."""
@@ -712,12 +733,15 @@ class TestCaching:
         ) as mock_ydl:
             for i in range(501):
                 url = f"https://youtube.com/watch?v=test{i}"
-                mock_info = {"webpage_url": url, "title": f"Song {i}", "url": "stream.m4a"}
-                mock_ydl.return_value.__enter__.return_value.extract_info.return_value = mock_info
+                mock_raw = {"webpage_url": url, "title": f"Song {i}", "url": "stream.m4a"}
+                mock_ydl.return_value.__enter__.return_value.extract_info.return_value = mock_raw
 
                 # Make first 100 entries expired
                 if i < 100:
-                    _info_cache[url] = (mock_info, time.time() - CACHE_TTL - 1)
+                    info = YtDlpTrackInfo.model_validate(mock_raw)
+                    _info_cache[url] = CacheEntry(
+                        info=info, cached_at=time.time() - CACHE_TTL - 1
+                    )
                 else:
                     resolver._extract_info_sync(url)
 
@@ -802,14 +826,11 @@ class TestPOTProviderConfiguration:
         settings = AudioSettings()
         resolver = YtDlpResolver(settings)
 
-        # Verify POT options are set
-        assert hasattr(resolver, "_pot_opts")
-        assert "extractor_args" in resolver._pot_opts
-        assert "youtube" in resolver._pot_opts["extractor_args"]
-        assert (
-            resolver._pot_opts["extractor_args"]["youtube"]["pot_server_url"]
-            == settings.pot_server_url
-        )
+        opts = resolver._get_opts()
+        assert isinstance(opts, YtDlpOpts)
+        assert opts.extractor_args is not None
+        assert opts.extractor_args.youtube.pot_server_url == settings.pot_server_url
+        assert opts.extractor_args.youtube.player_client == ["android", "web"]
 
     def test_pot_config_included_in_opts(self):
         """Should include POT configuration in yt-dlp options."""
@@ -818,9 +839,8 @@ class TestPOTProviderConfiguration:
 
         opts = resolver._get_opts()
 
-        assert "extractor_args" in opts
-        assert "youtube" in opts["extractor_args"]
-        assert opts["extractor_args"]["youtube"]["pot_server_url"] == "http://test:4416"
+        assert opts.extractor_args is not None
+        assert opts.extractor_args.youtube.pot_server_url == "http://test:4416"
 
     def test_pot_config_preserved_with_overrides(self):
         """Should preserve POT config when applying option overrides."""
@@ -829,13 +849,12 @@ class TestPOTProviderConfiguration:
         opts = resolver._get_opts(quiet=False, noplaylist=False)
 
         # Overrides should be applied
-        assert opts["quiet"] is False
-        assert opts["noplaylist"] is False
+        assert opts.quiet is False
+        assert opts.noplaylist is False
 
         # POT config should still be present
-        assert "extractor_args" in opts
-        assert "youtube" in opts["extractor_args"]
-        assert "pot_server_url" in opts["extractor_args"]["youtube"]
+        assert opts.extractor_args is not None
+        assert opts.extractor_args.youtube.pot_server_url is not None
 
     def test_pot_config_in_playlist_opts(self):
         """Should include POT configuration in playlist options."""
@@ -844,9 +863,78 @@ class TestPOTProviderConfiguration:
         opts = resolver._get_playlist_opts()
 
         # Playlist-specific settings
-        assert opts["noplaylist"] is False
-        assert opts["extract_flat"] == "in_playlist"
+        assert opts.noplaylist is False
+        assert opts.extract_flat == "in_playlist"
 
         # POT config should be present
-        assert "extractor_args" in opts
-        assert "youtube" in opts["extractor_args"]
+        assert opts.extractor_args is not None
+        assert opts.extractor_args.youtube is not None
+
+
+# =============================================================================
+# Model Validation Tests
+# =============================================================================
+
+
+class TestModelValidation:
+    """Tests for Pydantic model validation behavior."""
+
+    def test_ytdlp_track_info_ignores_extra_fields(self):
+        """Should silently ignore unknown fields from yt-dlp."""
+        raw = {
+            "title": "Test",
+            "webpage_url": "https://example.com",
+            "unknown_field": "value",
+            "another_unknown": 42,
+        }
+        info = YtDlpTrackInfo.model_validate(raw)
+        assert info.title == "Test"
+        assert not hasattr(info, "unknown_field")
+
+    def test_audio_format_info_ignores_extra_fields(self):
+        """Should silently ignore extra format fields from yt-dlp."""
+        raw = {"url": "https://example.com/stream", "acodec": "opus", "vcodec": "none", "ext": "webm"}
+        fmt = AudioFormatInfo.model_validate(raw)
+        assert fmt.url == "https://example.com/stream"
+        assert fmt.acodec == "opus"
+
+    def test_ytdlp_track_info_coerces_string_counts(self):
+        """Should coerce string like/view counts to int."""
+        raw = {"title": "Test", "like_count": "1000", "view_count": "50000"}
+        info = YtDlpTrackInfo.model_validate(raw)
+        assert info.like_count == 1000
+        assert info.view_count == 50000
+
+    def test_ytdlp_track_info_nullifies_invalid_counts(self):
+        """Should set invalid counts to None instead of raising."""
+        raw = {"title": "Test", "like_count": "not_a_number", "view_count": [1, 2]}
+        info = YtDlpTrackInfo.model_validate(raw)
+        assert info.like_count is None
+        assert info.view_count is None
+
+    def test_cache_entry_immutable(self):
+        """CacheEntry should be immutable (frozen)."""
+        entry = CacheEntry(info=None, cached_at=time.time())
+        with pytest.raises(Exception):
+            entry.cached_at = 0.0
+
+    def test_ytdlp_opts_model_dump_produces_valid_dict(self):
+        """model_dump should produce a dict consumable by YoutubeDL."""
+        from discord_music_player.infrastructure.audio.ytdlp_resolver import (
+            ExtractorArgs,
+            YouTubeExtractorConfig,
+        )
+
+        opts = YtDlpOpts(
+            format="bestaudio/best",
+            extractor_args=ExtractorArgs(
+                youtube=YouTubeExtractorConfig(pot_server_url="http://localhost:4416")
+            ),
+        )
+        dumped = opts.model_dump()
+
+        assert isinstance(dumped, dict)
+        assert dumped["format"] == "bestaudio/best"
+        assert dumped["quiet"] is True
+        assert dumped["extractor_args"]["youtube"]["pot_server_url"] == "http://localhost:4416"
+        assert dumped["extractor_args"]["youtube"]["player_client"] == ["android", "web"]
