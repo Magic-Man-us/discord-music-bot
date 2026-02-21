@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from pydantic import BaseModel
 
 from ...domain.music.entities import Track
 from ...domain.recommendations.services import RecommendationDomainService
@@ -20,16 +21,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class _RadioState:
+class _RadioState(BaseModel):
 
     enabled: bool = False
     seed_track_title: str = ""
     tracks_generated: int = 0
 
 
-@dataclass
-class RadioToggleResult:
+class RadioToggleResult(BaseModel):
 
     enabled: bool
     tracks_added: int = 0

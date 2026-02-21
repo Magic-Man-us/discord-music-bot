@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+
+from pydantic import BaseModel
 
 from ...domain.music.entities import Track
 from ...domain.music.value_objects import LoopMode
@@ -18,8 +19,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class EnqueueResult:
+class EnqueueResult(BaseModel):
     success: bool
     track: Track | None = None
     position: int = 0
@@ -28,8 +28,7 @@ class EnqueueResult:
     should_start: bool = False
 
 
-@dataclass
-class QueueInfo:
+class QueueInfo(BaseModel):
 
     current_track: Track | None
     upcoming_tracks: list[Track]
