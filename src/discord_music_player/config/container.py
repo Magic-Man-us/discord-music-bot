@@ -28,8 +28,9 @@ if TYPE_CHECKING:
     from ..application.services.requester_leave_autoskip import (
         AutoSkipOnRequesterLeave,
     )
+    from ..domain.music.playback_service import PlaybackDomainService
+    from ..domain.music.queue_service import QueueDomainService
     from ..domain.music.repository import SessionRepository, TrackHistoryRepository
-    from ..domain.music.services import PlaybackDomainService, QueueDomainService
     from ..domain.recommendations.repository import RecommendationCacheRepository
     from ..domain.voting.repository import VoteSessionRepository
     from ..domain.voting.services import VotingDomainService
@@ -234,7 +235,7 @@ class Container:
     @property
     def queue_domain_service(self) -> QueueDomainService:
         if self._queue_domain_service is None:
-            from ..domain.music.services import QueueDomainService
+            from ..domain.music.queue_service import QueueDomainService
 
             self._queue_domain_service = QueueDomainService()
         return self._queue_domain_service
@@ -242,7 +243,7 @@ class Container:
     @property
     def playback_domain_service(self) -> PlaybackDomainService:
         if self._playback_domain_service is None:
-            from ..domain.music.services import PlaybackDomainService
+            from ..domain.music.playback_service import PlaybackDomainService
 
             self._playback_domain_service = PlaybackDomainService()
         return self._playback_domain_service

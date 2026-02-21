@@ -14,8 +14,8 @@ from ...domain.shared.messages import ErrorMessages, LogTemplates
 from ...domain.shared.types import DiscordSnowflake
 
 if TYPE_CHECKING:
+    from ...domain.music.playback_service import PlaybackDomainService
     from ...domain.music.repository import SessionRepository, TrackHistoryRepository
-    from ...domain.music.services import PlaybackDomainService
     from ...domain.music.value_objects import StartSeconds
     from ..interfaces.audio_resolver import AudioResolver
     from ..interfaces.voice_adapter import VoiceAdapter

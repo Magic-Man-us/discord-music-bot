@@ -1609,7 +1609,7 @@ class TestQueueInfoProperties:
 
     def test_tracks_property_alias(self):
         """tracks should be alias for upcoming_tracks."""
-        from discord_music_player.application.services.queue_service import QueueInfo
+        from discord_music_player.application.services.queue_models import QueueInfo
 
         tracks = [
             Track(
@@ -1636,7 +1636,7 @@ class TestQueueInfoProperties:
 
     def test_total_tracks_property_alias(self):
         """total_tracks should be alias for total_length."""
-        from discord_music_player.application.services.queue_service import QueueInfo
+        from discord_music_player.application.services.queue_models import QueueInfo
 
         info = QueueInfo(
             current_track=None,
@@ -1650,7 +1650,7 @@ class TestQueueInfoProperties:
 
     def test_total_duration_property_alias(self):
         """total_duration should be alias for total_duration_seconds."""
-        from discord_music_player.application.services.queue_service import QueueInfo
+        from discord_music_player.application.services.queue_models import QueueInfo
 
         info = QueueInfo(
             current_track=None,
@@ -1664,7 +1664,7 @@ class TestQueueInfoProperties:
 
     def test_total_duration_property_none(self):
         """total_duration should return None when total_duration_seconds is None."""
-        from discord_music_player.application.services.queue_service import QueueInfo
+        from discord_music_player.application.services.queue_models import QueueInfo
 
         info = QueueInfo(
             current_track=None,

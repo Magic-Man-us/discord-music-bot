@@ -6,47 +6,17 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel
-
 from ...domain.music.entities import Track
-from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, NonNegativeInt, QueuePositionInt
 from ...domain.music.value_objects import LoopMode
 from ...domain.shared.messages import LogTemplates
+from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, QueuePositionInt
+from .queue_models import EnqueueResult, QueueInfo
 
 if TYPE_CHECKING:
+    from ...domain.music.queue_service import QueueDomainService
     from ...domain.music.repository import SessionRepository
-    from ...domain.music.services import QueueDomainService
 
 logger = logging.getLogger(__name__)
-
-
-class EnqueueResult(BaseModel):
-    success: bool
-    track: Track | None = None
-    position: NonNegativeInt = 0
-    queue_length: NonNegativeInt = 0
-    message: str = ""
-    should_start: bool = False
-
-
-class QueueInfo(BaseModel):
-
-    current_track: Track | None
-    upcoming_tracks: list[Track]
-    total_length: NonNegativeInt
-    total_duration_seconds: NonNegativeInt | None
-
-    @property
-    def tracks(self) -> list[Track]:
-        return self.upcoming_tracks
-
-    @property
-    def total_tracks(self) -> int:
-        return self.total_length
-
-    @property
-    def total_duration(self) -> int | None:
-        return self.total_duration_seconds
 
 
 class QueueApplicationService:

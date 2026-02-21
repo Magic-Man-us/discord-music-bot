@@ -718,13 +718,13 @@ class TestQueueDomainService:
 
     def test_can_enqueue_empty_queue(self, session):
         """Should allow enqueue when queue is empty."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         assert QueueDomainService.can_enqueue(session) is True
 
     def test_can_enqueue_full_queue(self, session):
         """Should not allow enqueue when queue is full."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         # Fill queue to max
         for i in range(QueueDomainService.MAX_QUEUE_SIZE):
@@ -739,13 +739,13 @@ class TestQueueDomainService:
 
     def test_validate_track_duration_acceptable(self, sample_track):
         """Should accept track with acceptable duration."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         assert QueueDomainService.validate_track_duration(sample_track) is True
 
     def test_validate_track_duration_too_long(self):
         """Should reject track with excessive duration."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         long_track = Track(
             id=TrackId("long"),
@@ -757,7 +757,7 @@ class TestQueueDomainService:
 
     def test_validate_track_duration_unknown(self):
         """Should accept track with unknown duration."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         unknown_track = Track(
             id=TrackId("unknown"),
@@ -769,7 +769,7 @@ class TestQueueDomainService:
 
     def test_get_next_track_with_loop_track(self, session, sample_track):
         """Should return current track when loop mode is TRACK."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         session.current_track = sample_track
         session.loop_mode = LoopMode.TRACK
@@ -779,7 +779,7 @@ class TestQueueDomainService:
 
     def test_get_next_track_from_queue(self, session, sample_track):
         """Should return next track from queue when not looping."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         session.enqueue(sample_track)
 
@@ -788,7 +788,7 @@ class TestQueueDomainService:
 
     def test_calculate_queue_position(self, session, sample_track):
         """Should return correct position for new track."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         assert QueueDomainService.calculate_queue_position(session) == 0
         session.enqueue(sample_track)
@@ -796,7 +796,7 @@ class TestQueueDomainService:
 
     def test_get_queue_duration_all_known(self, session):
         """Should calculate total duration when all tracks have duration."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         track1 = Track(
             id=TrackId("t1"),
@@ -818,7 +818,7 @@ class TestQueueDomainService:
 
     def test_get_queue_duration_unknown(self, session, sample_track):
         """Should return None if any track has unknown duration."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         unknown_track = Track(
             id=TrackId("unknown"),
@@ -833,7 +833,7 @@ class TestQueueDomainService:
 
     def test_format_queue_duration_hours(self, session):
         """Should format duration with hours."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         track = Track(
             id=TrackId("long"),
@@ -850,7 +850,7 @@ class TestQueueDomainService:
 
     def test_format_queue_duration_minutes(self, session, sample_track):
         """Should format duration with minutes only."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         session.enqueue(sample_track)  # 180s = 3m 0s
 
@@ -859,7 +859,7 @@ class TestQueueDomainService:
 
     def test_format_queue_duration_seconds_only(self, session):
         """Should format duration with seconds only when under 60s."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         short_track = Track(
             id=TrackId("short"),
@@ -874,7 +874,7 @@ class TestQueueDomainService:
 
     def test_format_queue_duration_unknown(self, session):
         """Should return 'Unknown' when duration unknown."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         unknown_track = Track(
             id=TrackId("unknown"),
@@ -888,7 +888,7 @@ class TestQueueDomainService:
 
     def test_should_auto_play_next_with_queue(self, session, sample_track):
         """Should auto-play when queue has tracks."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         session.enqueue(sample_track)
 
@@ -896,7 +896,7 @@ class TestQueueDomainService:
 
     def test_should_auto_play_next_with_loop_queue(self, session, sample_track):
         """Should auto-play with queue loop and current track."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         session.current_track = sample_track
         session.loop_mode = LoopMode.QUEUE
@@ -905,7 +905,7 @@ class TestQueueDomainService:
 
     def test_should_not_auto_play_when_stopped(self, session, sample_track):
         """Should not auto-play when session is stopped."""
-        from discord_music_player.domain.music.services import QueueDomainService
+        from discord_music_player.domain.music.queue_service import QueueDomainService
 
         session.enqueue(sample_track)
         session.state = PlaybackState.STOPPED
@@ -938,7 +938,7 @@ class TestPlaybackDomainService:
 
     def test_can_start_playback_with_queue(self, session, sample_track):
         """Should allow start with tracks in queue."""
-        from discord_music_player.domain.music.services import PlaybackDomainService
+        from discord_music_player.domain.music.playback_service import PlaybackDomainService
 
         session.enqueue(sample_track)
 
@@ -946,7 +946,7 @@ class TestPlaybackDomainService:
 
     def test_can_start_playback_with_current(self, session, sample_track):
         """Should allow start with current track."""
-        from discord_music_player.domain.music.services import PlaybackDomainService
+        from discord_music_player.domain.music.playback_service import PlaybackDomainService
 
         session.current_track = sample_track
 
@@ -954,13 +954,13 @@ class TestPlaybackDomainService:
 
     def test_cannot_start_playback_empty(self, session):
         """Should not allow start with no tracks."""
-        from discord_music_player.domain.music.services import PlaybackDomainService
+        from discord_music_player.domain.music.playback_service import PlaybackDomainService
 
         assert PlaybackDomainService.can_start_playback(session) is False
 
     def test_cannot_start_playback_already_playing(self, session, sample_track):
         """Should not allow start when already playing."""
-        from discord_music_player.domain.music.services import PlaybackDomainService
+        from discord_music_player.domain.music.playback_service import PlaybackDomainService
 
         session.current_track = sample_track
         session.state = PlaybackState.PLAYING
@@ -969,7 +969,7 @@ class TestPlaybackDomainService:
 
     def test_can_pause_when_playing(self, session, sample_track):
         """Should allow pause when playing."""
-        from discord_music_player.domain.music.services import PlaybackDomainService
+        from discord_music_player.domain.music.playback_service import PlaybackDomainService
 
         session.start_playback(sample_track)
 
@@ -977,13 +977,13 @@ class TestPlaybackDomainService:
 
     def test_cannot_pause_when_not_playing(self, session):
         """Should not allow pause when not playing."""
-        from discord_music_player.domain.music.services import PlaybackDomainService
+        from discord_music_player.domain.music.playback_service import PlaybackDomainService
 
         assert PlaybackDomainService.can_pause(session) is False
 
     def test_can_resume_when_paused(self, session, sample_track):
         """Should allow resume when paused."""
-        from discord_music_player.domain.music.services import PlaybackDomainService
+        from discord_music_player.domain.music.playback_service import PlaybackDomainService
 
         session.start_playback(sample_track)
         session.pause()
@@ -992,13 +992,13 @@ class TestPlaybackDomainService:
 
     def test_cannot_resume_when_not_paused(self, session):
         """Should not allow resume when not paused."""
-        from discord_music_player.domain.music.services import PlaybackDomainService
+        from discord_music_player.domain.music.playback_service import PlaybackDomainService
 
         assert PlaybackDomainService.can_resume(session) is False
 
     def test_can_skip_with_current_track(self, session, sample_track):
         """Should allow skip with current track."""
-        from discord_music_player.domain.music.services import PlaybackDomainService
+        from discord_music_player.domain.music.playback_service import PlaybackDomainService
 
         session.current_track = sample_track
 
@@ -1006,20 +1006,20 @@ class TestPlaybackDomainService:
 
     def test_cannot_skip_without_current_track(self, session):
         """Should not allow skip without current track."""
-        from discord_music_player.domain.music.services import PlaybackDomainService
+        from discord_music_player.domain.music.playback_service import PlaybackDomainService
 
         assert PlaybackDomainService.can_skip(session) is False
 
     def test_validate_state_transition_valid(self, session):
         """Should accept valid state transition."""
-        from discord_music_player.domain.music.services import PlaybackDomainService
+        from discord_music_player.domain.music.playback_service import PlaybackDomainService
 
         # IDLE -> PLAYING is valid
         PlaybackDomainService.validate_state_transition(session, PlaybackState.PLAYING)
 
     def test_validate_state_transition_invalid(self, session):
         """Should raise BusinessRuleViolationError for invalid transition."""
-        from discord_music_player.domain.music.services import PlaybackDomainService
+        from discord_music_player.domain.music.playback_service import PlaybackDomainService
 
         # IDLE -> PAUSED is invalid
         with pytest.raises(BusinessRuleViolationError, match="Cannot transition"):

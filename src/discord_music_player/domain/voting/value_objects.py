@@ -66,6 +66,27 @@ class VoteResult(Enum):
             VoteResult.AUTO_SKIP,
         }
 
+    @property
+    def should_execute_action(self) -> bool:
+        """Check if this result means the voted action should be executed."""
+        return self.action_executed
+
+    @property
+    def should_notify_progress(self) -> bool:
+        """Check if this result means progress should be notified."""
+        return self == VoteResult.VOTE_RECORDED
+
+    @property
+    def should_notify_failure(self) -> bool:
+        """Check if this result means a failure should be notified."""
+        return self in {
+            VoteResult.ALREADY_VOTED,
+            VoteResult.NOT_IN_CHANNEL,
+            VoteResult.BOT_NOT_IN_CHANNEL,
+            VoteResult.NO_PLAYING,
+            VoteResult.VOTE_EXPIRED,
+        }
+
     def get_message(self, vote_type: VoteType, votes: int = 0, needed: int = 0) -> str:
         """Get a user-friendly message for this result."""
         messages = {

@@ -4,7 +4,7 @@ Unit Tests for Domain Voting Layer
 Tests for:
 - Value Objects: VoteType, VoteResult
 - Entities: Vote, VoteSession
-- Services: VotingDomainService, VoteResultHandler
+- Services: VotingDomainService
 """
 
 from datetime import UTC, datetime, timedelta
@@ -14,7 +14,7 @@ import pytest
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.voting.entities import Vote, VoteSession
-from discord_music_player.domain.voting.services import VoteResultHandler, VotingDomainService
+from discord_music_player.domain.voting.services import VotingDomainService
 from discord_music_player.domain.voting.value_objects import VoteResult, VoteType
 
 # =============================================================================
@@ -572,42 +572,42 @@ class TestVotingDomainService:
 
 
 # =============================================================================
-# VoteResultHandler Tests
+# VoteResult Property Tests (migrated from VoteResultHandler)
 # =============================================================================
 
 
-class TestVoteResultHandler:
-    """Unit tests for VoteResultHandler."""
+class TestVoteResultProperties:
+    """Unit tests for VoteResult should_* properties."""
 
     def test_should_execute_action_true(self):
         """should_execute_action should be True for action results."""
-        assert VoteResultHandler.should_execute_action(VoteResult.THRESHOLD_MET) is True
-        assert VoteResultHandler.should_execute_action(VoteResult.REQUESTER_SKIP) is True
-        assert VoteResultHandler.should_execute_action(VoteResult.AUTO_SKIP) is True
+        assert VoteResult.THRESHOLD_MET.should_execute_action is True
+        assert VoteResult.REQUESTER_SKIP.should_execute_action is True
+        assert VoteResult.AUTO_SKIP.should_execute_action is True
 
     def test_should_execute_action_false(self):
         """should_execute_action should be False for non-action results."""
-        assert VoteResultHandler.should_execute_action(VoteResult.VOTE_RECORDED) is False
-        assert VoteResultHandler.should_execute_action(VoteResult.ALREADY_VOTED) is False
+        assert VoteResult.VOTE_RECORDED.should_execute_action is False
+        assert VoteResult.ALREADY_VOTED.should_execute_action is False
 
     def test_should_notify_progress_true(self):
         """should_notify_progress should be True for VOTE_RECORDED."""
-        assert VoteResultHandler.should_notify_progress(VoteResult.VOTE_RECORDED) is True
+        assert VoteResult.VOTE_RECORDED.should_notify_progress is True
 
     def test_should_notify_progress_false(self):
         """should_notify_progress should be False for other results."""
-        assert VoteResultHandler.should_notify_progress(VoteResult.THRESHOLD_MET) is False
-        assert VoteResultHandler.should_notify_progress(VoteResult.ALREADY_VOTED) is False
+        assert VoteResult.THRESHOLD_MET.should_notify_progress is False
+        assert VoteResult.ALREADY_VOTED.should_notify_progress is False
 
     def test_should_notify_failure_true(self):
         """should_notify_failure should be True for failure results."""
-        assert VoteResultHandler.should_notify_failure(VoteResult.ALREADY_VOTED) is True
-        assert VoteResultHandler.should_notify_failure(VoteResult.NOT_IN_CHANNEL) is True
-        assert VoteResultHandler.should_notify_failure(VoteResult.BOT_NOT_IN_CHANNEL) is True
-        assert VoteResultHandler.should_notify_failure(VoteResult.NO_PLAYING) is True
-        assert VoteResultHandler.should_notify_failure(VoteResult.VOTE_EXPIRED) is True
+        assert VoteResult.ALREADY_VOTED.should_notify_failure is True
+        assert VoteResult.NOT_IN_CHANNEL.should_notify_failure is True
+        assert VoteResult.BOT_NOT_IN_CHANNEL.should_notify_failure is True
+        assert VoteResult.NO_PLAYING.should_notify_failure is True
+        assert VoteResult.VOTE_EXPIRED.should_notify_failure is True
 
     def test_should_notify_failure_false(self):
         """should_notify_failure should be False for success results."""
-        assert VoteResultHandler.should_notify_failure(VoteResult.VOTE_RECORDED) is False
-        assert VoteResultHandler.should_notify_failure(VoteResult.THRESHOLD_MET) is False
+        assert VoteResult.VOTE_RECORDED.should_notify_failure is False
+        assert VoteResult.THRESHOLD_MET.should_notify_failure is False

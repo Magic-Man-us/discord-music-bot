@@ -5,12 +5,15 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel
-
 from ...domain.music.entities import Track
-from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, NonNegativeInt, PositiveInt, TrackTitleStr
 from ...domain.recommendations.services import RecommendationDomainService
 from ...domain.shared.messages import LogTemplates
+from ...domain.shared.types import (
+    DiscordSnowflake,
+    NonEmptyStr,
+    PositiveInt,
+)
+from .radio_models import RadioState, RadioToggleResult
 
 if TYPE_CHECKING:
     from ...config.settings import RadioSettings
@@ -20,21 +23,6 @@ if TYPE_CHECKING:
     from .queue_service import QueueApplicationService
 
 logger = logging.getLogger(__name__)
-
-
-class _RadioState(BaseModel):
-
-    enabled: bool = False
-    seed_track_title: TrackTitleStr | None = None
-    tracks_generated: NonNegativeInt = 0
-
-
-class RadioToggleResult(BaseModel):
-
-    enabled: bool
-    tracks_added: NonNegativeInt = 0
-    seed_title: TrackTitleStr | None = None
-    message: NonEmptyStr = "Radio toggled."
 
 
 class RadioApplicationService:
@@ -54,7 +42,7 @@ class RadioApplicationService:
         self._queue_service = queue_service
         self._session_repo = session_repository
         self._settings = settings
-        self._states: dict[DiscordSnowflake, _RadioState] = {}
+        self._states: dict[DiscordSnowflake, RadioState] = {}
 
     def is_enabled(self, guild_id: DiscordSnowflake) -> bool:
         state = self._states.get(guild_id)
@@ -80,7 +68,7 @@ class RadioApplicationService:
 
         current_track = session.current_track
 
-        state = _RadioState(enabled=True, seed_track_title=current_track.title)
+        state = RadioState(enabled=True, seed_track_title=current_track.title)
         self._states[guild_id] = state
 
         added = await self._generate_and_enqueue(

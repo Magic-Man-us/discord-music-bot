@@ -82,25 +82,3 @@ class VotingDomainService:
         return result.get_message(
             vote_type=session.vote_type, votes=session.vote_count, needed=session.threshold
         )
-
-
-class VoteResultHandler:
-    """Determines what actions should be taken based on vote results."""
-
-    @staticmethod
-    def should_execute_action(result: VoteResult) -> bool:
-        return result.action_executed
-
-    @staticmethod
-    def should_notify_progress(result: VoteResult) -> bool:
-        return result == VoteResult.VOTE_RECORDED
-
-    @staticmethod
-    def should_notify_failure(result: VoteResult) -> bool:
-        return result in {
-            VoteResult.ALREADY_VOTED,
-            VoteResult.NOT_IN_CHANNEL,
-            VoteResult.BOT_NOT_IN_CHANNEL,
-            VoteResult.NO_PLAYING,
-            VoteResult.VOTE_EXPIRED,
-        }

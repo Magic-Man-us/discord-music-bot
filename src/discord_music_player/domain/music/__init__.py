@@ -11,8 +11,8 @@ from discord_music_player.domain.music.events import (
     TrackQueued,
     TrackStarted,
 )
+from discord_music_player.domain.music.queue_service import QueueDomainService
 from discord_music_player.domain.music.repository import SessionRepository
-from discord_music_player.domain.music.services import QueueDomainService
 from discord_music_player.domain.music.value_objects import PlaybackState, QueuePosition, TrackId
 
 __all__ = [

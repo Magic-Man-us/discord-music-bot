@@ -347,14 +347,14 @@ class TestQueueDomainService:
 
     def test_lazy_initialization(self, container):
         """Should create service on first access."""
-        with patch("discord_music_player.domain.music.services.QueueDomainService") as MockService:
+        with patch("discord_music_player.domain.music.queue_service.QueueDomainService") as MockService:
             service = container.queue_domain_service
             MockService.assert_called_once_with()
             assert service == MockService.return_value
 
     def test_caching(self, container):
         """Should return same instance on subsequent calls."""
-        with patch("discord_music_player.domain.music.services.QueueDomainService") as MockService:
+        with patch("discord_music_player.domain.music.queue_service.QueueDomainService") as MockService:
             service1 = container.queue_domain_service
             service2 = container.queue_domain_service
             assert service1 is service2
@@ -367,7 +367,7 @@ class TestPlaybackDomainService:
     def test_lazy_initialization(self, container):
         """Should create service on first access."""
         with patch(
-            "discord_music_player.domain.music.services.PlaybackDomainService"
+            "discord_music_player.domain.music.playback_service.PlaybackDomainService"
         ) as MockService:
             service = container.playback_domain_service
             MockService.assert_called_once_with()
@@ -376,7 +376,7 @@ class TestPlaybackDomainService:
     def test_caching(self, container):
         """Should return same instance on subsequent calls."""
         with patch(
-            "discord_music_player.domain.music.services.PlaybackDomainService"
+            "discord_music_player.domain.music.playback_service.PlaybackDomainService"
         ) as MockService:
             service1 = container.playback_domain_service
             service2 = container.playback_domain_service
