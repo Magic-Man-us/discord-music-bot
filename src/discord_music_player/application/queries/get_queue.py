@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from discord_music_player.domain.music.entities import Track
+
 if TYPE_CHECKING:
-    from ...domain.music.entities import Track
     from ...domain.music.repository import SessionRepository
 
 

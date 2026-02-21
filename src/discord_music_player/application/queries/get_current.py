@@ -2,28 +2,30 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel, ConfigDict
+
+from discord_music_player.domain.music.entities import Track
+from discord_music_player.domain.shared.types import NonNegativeInt
+
 if TYPE_CHECKING:
-    from ...domain.music.entities import Track
     from ...domain.music.repository import SessionRepository
 
 
-@dataclass
-class GetCurrentTrackQuery:
+class GetCurrentTrackQuery(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
     guild_id: int
 
 
-@dataclass
-class CurrentTrackInfo:
+class CurrentTrackInfo(BaseModel):
 
     guild_id: int
-    track: Track | None
-    is_playing: bool
-    is_paused: bool
-    queue_length: int
+    track: Track | None = None
+    is_playing: bool = False
+    is_paused: bool = False
+    queue_length: NonNegativeInt = 0
 
 
 class GetCurrentTrackHandler:

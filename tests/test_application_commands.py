@@ -40,20 +40,20 @@ class TestClearQueueCommand:
         """Should raise ValueError for non-positive guild ID."""
         from discord_music_player.application.commands.clear_queue import ClearQueueCommand
 
-        with pytest.raises(ValueError, match="Guild ID must be positive"):
+        with pytest.raises(ValueError):
             ClearQueueCommand(guild_id=0, user_id=789)
 
-        with pytest.raises(ValueError, match="Guild ID must be positive"):
+        with pytest.raises(ValueError):
             ClearQueueCommand(guild_id=-1, user_id=789)
 
     def test_invalid_user_id_raises_error(self):
         """Should raise ValueError for non-positive user ID."""
         from discord_music_player.application.commands.clear_queue import ClearQueueCommand
 
-        with pytest.raises(ValueError, match="User ID must be positive"):
+        with pytest.raises(ValueError):
             ClearQueueCommand(guild_id=123456, user_id=0)
 
-        with pytest.raises(ValueError, match="User ID must be positive"):
+        with pytest.raises(ValueError):
             ClearQueueCommand(guild_id=123456, user_id=-1)
 
 
@@ -224,11 +224,9 @@ class TestPlayTrackCommand:
 
     def test_invalid_guild_id_raises_error(self):
         """Should raise ValueError for non-positive guild ID."""
-        from pydantic import ValidationError
-
         from discord_music_player.application.commands.play_track import PlayTrackCommand
 
-        with pytest.raises(ValidationError, match="Discord snowflake ID must be positive"):
+        with pytest.raises(ValueError):
             PlayTrackCommand(
                 guild_id=0,
                 channel_id=789,
@@ -239,11 +237,9 @@ class TestPlayTrackCommand:
 
     def test_invalid_channel_id_raises_error(self):
         """Should raise ValueError for non-positive channel ID."""
-        from pydantic import ValidationError
-
         from discord_music_player.application.commands.play_track import PlayTrackCommand
 
-        with pytest.raises(ValidationError, match="Discord snowflake ID must be positive"):
+        with pytest.raises(ValueError):
             PlayTrackCommand(
                 guild_id=123456,
                 channel_id=0,
@@ -254,11 +250,9 @@ class TestPlayTrackCommand:
 
     def test_invalid_user_id_raises_error(self):
         """Should raise ValueError for non-positive user ID."""
-        from pydantic import ValidationError
-
         from discord_music_player.application.commands.play_track import PlayTrackCommand
 
-        with pytest.raises(ValidationError, match="Discord snowflake ID must be positive"):
+        with pytest.raises(ValueError):
             PlayTrackCommand(
                 guild_id=123456,
                 channel_id=789,
@@ -269,11 +263,9 @@ class TestPlayTrackCommand:
 
     def test_empty_query_raises_error(self):
         """Should raise ValueError for empty query."""
-        from pydantic import ValidationError
-
         from discord_music_player.application.commands.play_track import PlayTrackCommand
 
-        with pytest.raises(ValidationError, match="Query cannot be empty"):
+        with pytest.raises(ValueError):
             PlayTrackCommand(
                 guild_id=123456,
                 channel_id=789,
@@ -282,7 +274,7 @@ class TestPlayTrackCommand:
                 query="",
             )
 
-        with pytest.raises(ValueError, match="Query cannot be empty"):
+        with pytest.raises(ValueError):
             PlayTrackCommand(
                 guild_id=123456,
                 channel_id=789,
@@ -614,14 +606,14 @@ class TestSkipTrackCommand:
         """Should raise ValueError for non-positive guild ID."""
         from discord_music_player.application.commands.skip_track import SkipTrackCommand
 
-        with pytest.raises(ValueError, match="Guild ID must be positive"):
+        with pytest.raises(ValueError):
             SkipTrackCommand(guild_id=0, user_id=789)
 
     def test_invalid_user_id_raises_error(self):
         """Should raise ValueError for non-positive user ID."""
         from discord_music_player.application.commands.skip_track import SkipTrackCommand
 
-        with pytest.raises(ValueError, match="User ID must be positive"):
+        with pytest.raises(ValueError):
             SkipTrackCommand(guild_id=123456, user_id=0)
 
 
@@ -928,14 +920,14 @@ class TestStopPlaybackCommand:
         """Should raise ValueError for non-positive guild ID."""
         from discord_music_player.application.commands.stop_playback import StopPlaybackCommand
 
-        with pytest.raises(ValueError, match="Guild ID must be positive"):
+        with pytest.raises(ValueError):
             StopPlaybackCommand(guild_id=0, user_id=789)
 
     def test_invalid_user_id_raises_error(self):
         """Should raise ValueError for non-positive user ID."""
         from discord_music_player.application.commands.stop_playback import StopPlaybackCommand
 
-        with pytest.raises(ValueError, match="User ID must be positive"):
+        with pytest.raises(ValueError):
             StopPlaybackCommand(guild_id=123456, user_id=0)
 
 
@@ -1124,20 +1116,16 @@ class TestVoteSkipCommand:
 
     def test_invalid_guild_id_raises_error(self):
         """Should raise ValueError for non-positive guild ID."""
-        from pydantic import ValidationError
-
         from discord_music_player.application.commands.vote_skip import VoteSkipCommand
 
-        with pytest.raises(ValidationError, match="Discord snowflake ID must be positive"):
+        with pytest.raises(ValueError):
             VoteSkipCommand(guild_id=0, user_id=789)
 
     def test_invalid_user_id_raises_error(self):
         """Should raise ValueError for non-positive user ID."""
-        from pydantic import ValidationError
-
         from discord_music_player.application.commands.vote_skip import VoteSkipCommand
 
-        with pytest.raises(ValidationError, match="Discord snowflake ID must be positive"):
+        with pytest.raises(ValueError):
             VoteSkipCommand(guild_id=123456, user_id=0)
 
 

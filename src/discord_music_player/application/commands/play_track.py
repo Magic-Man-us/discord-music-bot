@@ -9,10 +9,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.shared.validators import (
-    DiscordValidators,
-    validate_non_empty_string,
-)
+from discord_music_player.domain.shared.types import DiscordSnowflake, NonEmptyStr, NonNegativeInt
 
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository
@@ -39,23 +36,23 @@ class PlayTrackCommand(BaseModel):
 
     model_config = ConfigDict(frozen=True, strict=True)
 
-    guild_id: int
-    channel_id: int
-    user_id: int
-    user_name: str
-    query: str
+    guild_id: DiscordSnowflake
+    channel_id: DiscordSnowflake
+    user_id: DiscordSnowflake
+    user_name: NonEmptyStr
+    query: NonEmptyStr
 
     play_next: bool = False
     want_recommendations: bool = False
     start_playing: bool = True
     requested_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    _validate_ids = DiscordValidators.snowflakes("guild_id", "channel_id", "user_id")
-
-    @field_validator("query")
+    @field_validator("query", mode="before")
     @classmethod
-    def validate_query(cls, v: str) -> str:
-        return validate_non_empty_string(v, "Query")
+    def _strip_query(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
 
 class PlayTrackResult(BaseModel):
@@ -66,8 +63,8 @@ class PlayTrackResult(BaseModel):
     status: PlayTrackStatus
     message: str
     track: Track | None = None
-    queue_position: int | None = None
-    queue_length: int = 0
+    queue_position: NonNegativeInt | None = None
+    queue_length: NonNegativeInt = 0
     started_playing: bool = False
     recommendations_requested: bool = False
 

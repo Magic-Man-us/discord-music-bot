@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 
-from discord_music_player.domain.shared.validators import DiscordValidators
+from discord_music_player.domain.shared.types import DiscordSnowflake, NonNegativeInt
 from discord_music_player.domain.voting.value_objects import VoteResult, VoteType
 
 if TYPE_CHECKING:
@@ -18,11 +18,9 @@ if TYPE_CHECKING:
 class VoteSkipCommand(BaseModel):
     model_config = ConfigDict(frozen=True, strict=True)
 
-    guild_id: int
-    user_id: int
-    user_channel_id: int | None = None
-
-    _validate_ids = DiscordValidators.snowflakes("guild_id", "user_id")
+    guild_id: DiscordSnowflake
+    user_id: DiscordSnowflake
+    user_channel_id: DiscordSnowflake | None = None
 
 
 class VoteSkipResult(BaseModel):
@@ -31,8 +29,8 @@ class VoteSkipResult(BaseModel):
 
     result: VoteResult
     message: str
-    votes_current: int = 0
-    votes_needed: int = 0
+    votes_current: NonNegativeInt = 0
+    votes_needed: NonNegativeInt = 0
     action_executed: bool = False
 
     @property

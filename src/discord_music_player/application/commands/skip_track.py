@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 
+from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.shared.types import DiscordSnowflake
 
 if TYPE_CHECKING:
-    from ...domain.music.entities import Track
     from ...domain.music.repository import SessionRepository
     from ..interfaces.voice_adapter import VoiceAdapter
 
