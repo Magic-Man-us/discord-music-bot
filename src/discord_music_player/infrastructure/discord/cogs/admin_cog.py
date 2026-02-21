@@ -145,7 +145,7 @@ class AdminCog(commands.Cog):
 
             local_cmds = self.bot.tree.get_commands()
 
-            def format_names(cmds: list) -> str:
+            def format_names(cmds: list[discord.app_commands.AppCommand]) -> str:
                 names = [f"/{c.name}" for c in cmds]
                 result = ", ".join(names) or "-"
                 return result[:500] + "…" if len(result) > 500 else result

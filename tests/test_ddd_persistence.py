@@ -113,7 +113,8 @@ class TestDatabase:
         """Test that initialize creates required tables."""
         # Tables should be created during fixture initialization
         stats = await in_memory_database.get_stats()
-        assert "guild_sessions" in str(stats) or stats is not None
+        assert stats.initialized is True
+        assert "guild_sessions" in stats.tables
 
     @pytest.mark.asyncio
     async def test_execute_basic_query(self, in_memory_database):

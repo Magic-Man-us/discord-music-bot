@@ -6,13 +6,20 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import aiosqlite
 from pydantic import BaseModel, ConfigDict, Field
 
 from discord_music_player.domain.shared.constants import SQLPragmas
 from discord_music_player.domain.shared.messages import LogTemplates
+from discord_music_player.domain.shared.types import (
+    BYTES_PER_MB,
+    FileBytes,
+    FileSizeMB,
+    NonEmptyStr,
+    NonNegativeInt,
+)
 
 if TYPE_CHECKING:
     from ...config.settings import DatabaseSettings
@@ -24,13 +31,13 @@ class DatabaseStats(BaseModel):
     """Result of get_stats() — typed instead of dict[str, Any]."""
 
     model_config = ConfigDict(frozen=False)
-    db_path: str = ""
+    db_path: str | None = None
     initialized: bool = False
-    tables: dict[str, int] = Field(default_factory=dict)
-    file_size_bytes: int | None = None
-    file_size_mb: float | None = None
-    page_count: int | None = None
-    page_size: int | None = None
+    tables: dict[str, NonNegativeInt] = Field(default_factory=dict)
+    file_size_bytes: FileBytes | None = None
+    file_size_mb: FileSizeMB | None = None
+    page_count: NonNegativeInt | None = None
+    page_size: NonNegativeInt | None = None
     error: str | None = None
 
 
@@ -46,18 +53,18 @@ class CountValidation(BaseModel):
     """Validation counts for a schema element category."""
 
     model_config = ConfigDict(frozen=False)
-    expected: int = 0
-    found: int = 0
-    missing: list[str] = Field(default_factory=list)
+    expected: NonNegativeInt = 0
+    found: NonNegativeInt = 0
+    missing: list[NonEmptyStr] = Field(default_factory=list)
 
 
 class ColumnValidation(BaseModel):
     """Validation counts for columns, with per-table missing info."""
 
     model_config = ConfigDict(frozen=False)
-    expected: int = 0
-    found: int = 0
-    missing: dict[str, list[str]] = Field(default_factory=dict)
+    expected: NonNegativeInt = 0
+    found: NonNegativeInt = 0
+    missing: dict[NonEmptyStr, list[NonEmptyStr]] = Field(default_factory=dict)
 
 
 class PragmaValidation(BaseModel):
@@ -65,7 +72,7 @@ class PragmaValidation(BaseModel):
 
     model_config = ConfigDict(frozen=False)
     journal_mode: str | None = None
-    foreign_keys: int | None = None
+    foreign_keys: Literal[0, 1] | None = None
 
 
 class SchemaValidationResult(BaseModel):
@@ -416,7 +423,7 @@ class Database:
         if db_file.exists():
             st = db_file.stat()
             stats.file_size_bytes = st.st_size
-            stats.file_size_mb = round(st.st_size / (1024 * 1024), 2)
+            stats.file_size_mb = round(st.st_size / BYTES_PER_MB, 2)
 
         if not self._initialized:
             return stats

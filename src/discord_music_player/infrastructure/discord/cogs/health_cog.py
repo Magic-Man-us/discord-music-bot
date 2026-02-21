@@ -18,6 +18,7 @@ from discord_music_player.domain.shared.messages import (
     ErrorMessages,
     LogTemplates,
 )
+from discord_music_player.domain.shared.types import BYTES_PER_MB
 
 if TYPE_CHECKING:
     from ....config.container import Container
@@ -172,7 +173,7 @@ class HealthCog(commands.Cog):
         }
 
     async def _collect_detailed_stats(self) -> DetailedStats:
-        payload: DetailedStats = self._collect_basic_stats()  # type: ignore[assignment]
+        payload: DetailedStats = {**self._collect_basic_stats()}
         payload["guild_count"] = len(self.bot.guilds)
         payload["voice_connections"] = len(self.bot.voice_clients)
 
@@ -182,10 +183,9 @@ class HealthCog(commands.Cog):
             proc = psutil.Process()
             with proc.oneshot():
                 mem = proc.memory_full_info()
-                mib = 1024 * 1024
-                payload["rss_mb"] = round(mem.rss / mib, 1)
+                payload["rss_mb"] = round(mem.rss / BYTES_PER_MB, 1)
                 vms = getattr(mem, "vms", None)
-                payload["vms_mb"] = round(vms / mib, 1) if vms else None
+                payload["vms_mb"] = round(vms / BYTES_PER_MB, 1) if vms else None
         except ImportError:
             pass
         except Exception:
@@ -195,7 +195,7 @@ class HealthCog(commands.Cog):
             db = self.container.database
             db_stats = await db.get_stats()
             payload["db_initialized"] = db_stats.initialized
-            payload["db_size_mb"] = db_stats.file_size_mb or 0
+            payload["db_size_mb"] = db_stats.file_size_mb if db_stats.file_size_mb is not None else 0.0
         except Exception:
             pass
 
