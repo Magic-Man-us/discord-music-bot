@@ -391,6 +391,7 @@ class Container:
                 audio_resolver=self.audio_resolver,
                 queue_service=self.queue_service,
                 session_repository=self.session_repository,
+                history_repository=self.history_repository,
                 settings=self.settings.radio,
             )
         return self._radio_service

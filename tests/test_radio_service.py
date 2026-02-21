@@ -51,16 +51,21 @@ def _make_service(
     queue_service = AsyncMock()
     enqueue_result = MagicMock()
     enqueue_result.success = enqueue_success
+    enqueue_result.track = resolve_returns if enqueue_success else None
     queue_service.enqueue.return_value = enqueue_result
 
     session_repo = AsyncMock()
     session_repo.get.return_value = session
+
+    history_repo = AsyncMock()
+    history_repo.get_recent.return_value = []
 
     svc = RadioApplicationService(
         ai_client=ai_client,
         audio_resolver=audio_resolver,
         queue_service=queue_service,
         session_repository=session_repo,
+        history_repository=history_repo,
         settings=settings or RadioSettings(),
     )
 
@@ -69,6 +74,7 @@ def _make_service(
         "audio_resolver": audio_resolver,
         "queue_service": queue_service,
         "session_repo": session_repo,
+        "history_repo": history_repo,
     }
     return svc, mocks
 
@@ -101,6 +107,8 @@ class TestRadioToggle:
 
         assert result.enabled is True
         assert result.tracks_added == 1
+        assert len(result.generated_tracks) == 1
+        assert result.generated_tracks[0].title == "Similar Song"
         assert result.seed_title == track.title
         assert svc.is_enabled(1)
 
@@ -284,6 +292,128 @@ class TestRadioRefill:
         # Refill
         added = await svc.refill_queue(guild_id=1)
         assert added == 1
+
+
+class TestRadioReroll:
+    """Tests for reroll_track."""
+
+    @pytest.mark.asyncio
+    async def test_reroll_replaces_track(self):
+        """reroll_track should remove the old track and enqueue a new one."""
+        track = _make_track()
+        queued = _make_track(title="Old Rec", track_id="old1")
+        session = _make_session(current_track=track, queue=[queued])
+
+        rec = MagicMock()
+        rec.query = "New Rec"
+        rec.title = "New Rec"
+        rec.artist = None
+
+        new_track = _make_track(title="New Rec", track_id="new1")
+
+        svc, mocks = _make_service(
+            ai_available=True,
+            recommendations=[rec],
+            resolve_returns=new_track,
+            enqueue_success=True,
+            session=session,
+        )
+
+        # Enable radio first
+        enable_rec = MagicMock()
+        enable_rec.query = "Old Rec"
+        enable_rec.title = "Old Rec"
+        enable_rec.artist = None
+        mocks["ai_client"].get_recommendations.return_value = [enable_rec]
+        mocks["audio_resolver"].resolve.return_value = queued
+
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
+        assert svc.is_enabled(1)
+
+        # Now set up for the reroll
+        mocks["ai_client"].get_recommendations.return_value = [rec]
+        mocks["audio_resolver"].resolve.return_value = new_track
+        mocks["queue_service"].remove.return_value = queued
+
+        # After removal, session has empty queue
+        empty_session = _make_session(current_track=track, queue=[])
+        mocks["session_repo"].get.return_value = empty_session
+
+        result = await svc.reroll_track(
+            guild_id=1, queue_position=0, user_id=100, user_name="User"
+        )
+
+        assert result is not None
+        assert result.title == "New Rec"
+        mocks["queue_service"].remove.assert_awaited_once_with(1, 0)
+
+    @pytest.mark.asyncio
+    async def test_reroll_moves_track_to_original_position(self):
+        """reroll_track should move the new track back to the original queue position."""
+        track = _make_track()
+        q1 = _make_track(title="Q1", track_id="q1")
+        q2 = _make_track(title="Q2", track_id="q2")
+        q3 = _make_track(title="Q3", track_id="q3")
+        session = _make_session(current_track=track, queue=[q1, q2, q3])
+
+        rec = MagicMock()
+        rec.query = "Replacement"
+        rec.title = "Replacement"
+        rec.artist = None
+
+        new_track = _make_track(title="Replacement", track_id="rep1")
+
+        svc, mocks = _make_service(
+            ai_available=True,
+            recommendations=[rec],
+            resolve_returns=new_track,
+            enqueue_success=True,
+            session=session,
+        )
+
+        # Enable radio
+        enable_rec = MagicMock()
+        enable_rec.query = "Q1"
+        enable_rec.title = "Q1"
+        enable_rec.artist = None
+        mocks["ai_client"].get_recommendations.return_value = [enable_rec]
+        mocks["audio_resolver"].resolve.return_value = q1
+
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
+        assert svc.is_enabled(1)
+
+        # Set up for reroll at position 1 (middle track)
+        mocks["ai_client"].get_recommendations.return_value = [rec]
+        mocks["audio_resolver"].resolve.return_value = new_track
+        mocks["queue_service"].remove.return_value = q2
+
+        # reroll_track calls session_repo.get 3 times:
+        # 1. Initial fetch (to get base_track)
+        # 2. Re-fetch after removal (to build exclusion set)
+        # 3. Re-fetch after enqueue (to compute from_pos for move)
+        initial = _make_session(current_track=track, queue=[q1, q2, q3])
+        after_remove = _make_session(current_track=track, queue=[q1, q3])
+        after_enqueue = _make_session(current_track=track, queue=[q1, q3, new_track])
+        mocks["session_repo"].get.side_effect = [initial, after_remove, after_enqueue]
+
+        result = await svc.reroll_track(
+            guild_id=1, queue_position=1, user_id=100, user_name="User"
+        )
+
+        assert result is not None
+        assert result.title == "Replacement"
+        mocks["queue_service"].remove.assert_awaited_once_with(1, 1)
+        # New track was at position 2 (end), should be moved to position 1
+        mocks["queue_service"].move.assert_awaited_once_with(1, 2, 1)
+
+    @pytest.mark.asyncio
+    async def test_reroll_when_not_enabled(self):
+        """reroll_track should return None when radio is not enabled."""
+        svc, _ = _make_service()
+        result = await svc.reroll_track(
+            guild_id=1, queue_position=0, user_id=100, user_name="User"
+        )
+        assert result is None
 
 
 class TestRadioAutoRefill:

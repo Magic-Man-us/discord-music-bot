@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
 
 from discord_music_player.infrastructure.discord.cogs.radio_cog import RadioCog
-
 
 # =============================================================================
 # Fixtures
@@ -104,16 +103,18 @@ async def test_clear_zero_recommendations(cog, interaction, mock_container):
 
 @pytest.mark.asyncio
 async def test_toggle_enable_sends_embed(cog, interaction, mock_container):
+    track_mock = MagicMock()
+    track_mock.title = "Next Track"
+
     result = MagicMock()
     result.enabled = True
     result.seed_title = "Cool Song"
     result.tracks_added = 2
+    result.generated_tracks = [track_mock, track_mock]
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=result)
 
     queue_info = MagicMock()
-    track = MagicMock()
-    track.title = "Next Track"
-    queue_info.tracks = [track, track]
+    queue_info.total_length = 2
     mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
     await cog.radio.callback(cog, interaction, query=None, action=None)
@@ -167,14 +168,18 @@ async def test_toggle_with_query_calls_execute_play(cog, interaction, mock_conta
     playback_cog_mock._execute_play = AsyncMock()
     cog.bot.get_cog = MagicMock(return_value=playback_cog_mock)
 
+    track_mock = MagicMock()
+    track_mock.title = "Queried Song"
+
     result = MagicMock()
     result.enabled = True
     result.seed_title = "Queried Song"
     result.tracks_added = 1
+    result.generated_tracks = [track_mock]
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=result)
 
     queue_info = MagicMock()
-    queue_info.tracks = []
+    queue_info.total_length = 1
     mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
     await cog.radio.callback(cog, interaction, query="my query", action=None)
@@ -186,14 +191,18 @@ async def test_toggle_with_query_calls_execute_play(cog, interaction, mock_conta
 async def test_toggle_with_query_playback_cog_missing(cog, interaction, mock_container):
     cog.bot.get_cog = MagicMock(return_value=None)
 
+    track_mock = MagicMock()
+    track_mock.title = "Song"
+
     result = MagicMock()
     result.enabled = True
     result.seed_title = "Song"
     result.tracks_added = 0
+    result.generated_tracks = [track_mock]
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=result)
 
     queue_info = MagicMock()
-    queue_info.tracks = []
+    queue_info.total_length = 1
     mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
     # Should not raise

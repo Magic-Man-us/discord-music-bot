@@ -6,7 +6,7 @@ caching extraction results, and configuring yt-dlp options.
 
 from __future__ import annotations
 
-from typing import Any, Final
+from typing import Annotated, Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -17,6 +17,11 @@ from discord_music_player.domain.shared.types import (
     NonNegativeInt,
     PositiveInt,
 )
+
+# ── Annotated list types ──────────────────────────────────────────────
+
+NonEmptyStrList = Annotated[list[NonEmptyStr], Field(min_length=1)]
+"""List of non-empty strings with at least one element."""
 
 CACHE_TTL: Final[int] = 3600
 CACHE_MAX_SIZE: Final[int] = 500
@@ -62,7 +67,7 @@ class YtDlpTrackInfo(BaseModel):
     channel: NonEmptyStr | None = None
     like_count: NonNegativeInt | None = None
     view_count: NonNegativeInt | None = None
-    formats: list[AudioFormatInfo] = Field(default_factory=list)
+    formats: list[AudioFormatInfo] = []
 
     @field_validator(
         "webpage_url", "url", "thumbnail",
@@ -109,6 +114,35 @@ class YtDlpTrackInfo(BaseModel):
             return None
 
 
+class YtDlpExtractResult(BaseModel):
+    """Top-level yt-dlp extraction result (search or playlist).
+
+    Wraps the raw dict returned by ``YoutubeDL.extract_info`` for
+    multi-entry results, parsing each entry into a ``YtDlpTrackInfo``.
+    Invalid entries are silently dropped.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    entries: list[YtDlpTrackInfo] = []
+
+    @field_validator("entries", mode="before")
+    @classmethod
+    def _coerce_entries(cls, v: Any) -> list[YtDlpTrackInfo]:
+        """Parse each raw dict into YtDlpTrackInfo, dropping invalid entries."""
+        if not isinstance(v, list):
+            return []
+        parsed: list[YtDlpTrackInfo] = []
+        for e in v:
+            if not isinstance(e, dict):
+                continue
+            try:
+                parsed.append(YtDlpTrackInfo.model_validate(e))
+            except Exception:
+                continue
+        return parsed
+
+
 class CacheEntry(BaseModel):
     """Cached yt-dlp extraction result with expiry timestamp."""
 
@@ -127,7 +161,7 @@ class YouTubeExtractorConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     pot_server_url: HttpUrlStr
-    player_client: list[NonEmptyStr] = Field(min_length=1)
+    player_client: NonEmptyStrList
 
 
 class ExtractorArgs(BaseModel):

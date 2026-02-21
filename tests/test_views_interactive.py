@@ -3,12 +3,11 @@ LongTrackVoteView, and RadioView."""
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from discord_music_player.domain.shared.messages import DiscordUIMessages
-
 
 # =============================================================================
 # ResumePlaybackView
@@ -355,55 +354,161 @@ class TestLongTrackVoteView:
 # =============================================================================
 
 
+def _make_radio_tracks():
+    """Create mock Track objects for RadioView tests."""
+    from discord_music_player.domain.music.entities import Track
+    from discord_music_player.domain.music.value_objects import TrackId
+
+    tracks = []
+    for i in range(3):
+        tracks.append(
+            Track(
+                id=TrackId(f"track{i}"),
+                title=f"Radio Track {i + 1}",
+                webpage_url=f"https://youtube.com/watch?v=track{i}",
+                stream_url="https://stream.example.com/audio.mp3",
+            )
+        )
+    return tracks
+
+
 def _make_radio_view():
     from discord_music_player.infrastructure.discord.views.radio_view import RadioView
 
     container = MagicMock()
     container.radio_service = MagicMock()
-    container.radio_service.disable_radio = MagicMock()
-    container.radio_service.toggle_radio = AsyncMock()
+    container.radio_service.reroll_track = AsyncMock()
 
-    view = RadioView(guild_id=1, container=container)
-    return view, container
+    tracks = _make_radio_tracks()
+    view = RadioView(guild_id=1, container=container, tracks=tracks, seed_title="Cool Song")
+    return view, container, tracks
 
 
 class TestRadioView:
     @pytest.mark.asyncio
-    async def test_shuffle_button_success(self):
-        view, container = _make_radio_view()
+    async def test_reroll_button_success(self):
+        from discord_music_player.domain.music.entities import Track
+        from discord_music_player.domain.music.value_objects import TrackId
 
-        result = MagicMock()
-        result.enabled = True
-        result.tracks_added = 5
-        result.seed_title = "Cool Song"
-        container.radio_service.toggle_radio = AsyncMock(return_value=result)
+        view, container, tracks = _make_radio_view()
+
+        new_track = Track(
+            id=TrackId("new1"),
+            title="New Recommendation",
+            webpage_url="https://youtube.com/watch?v=new1",
+            stream_url="https://stream.example.com/audio.mp3",
+        )
+        container.radio_service.reroll_track = AsyncMock(return_value=new_track)
 
         interaction = AsyncMock()
         interaction.user.id = 42
         interaction.user.display_name = "User"
 
-        await view.shuffle_button.callback(interaction)
+        from discord_music_player.infrastructure.discord.views.radio_view import RerollButton
 
-        container.radio_service.disable_radio.assert_called_once_with(1)
-        container.radio_service.toggle_radio.assert_awaited_once()
-        msg = interaction.followup.send.call_args[0][0]
-        assert "Shuffled" in msg
-        assert "5" in msg
+        reroll_btn = next(item for item in view.children if isinstance(item, RerollButton) and item.index == 0)
+        await reroll_btn.callback(interaction)
+
+        container.radio_service.reroll_track.assert_awaited_once_with(
+            guild_id=1, queue_position=0, user_id=42, user_name="User"
+        )
+        # Track list should be updated
+        assert view._tracks[0].title == "New Recommendation"
+        # Buttons should be re-enabled after success
+        assert not reroll_btn.disabled
+        # Concurrency flag should be cleared
+        assert not view._reroll_in_progress
 
     @pytest.mark.asyncio
-    async def test_shuffle_button_failure(self):
-        view, container = _make_radio_view()
+    async def test_reroll_button_failure(self):
+        view, container, _ = _make_radio_view()
 
-        result = MagicMock()
-        result.enabled = False
-        result.message = "No track playing"
-        container.radio_service.toggle_radio = AsyncMock(return_value=result)
+        container.radio_service.reroll_track = AsyncMock(return_value=None)
 
         interaction = AsyncMock()
         interaction.user.id = 42
         interaction.user.display_name = "User"
 
-        await view.shuffle_button.callback(interaction)
+        from discord_music_player.infrastructure.discord.views.radio_view import RerollButton
+
+        reroll_btn = next(item for item in view.children if isinstance(item, RerollButton) and item.index == 0)
+        await reroll_btn.callback(interaction)
 
         msg = interaction.followup.send.call_args[0][0]
-        assert "Couldn't" in msg or "No track playing" in msg
+        assert "Couldn't" in msg
+        # Buttons should be re-enabled after failure
+        assert not reroll_btn.disabled
+        # Concurrency flag should be cleared
+        assert not view._reroll_in_progress
+
+    @pytest.mark.asyncio
+    async def test_reroll_blocked_while_in_progress(self):
+        """Second reroll should be rejected while first is in progress."""
+        view, container, _ = _make_radio_view()
+        view._reroll_in_progress = True
+
+        interaction = AsyncMock()
+        interaction.user.id = 42
+        interaction.user.display_name = "User"
+
+        from discord_music_player.infrastructure.discord.views.radio_view import RerollButton
+
+        reroll_btn = next(item for item in view.children if isinstance(item, RerollButton) and item.index == 0)
+        await reroll_btn.callback(interaction)
+
+        # Should send ephemeral "in progress" message, not call reroll_track
+        interaction.response.send_message.assert_awaited_once()
+        msg = interaction.response.send_message.call_args[0][0]
+        assert "already in progress" in msg
+        container.radio_service.reroll_track.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_accept_button_disables_view(self):
+        view, container, _ = _make_radio_view()
+
+        interaction = AsyncMock()
+
+        from discord_music_player.infrastructure.discord.views.radio_view import AcceptButton
+
+        accept_btn = next(item for item in view.children if isinstance(item, AcceptButton))
+        await accept_btn.callback(interaction)
+
+        # All buttons should be disabled
+        import discord
+
+        for item in view.children:
+            if isinstance(item, discord.ui.Button):
+                assert item.disabled is True
+
+    @pytest.mark.asyncio
+    async def test_view_has_correct_button_count(self):
+        """View should have N reroll buttons + 1 accept button."""
+        view, _, tracks = _make_radio_view()
+
+        import discord
+
+        buttons = [item for item in view.children if isinstance(item, discord.ui.Button)]
+        assert len(buttons) == len(tracks) + 1  # reroll buttons + accept
+
+    @pytest.mark.asyncio
+    async def test_queue_start_position_offsets_buttons(self):
+        """Buttons should use queue_start_position offset for queue positions."""
+        from discord_music_player.infrastructure.discord.views.radio_view import (
+            RadioView,
+            RerollButton,
+        )
+
+        container = MagicMock()
+        tracks = _make_radio_tracks()
+        view = RadioView(
+            guild_id=1, container=container, tracks=tracks,
+            seed_title="Song", queue_start_position=3,
+        )
+
+        reroll_buttons = sorted(
+            [item for item in view.children if isinstance(item, RerollButton)],
+            key=lambda b: b.index,
+        )
+        assert reroll_buttons[0].queue_position == 3
+        assert reroll_buttons[1].queue_position == 4
+        assert reroll_buttons[2].queue_position == 5

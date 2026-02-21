@@ -15,7 +15,6 @@ from discord_music_player.domain.shared.messages import DiscordUIMessages, Error
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
 )
-from discord_music_player.utils.reply import truncate
 
 if TYPE_CHECKING:
     from ....config.container import Container
@@ -121,33 +120,24 @@ class RadioCog(commands.Cog):
             await interaction.followup.send(msg, ephemeral=True)
             return
 
-        # Radio enabled - send public message with "Up Next" and shuffle button
+        # Radio enabled - send public message with "Up Next" and per-track re-roll buttons
+        from ..views.radio_view import RadioView, build_up_next_embed
+
+        # Determine queue start position: the generated tracks sit at the end of the queue
         queue_service = self.container.queue_service
         queue_info = await queue_service.get_queue(interaction.guild.id)
+        queue_start = max(0, queue_info.total_length - len(result.generated_tracks))
 
-        embed = discord.Embed(
-            title="\U0001f4fb Radio Enabled",
-            description=f"Playing similar tracks based on **{result.seed_title}**",
-            color=discord.Color.purple(),
+        embed = build_up_next_embed(result.generated_tracks, result.seed_title)
+        view = RadioView(
+            guild_id=interaction.guild.id,
+            container=self.container,
+            tracks=result.generated_tracks,
+            seed_title=result.seed_title,
+            queue_start_position=queue_start,
         )
-
-        # Show "Up Next" section with queued tracks
-        if queue_info.tracks:
-            up_next_lines = []
-            for idx, track in enumerate(queue_info.tracks[:result.tracks_added], start=1):
-                title = truncate(track.title, 60)
-                up_next_lines.append(f"{idx}. {title}")
-
-            embed.add_field(
-                name="\U0001f3b5 Up Next",
-                value="\n".join(up_next_lines) if up_next_lines else "No tracks queued",
-                inline=False,
-            )
-
-        from ..views.radio_view import RadioView
-
-        view = RadioView(guild_id=interaction.guild.id, container=self.container)
-        await interaction.followup.send(embed=embed, view=view)
+        msg = await interaction.followup.send(embed=embed, view=view, wait=True)
+        view._message = msg
 
 
 async def setup(bot: commands.Bot) -> None:

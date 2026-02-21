@@ -17,7 +17,7 @@ from .radio_models import RadioState, RadioToggleResult
 
 if TYPE_CHECKING:
     from ...config.settings import RadioSettings
-    from ...domain.music.repository import SessionRepository
+    from ...domain.music.repository import SessionRepository, TrackHistoryRepository
     from ..interfaces.ai_client import AIClient
     from ..interfaces.audio_resolver import AudioResolver
     from .queue_service import QueueApplicationService
@@ -35,12 +35,14 @@ class RadioApplicationService:
         audio_resolver: AudioResolver,
         queue_service: QueueApplicationService,
         session_repository: SessionRepository,
+        history_repository: TrackHistoryRepository,
         settings: RadioSettings,
     ) -> None:
         self._ai_client = ai_client
         self._audio_resolver = audio_resolver
         self._queue_service = queue_service
         self._session_repo = session_repository
+        self._history_repo = history_repository
         self._settings = settings
         self._states: dict[DiscordSnowflake, RadioState] = {}
 
@@ -71,7 +73,7 @@ class RadioApplicationService:
         state = RadioState(enabled=True, seed_track_title=current_track.title)
         self._states[guild_id] = state
 
-        added = await self._generate_and_enqueue(
+        tracks = await self._generate_and_enqueue(
             guild_id=guild_id,
             base_track=current_track,
             user_id=user_id,
@@ -79,7 +81,7 @@ class RadioApplicationService:
             count=self._settings.default_count,
         )
 
-        if added == 0:
+        if not tracks:
             self.disable_radio(guild_id)
             return RadioToggleResult(
                 enabled=False,
@@ -89,7 +91,8 @@ class RadioApplicationService:
         logger.info(LogTemplates.RADIO_ENABLED, guild_id, current_track.title)
         return RadioToggleResult(
             enabled=True,
-            tracks_added=added,
+            tracks_added=len(tracks),
+            generated_tracks=tracks,
             seed_title=current_track.title,
         )
 
@@ -98,6 +101,85 @@ class RadioApplicationService:
         self._states.pop(guild_id, None)
         if had_state:
             logger.info(LogTemplates.RADIO_DISABLED, guild_id)
+
+    async def reroll_track(
+        self,
+        guild_id: DiscordSnowflake,
+        queue_position: int,
+        user_id: DiscordSnowflake,
+        user_name: NonEmptyStr,
+    ) -> Track | None:
+        """Replace a single track at *queue_position* with a new recommendation.
+
+        Returns the newly enqueued Track, or None on failure.
+        """
+        state = self._states.get(guild_id)
+        if state is None or not state.enabled:
+            return None
+
+        session = await self._session_repo.get(guild_id)
+        if session is None:
+            return None
+
+        base_track = session.current_track
+        if base_track is None:
+            return None
+
+        # Remove the old track
+        removed = await self._queue_service.remove(guild_id, queue_position)
+        if removed is None:
+            return None
+
+        # Build exclusion set: current + all remaining queued + the removed track
+        session = await self._session_repo.get(guild_id)  # re-fetch after removal
+        exclude_ids: list[str] = [removed.id.value]
+        if session is not None:
+            if session.current_track is not None:
+                exclude_ids.append(session.current_track.id.value)
+            for t in session.queue:
+                exclude_ids.append(t.id.value)
+
+        request = RecommendationDomainService.create_request_from_track(
+            track=base_track,
+            count=1,
+            exclude_ids=exclude_ids,
+        )
+
+        recommendations = await self._ai_client.get_recommendations(request)
+        if not recommendations:
+            return None
+
+        recommendations = RecommendationDomainService.filter_duplicates(recommendations)
+
+        for rec in recommendations:
+            try:
+                track = await self._audio_resolver.resolve(rec.query)
+                if track is None:
+                    continue
+
+                result = await self._queue_service.enqueue(
+                    guild_id=guild_id,
+                    track=track,
+                    user_id=user_id,
+                    user_name=user_name,
+                )
+                if result.success and result.track is not None:
+                    # Move the newly enqueued track (at the end) to the original position
+                    new_session = await self._session_repo.get(guild_id)
+                    if new_session is not None and new_session.queue_length > 0:
+                        from_pos = new_session.queue_length - 1
+                        if from_pos != queue_position:
+                            await self._queue_service.move(guild_id, from_pos, queue_position)
+
+                    if state is not None:
+                        state.tracks_generated += 1
+
+                    return result.track
+            except Exception as exc:
+                logger.warning(LogTemplates.RADIO_TRACK_RESOLVE_FAILED, rec.query, str(exc))
+                continue
+
+        return None
 
     async def refill_queue(self, guild_id: DiscordSnowflake) -> int:
         """Refill the queue with more radio tracks when the queue is exhausted."""
@@ -134,40 +216,58 @@ class RadioApplicationService:
         count = min(count, remaining_capacity)
 
         try:
-            added = await self._generate_and_enqueue(
+            tracks = await self._generate_and_enqueue(
                 guild_id=guild_id,
                 base_track=base_track,
                 user_id=base_track.requested_by_id or 0,
                 user_name=base_track.requested_by_name or "Radio",
                 count=count,
             )
+            added = len(tracks)
             logger.info(LogTemplates.RADIO_REFILL_COMPLETED, guild_id, added)
             return added
         except Exception as exc:
             logger.exception(LogTemplates.RADIO_REFILL_FAILED, guild_id, exc)
             return 0
 
-    async def _generate_and_enqueue(
-        self,
-        *,
-        guild_id: DiscordSnowflake,
-        base_track: Track,
-        user_id: DiscordSnowflake,
-        user_name: NonEmptyStr,
-        count: PositiveInt,
-    ) -> int:
-        """Generate recommendations and enqueue resolved tracks."""
+    async def warmup_next(self, guild_id: DiscordSnowflake, *, recent_limit: int = 10) -> int:
+        """Pre-fetch a single track so the queue is never empty while radio is active.
+
+        Excludes the current track, any queued tracks, and the last *recent_limit*
+        tracks from history to avoid immediate repeats.
+        """
+        state = self._states.get(guild_id)
+        if state is None or not state.enabled:
+            return 0
+
+        if state.tracks_generated >= self._settings.max_tracks_per_session:
+            return 0
+
         session = await self._session_repo.get(guild_id)
-        exclude_ids: list[str] = []
-        if session is not None:
-            if session.current_track is not None:
-                exclude_ids.append(session.current_track.id.value)
-            for t in session.queue:
+        if session is None:
+            return 0
+
+        # Only warm up when the queue is empty
+        if session.queue_length > 0:
+            return 0
+
+        base_track = session.current_track
+        if base_track is None:
+            return 0
+
+        # Build exclusion set: current + queued + recent history
+        exclude_ids: list[str] = [base_track.id.value]
+        for t in session.queue:
+            exclude_ids.append(t.id.value)
+
+        recent = await self._history_repo.get_recent(guild_id, limit=recent_limit)
+        for t in recent:
+            if t.id.value not in exclude_ids:
                 exclude_ids.append(t.id.value)
 
         request = RecommendationDomainService.create_request_from_track(
             track=base_track,
-            count=count,
+            count=1,
             exclude_ids=exclude_ids,
         )
 
@@ -188,17 +288,77 @@ class RadioApplicationService:
                 result = await self._queue_service.enqueue(
                     guild_id=guild_id,
                     track=track,
-                    user_id=user_id,
-                    user_name=user_name,
+                    user_id=base_track.requested_by_id or 0,
+                    user_name=base_track.requested_by_name or "Radio",
                 )
                 if result.success:
                     added += 1
+                    break  # Only need one track for warmup
+            except Exception as exc:
+                logger.warning(LogTemplates.RADIO_TRACK_RESOLVE_FAILED, rec.query, str(exc))
+                continue
+
+        if state is not None and added > 0:
+            state.tracks_generated += added
+            logger.debug("Radio warmup: queued 1 track for guild %s", guild_id)
+
+        return added
+
+    async def _generate_and_enqueue(
+        self,
+        *,
+        guild_id: DiscordSnowflake,
+        base_track: Track,
+        user_id: DiscordSnowflake,
+        user_name: NonEmptyStr,
+        count: PositiveInt,
+    ) -> list[Track]:
+        """Generate recommendations and enqueue resolved tracks.
+
+        Returns the list of successfully enqueued Track objects.
+        """
+        session = await self._session_repo.get(guild_id)
+        exclude_ids: list[str] = []
+        if session is not None:
+            if session.current_track is not None:
+                exclude_ids.append(session.current_track.id.value)
+            for t in session.queue:
+                exclude_ids.append(t.id.value)
+
+        request = RecommendationDomainService.create_request_from_track(
+            track=base_track,
+            count=count,
+            exclude_ids=exclude_ids,
+        )
+
+        recommendations = await self._ai_client.get_recommendations(request)
+        if not recommendations:
+            return []
+
+        recommendations = RecommendationDomainService.filter_duplicates(recommendations)
+
+        enqueued_tracks: list[Track] = []
+        for rec in recommendations:
+            try:
+                track = await self._audio_resolver.resolve(rec.query)
+                if track is None:
+                    logger.warning(LogTemplates.RADIO_TRACK_RESOLVE_FAILED, rec.query, "no result")
+                    continue
+
+                result = await self._queue_service.enqueue(
+                    guild_id=guild_id,
+                    track=track,
+                    user_id=user_id,
+                    user_name=user_name,
+                )
+                if result.success and result.track is not None:
+                    enqueued_tracks.append(result.track)
             except Exception as exc:
                 logger.warning(LogTemplates.RADIO_TRACK_RESOLVE_FAILED, rec.query, str(exc))
                 continue
 
         state = self._states.get(guild_id)
         if state is not None:
-            state.tracks_generated += added
+            state.tracks_generated += len(enqueued_tracks)
 
-        return added
+        return enqueued_tracks

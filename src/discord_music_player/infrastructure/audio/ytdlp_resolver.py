@@ -33,6 +33,7 @@ from discord_music_player.infrastructure.audio.models import (
     CacheEntry,
     ExtractorArgs,
     YouTubeExtractorConfig,
+    YtDlpExtractResult,
     YtDlpOpts,
     YtDlpTrackInfo,
 )
@@ -154,13 +155,18 @@ class YtDlpResolver(AudioResolver):
         return None
 
     @staticmethod
-    def _parse_info(data: dict[str, Any]) -> YtDlpTrackInfo:
-        """Parse a raw yt-dlp info dict into a typed model.
+    def _parse_single_result(data: Any) -> YtDlpTrackInfo | None:
+        """Parse a raw yt-dlp single-entry result into a typed model.
 
-        Extra fields are dropped by the model's ``extra="ignore"`` config,
-        replacing the old ``_trim_info`` approach.
+        Returns None if *data* is not a dict or fails validation.
+        Extra fields are dropped by the model's ``extra="ignore"`` config.
         """
-        return YtDlpTrackInfo.model_validate(data)
+        if not isinstance(data, dict):
+            return None
+        try:
+            return YtDlpTrackInfo.model_validate(data)
+        except Exception:
+            return None
 
     def _extract_info_sync(self, url: HttpUrlStr) -> YtDlpTrackInfo | None:
         now = time.time()
@@ -174,7 +180,7 @@ class YtDlpResolver(AudioResolver):
         try:
             with YoutubeDL(params=cast(Any, self._get_opts().model_dump())) as ydl:
                 data = ydl.extract_info(url, download=False)
-                result = self._parse_info(dict(data)) if isinstance(data, dict) else None
+                result = self._parse_single_result(data)
 
                 _info_cache[url] = CacheEntry(info=result, cached_at=now)
 
@@ -194,20 +200,19 @@ class YtDlpResolver(AudioResolver):
             logger.exception(LogTemplates.YTDLP_FAILED_EXTRACT_INFO, url)
             return None
 
+    @staticmethod
+    def _parse_extract_result(data: Any) -> YtDlpExtractResult:
+        """Parse a raw yt-dlp multi-entry result into a typed model."""
+        if not isinstance(data, dict):
+            return YtDlpExtractResult()
+        return YtDlpExtractResult.model_validate(data)
+
     def _search_sync(self, query: NonEmptyStr, limit: PositiveInt = 1) -> list[YtDlpTrackInfo]:
         try:
             search_query = f"ytsearch{limit}:{query}"
             with YoutubeDL(params=cast(Any, self._get_opts().model_dump())) as ydl:
                 data = ydl.extract_info(search_query, download=False)
-
-                if not isinstance(data, dict):
-                    return []
-
-                entries = data.get("entries", [])
-                if not isinstance(entries, list):
-                    return []
-
-                return [self._parse_info(dict(e)) for e in entries if e]
+                return self._parse_extract_result(data).entries
         except Exception:
             logger.exception(LogTemplates.YTDLP_FAILED_SEARCH, query)
             return []
@@ -216,15 +221,7 @@ class YtDlpResolver(AudioResolver):
         try:
             with YoutubeDL(params=cast(Any, self._get_playlist_opts().model_dump())) as ydl:
                 data = ydl.extract_info(url, download=False)
-
-                if not isinstance(data, dict):
-                    return []
-
-                entries = data.get("entries", [])
-                if not isinstance(entries, list):
-                    return []
-
-                return [self._parse_info(dict(e)) for e in entries if e]
+                return self._parse_extract_result(data).entries
         except Exception:
             logger.exception(LogTemplates.YTDLP_FAILED_EXTRACT_PLAYLIST, url)
             return []
