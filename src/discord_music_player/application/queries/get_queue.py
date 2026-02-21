@@ -2,27 +2,27 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
     from ...domain.music.entities import Track
     from ...domain.music.repository import SessionRepository
 
 
-@dataclass
-class GetQueueQuery:
+class GetQueueQuery(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
     guild_id: int
 
 
-@dataclass
-class QueueInfo:
+class QueueInfo(BaseModel):
 
     guild_id: int
-    tracks: list[Track]
-    current_track: Track | None
-    total_duration: int | None
+    tracks: list[Track] = Field(default_factory=list)
+    current_track: Track | None = None
+    total_duration: int | None = None
 
     @property
     def length(self) -> int:

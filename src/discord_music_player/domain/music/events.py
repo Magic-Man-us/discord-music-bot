@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, Field
 
 from discord_music_player.domain.shared.datetime_utils import utcnow
+from discord_music_player.domain.shared.types import (
+    DiscordSnowflake,
+    DurationSeconds,
+    NonEmptyStr,
+    NonNegativeInt,
+    UtcDatetimeField,
+)
 
 from .value_objects import (
     OptionalTrackIdField,
@@ -31,13 +37,13 @@ class MusicEvent(BaseModel):
 
 class TrackQueued(MusicEvent):
     event_type: Literal["TrackQueued"] = "TrackQueued"
-    guild_id: int
+    guild_id: DiscordSnowflake
     track_id: TrackIdField
-    track_title: str
-    position: int
-    requested_by_id: int | None = None
-    requested_by_name: str | None = None
-    timestamp: datetime = Field(default_factory=utcnow)
+    track_title: NonEmptyStr
+    position: NonNegativeInt
+    requested_by_id: DiscordSnowflake | None = None
+    requested_by_name: NonEmptyStr | None = None
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
     @classmethod
     def from_track(
@@ -59,12 +65,12 @@ class TrackQueued(MusicEvent):
 
 class TrackStarted(MusicEvent):
     event_type: Literal["TrackStarted"] = "TrackStarted"
-    guild_id: int
+    guild_id: DiscordSnowflake
     track_id: TrackIdField
-    track_title: str
-    duration_seconds: int | None = None
-    requested_by_id: int | None = None
-    timestamp: datetime = Field(default_factory=utcnow)
+    track_title: NonEmptyStr
+    duration_seconds: DurationSeconds | None = None
+    requested_by_id: DiscordSnowflake | None = None
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
     @classmethod
     def from_track(cls, guild_id: int, track: Track) -> TrackStarted:
@@ -80,11 +86,11 @@ class TrackStarted(MusicEvent):
 
 class TrackFinished(MusicEvent):
     event_type: Literal["TrackFinished"] = "TrackFinished"
-    guild_id: int
+    guild_id: DiscordSnowflake
     track_id: TrackIdField
-    track_title: str
+    track_title: NonEmptyStr
     reason: TrackFinishReason = TrackFinishReason.COMPLETED
-    timestamp: datetime = Field(default_factory=utcnow)
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
     @classmethod
     def from_track(
@@ -101,12 +107,12 @@ class TrackFinished(MusicEvent):
 
 class TrackSkipped(MusicEvent):
     event_type: Literal["TrackSkipped"] = "TrackSkipped"
-    guild_id: int
+    guild_id: DiscordSnowflake
     track_id: TrackIdField
-    track_title: str
-    skipped_by_id: int | None = None
+    track_title: NonEmptyStr
+    skipped_by_id: DiscordSnowflake | None = None
     skip_reason: SkipReason = SkipReason.USER_REQUEST
-    timestamp: datetime = Field(default_factory=utcnow)
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
     @classmethod
     def from_track(
@@ -128,79 +134,79 @@ class TrackSkipped(MusicEvent):
 
 class QueueCleared(MusicEvent):
     event_type: Literal["QueueCleared"] = "QueueCleared"
-    guild_id: int
-    tracks_cleared: int = 0
-    cleared_by_id: int | None = None
-    timestamp: datetime = Field(default_factory=utcnow)
+    guild_id: DiscordSnowflake
+    tracks_cleared: NonNegativeInt = 0
+    cleared_by_id: DiscordSnowflake | None = None
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
 
 class PlaybackPaused(MusicEvent):
     event_type: Literal["PlaybackPaused"] = "PlaybackPaused"
-    guild_id: int
+    guild_id: DiscordSnowflake
     track_id: OptionalTrackIdField = None
-    paused_by_id: int | None = None
-    timestamp: datetime = Field(default_factory=utcnow)
+    paused_by_id: DiscordSnowflake | None = None
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
 
 class PlaybackResumed(MusicEvent):
     event_type: Literal["PlaybackResumed"] = "PlaybackResumed"
-    guild_id: int
+    guild_id: DiscordSnowflake
     track_id: OptionalTrackIdField = None
-    resumed_by_id: int | None = None
-    timestamp: datetime = Field(default_factory=utcnow)
+    resumed_by_id: DiscordSnowflake | None = None
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
 
 class PlaybackStopped(MusicEvent):
     event_type: Literal["PlaybackStopped"] = "PlaybackStopped"
-    guild_id: int
-    stopped_by_id: int | None = None
+    guild_id: DiscordSnowflake
+    stopped_by_id: DiscordSnowflake | None = None
     reason: StopReason = StopReason.USER_REQUEST
-    timestamp: datetime = Field(default_factory=utcnow)
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
 
 class SessionCreated(MusicEvent):
     event_type: Literal["SessionCreated"] = "SessionCreated"
-    guild_id: int
-    timestamp: datetime = Field(default_factory=utcnow)
+    guild_id: DiscordSnowflake
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
 
 class SessionDestroyed(MusicEvent):
     event_type: Literal["SessionDestroyed"] = "SessionDestroyed"
-    guild_id: int
+    guild_id: DiscordSnowflake
     reason: SessionDestroyReason = SessionDestroyReason.CLEANUP
-    timestamp: datetime = Field(default_factory=utcnow)
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
 
 class VoiceChannelJoined(MusicEvent):
     event_type: Literal["VoiceChannelJoined"] = "VoiceChannelJoined"
-    guild_id: int
-    channel_id: int
-    timestamp: datetime = Field(default_factory=utcnow)
+    guild_id: DiscordSnowflake
+    channel_id: DiscordSnowflake
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
 
 class VoiceChannelLeft(MusicEvent):
     event_type: Literal["VoiceChannelLeft"] = "VoiceChannelLeft"
-    guild_id: int
-    channel_id: int
+    guild_id: DiscordSnowflake
+    channel_id: DiscordSnowflake
     reason: VoiceLeaveReason = VoiceLeaveReason.DISCONNECT
-    timestamp: datetime = Field(default_factory=utcnow)
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
 
 class LoopModeChanged(MusicEvent):
     event_type: Literal["LoopModeChanged"] = "LoopModeChanged"
-    guild_id: int
-    old_mode: str
-    new_mode: str
-    changed_by_id: int | None = None
-    timestamp: datetime = Field(default_factory=utcnow)
+    guild_id: DiscordSnowflake
+    old_mode: NonEmptyStr
+    new_mode: NonEmptyStr
+    changed_by_id: DiscordSnowflake | None = None
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
 
 class QueueShuffled(MusicEvent):
     event_type: Literal["QueueShuffled"] = "QueueShuffled"
-    guild_id: int
-    queue_length: int
-    shuffled_by_id: int | None = None
-    timestamp: datetime = Field(default_factory=utcnow)
+    guild_id: DiscordSnowflake
+    queue_length: NonNegativeInt
+    shuffled_by_id: DiscordSnowflake | None = None
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
 
 DomainEvent = Annotated[

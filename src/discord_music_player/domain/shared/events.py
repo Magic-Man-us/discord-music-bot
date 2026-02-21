@@ -6,10 +6,11 @@ import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, TypeVar
 from uuid import uuid4
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.shared.datetime_utils import utcnow
@@ -20,18 +21,18 @@ T = TypeVar("T", bound="DomainEvent")
 EventHandler = Callable[[T], Awaitable[None]]
 
 
-@dataclass(frozen=True)
-class DomainEvent:
+class DomainEvent(BaseModel):
     """Base class for all domain events."""
 
-    event_id: str = field(default_factory=lambda: str(uuid4()))
-    occurred_at: datetime = field(default_factory=utcnow)
+    model_config = ConfigDict(frozen=True)
+
+    event_id: str = Field(default_factory=lambda: str(uuid4()))
+    occurred_at: datetime = Field(default_factory=utcnow)
 
 
 # === Music Domain Events ===
 
 
-@dataclass(frozen=True)
 class TrackAddedToQueue(DomainEvent):
     guild_id: int = 0
     track_id: TrackId | None = None
@@ -40,7 +41,6 @@ class TrackAddedToQueue(DomainEvent):
     queue_position: int = 0
 
 
-@dataclass(frozen=True)
 class TrackStartedPlaying(DomainEvent):
     guild_id: int = 0
     track_id: TrackId | None = None
@@ -49,7 +49,6 @@ class TrackStartedPlaying(DomainEvent):
     duration_seconds: int | None = None
 
 
-@dataclass(frozen=True)
 class TrackFinishedPlaying(DomainEvent):
     guild_id: int = 0
     track_id: TrackId | None = None
@@ -57,7 +56,6 @@ class TrackFinishedPlaying(DomainEvent):
     was_skipped: bool = False
 
 
-@dataclass(frozen=True)
 class TrackSkipped(DomainEvent):
     guild_id: int = 0
     track_id: TrackId | None = None
@@ -66,32 +64,27 @@ class TrackSkipped(DomainEvent):
     via_vote: bool = False
 
 
-@dataclass(frozen=True)
 class QueueCleared(DomainEvent):
     guild_id: int = 0
     cleared_by_id: int = 0
     track_count: int = 0
 
 
-@dataclass(frozen=True)
 class PlaybackStopped(DomainEvent):
     guild_id: int = 0
     stopped_by_id: int = 0
 
 
-@dataclass(frozen=True)
 class PlaybackPaused(DomainEvent):
     guild_id: int = 0
     paused_by_id: int = 0
 
 
-@dataclass(frozen=True)
 class PlaybackResumed(DomainEvent):
     guild_id: int = 0
     resumed_by_id: int = 0
 
 
-@dataclass(frozen=True)
 class QueueExhausted(DomainEvent):
     guild_id: int = 0
     last_track_id: TrackId | None = None
@@ -101,34 +94,29 @@ class QueueExhausted(DomainEvent):
 # === Voice Events ===
 
 
-@dataclass(frozen=True)
 class BotJoinedVoiceChannel(DomainEvent):
     guild_id: int = 0
     channel_id: int = 0
     channel_name: str = ""
 
 
-@dataclass(frozen=True)
 class BotLeftVoiceChannel(DomainEvent):
     guild_id: int = 0
     channel_id: int = 0
     reason: str = ""
 
 
-@dataclass(frozen=True)
 class VoiceChannelEmpty(DomainEvent):
     guild_id: int = 0
     channel_id: int = 0
 
 
-@dataclass(frozen=True)
 class VoiceMemberJoinedVoiceChannel(DomainEvent):
     guild_id: int = 0
     channel_id: int = 0
     user_id: int = 0
 
 
-@dataclass(frozen=True)
 class VoiceMemberLeftVoiceChannel(DomainEvent):
     guild_id: int = 0
     channel_id: int = 0
@@ -138,7 +126,6 @@ class VoiceMemberLeftVoiceChannel(DomainEvent):
 # === Vote Events ===
 
 
-@dataclass(frozen=True)
 class VoteSkipStarted(DomainEvent):
     guild_id: int = 0
     track_id: TrackId | None = None
@@ -146,7 +133,6 @@ class VoteSkipStarted(DomainEvent):
     votes_needed: int = 0
 
 
-@dataclass(frozen=True)
 class VoteSkipCast(DomainEvent):
     guild_id: int = 0
     voter_id: int = 0
@@ -154,14 +140,12 @@ class VoteSkipCast(DomainEvent):
     votes_needed: int = 0
 
 
-@dataclass(frozen=True)
 class VoteSkipPassed(DomainEvent):
     guild_id: int = 0
     track_id: TrackId | None = None
     total_votes: int = 0
 
 
-@dataclass(frozen=True)
 class VoteSkipFailed(DomainEvent):
     guild_id: int = 0
     track_id: TrackId | None = None
@@ -172,12 +156,10 @@ class VoteSkipFailed(DomainEvent):
 # === Session Events ===
 
 
-@dataclass(frozen=True)
 class SessionCreated(DomainEvent):
     guild_id: int = 0
 
 
-@dataclass(frozen=True)
 class SessionDestroyed(DomainEvent):
     guild_id: int = 0
     reason: str = ""

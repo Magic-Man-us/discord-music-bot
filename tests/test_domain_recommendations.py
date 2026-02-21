@@ -51,17 +51,17 @@ class TestRecommendationRequest:
 
     def test_empty_title_raises_error(self):
         """Should raise ValueError for empty title."""
-        with pytest.raises(ValueError, match="title is required"):
+        with pytest.raises(ValueError):
             RecommendationRequest(base_track_title="")
 
     def test_count_below_one_raises_error(self):
         """Should raise ValueError for count < 1."""
-        with pytest.raises(ValueError, match="at least 1"):
+        with pytest.raises(ValueError):
             RecommendationRequest(base_track_title="Test Song", count=0)
 
     def test_count_above_ten_raises_error(self):
         """Should raise ValueError for count > 10."""
-        with pytest.raises(ValueError, match="cannot exceed 10"):
+        with pytest.raises(ValueError):
             RecommendationRequest(base_track_title="Test Song", count=11)
 
     def test_cache_key_generated(self):
@@ -111,7 +111,7 @@ class TestRecommendation:
 
     def test_empty_title_raises_error(self):
         """Should raise ValueError for empty title."""
-        with pytest.raises(ValueError, match="title is required"):
+        with pytest.raises(ValueError):
             Recommendation(title="")
 
     def test_auto_generate_query_with_artist(self):
@@ -126,10 +126,10 @@ class TestRecommendation:
 
     def test_confidence_must_be_valid(self):
         """Should raise ValueError for invalid confidence."""
-        with pytest.raises(ValueError, match="Confidence must be between 0 and 1"):
+        with pytest.raises(ValueError):
             Recommendation(title="Test", confidence=1.5)
 
-        with pytest.raises(ValueError, match="Confidence must be between 0 and 1"):
+        with pytest.raises(ValueError):
             Recommendation(title="Test", confidence=-0.1)
 
     def test_display_text_with_artist(self):

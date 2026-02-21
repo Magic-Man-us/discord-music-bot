@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, ConfigDict
+
+from discord_music_player.domain.shared.types import DiscordSnowflake, NonNegativeInt
 
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository
@@ -20,27 +23,20 @@ class StopStatus(Enum):
     ERROR = "error"
 
 
-@dataclass
-class StopPlaybackCommand:
+class StopPlaybackCommand(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
-    guild_id: int
-    user_id: int
+    guild_id: DiscordSnowflake
+    user_id: DiscordSnowflake
     clear_queue: bool = True
     disconnect: bool = False
 
-    def __post_init__(self) -> None:
-        if self.guild_id <= 0:
-            raise ValueError("Guild ID must be positive")
-        if self.user_id <= 0:
-            raise ValueError("User ID must be positive")
 
-
-@dataclass
-class StopResult:
+class StopResult(BaseModel):
 
     status: StopStatus
     message: str
-    tracks_cleared: int = 0
+    tracks_cleared: NonNegativeInt = 0
     disconnected: bool = False
 
     @property

@@ -177,7 +177,7 @@ class TestVoteSession:
 
     def test_invalid_guild_id_raises_error(self):
         """Should raise ValueError for non-positive guild ID."""
-        with pytest.raises(ValueError, match="Guild ID must be positive"):
+        with pytest.raises(ValueError):
             VoteSession(
                 guild_id=0,
                 track_id=TrackId("track123"),
@@ -187,7 +187,7 @@ class TestVoteSession:
 
     def test_invalid_threshold_raises_error(self):
         """Should raise ValueError for threshold < 1."""
-        with pytest.raises(ValueError, match="Threshold must be at least 1"):
+        with pytest.raises(ValueError):
             VoteSession(
                 guild_id=123,
                 track_id=TrackId("track123"),

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, ConfigDict
+
+from discord_music_player.domain.shared.types import DiscordSnowflake
 
 if TYPE_CHECKING:
     from ...domain.music.entities import Track
@@ -22,22 +25,16 @@ class SkipStatus(Enum):
     ERROR = "error"
 
 
-@dataclass
-class SkipTrackCommand:
-    guild_id: int
-    user_id: int
-    user_channel_id: int | None = None
+class SkipTrackCommand(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    guild_id: DiscordSnowflake
+    user_id: DiscordSnowflake
+    user_channel_id: DiscordSnowflake | None = None
     force: bool = False
 
-    def __post_init__(self) -> None:
-        if self.guild_id <= 0:
-            raise ValueError("Guild ID must be positive")
-        if self.user_id <= 0:
-            raise ValueError("User ID must be positive")
 
-
-@dataclass
-class SkipResult:
+class SkipResult(BaseModel):
 
     status: SkipStatus
     message: str
