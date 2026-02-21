@@ -7,13 +7,17 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from discord_music_player.domain.shared.messages import DiscordUIMessages
+from discord_music_player.infrastructure.discord.guards.voice_guards import check_user_in_voice
+from discord_music_player.infrastructure.discord.views.base_view import BaseInteractiveView
+
 if TYPE_CHECKING:
     from ....application.services.playback_service import PlaybackApplicationService
 
 logger = logging.getLogger(__name__)
 
 
-class ResumePlaybackView(discord.ui.View):
+class ResumePlaybackView(BaseInteractiveView):
     def __init__(
         self,
         *,
@@ -27,24 +31,26 @@ class ResumePlaybackView(discord.ui.View):
         self._channel_id = channel_id
         self._playback_service = playback_service
         self._track_title = track_title
-        self._message: discord.Message | None = None
 
-    def set_message(self, message: discord.Message) -> None:
-        self._message = message
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await check_user_in_voice(interaction, self._guild_id)
 
     @discord.ui.button(label="▶️ Resume", style=discord.ButtonStyle.green)
     async def resume_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[ResumePlaybackView]
     ) -> None:
         await self._playback_service.start_playback(self._guild_id)
-        await self._finish(interaction, f"▶️ Resumed playback: **{self._track_title}**")
+        await self._finish(
+            interaction,
+            DiscordUIMessages.RESUME_PLAYBACK_RESUMED.format(track_title=self._track_title),
+        )
 
     @discord.ui.button(label="⏭️ Skip", style=discord.ButtonStyle.red)
     async def skip_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[ResumePlaybackView]
     ) -> None:
         await self._playback_service.stop_playback(self._guild_id)
-        await self._finish(interaction, "⏭️ Skipped. Playback cleared.")
+        await self._finish(interaction, DiscordUIMessages.RESUME_PLAYBACK_CLEARED)
 
     async def on_timeout(self) -> None:
         await self._playback_service.stop_playback(self._guild_id)
@@ -52,7 +58,7 @@ class ResumePlaybackView(discord.ui.View):
         if self._message is not None:
             try:
                 await self._message.edit(
-                    content=f"⏭️ Playback cleared (no response).", view=self
+                    content=DiscordUIMessages.RESUME_PLAYBACK_TIMEOUT, view=self
                 )
             except discord.HTTPException:
                 logger.debug("Failed to edit resume playback message on timeout")
@@ -61,8 +67,3 @@ class ResumePlaybackView(discord.ui.View):
         self.stop()
         self._disable_buttons()
         await interaction.response.edit_message(content=message, view=self)
-
-    def _disable_buttons(self) -> None:
-        for item in self.children:
-            if isinstance(item, discord.ui.Button):
-                item.disabled = True

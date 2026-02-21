@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord.ext import commands
@@ -25,12 +25,21 @@ class EventCog(commands.Cog):
         self.container = container
         self._resumed_logged_once = False
 
+        # Idle disconnect timers per guild
+        self._idle_timers: dict[int, asyncio.Task[None]] = {}
+
         from ....domain.shared.events import get_event_bus
 
         self._event_bus = get_event_bus()
 
         self._chat_logging = self._env_flag(ConfigKeys.LOG_EVENT_MESSAGES)
         self._reaction_logging = self._env_flag(ConfigKeys.LOG_EVENT_REACTIONS)
+
+        # Subscribe to events for idle disconnect
+        from ....domain.shared.events import QueueExhausted, TrackStartedPlaying
+
+        self._event_bus.subscribe(QueueExhausted, self._on_queue_exhausted)
+        self._event_bus.subscribe(TrackStartedPlaying, self._on_track_started)
 
     @staticmethod
     def _env_flag(name: str) -> bool:
@@ -80,13 +89,9 @@ class EventCog(commands.Cog):
         logger.info("Left guild: %s (%s)", guild.name, guild.id)
 
         try:
-            music_cog = self.bot.get_cog("MusicCog")
-            if music_cog:
-                cleanup_fn = getattr(music_cog, "cleanup_guild_message_state", None)
-                if callable(cleanup_fn):
-                    cleanup_fn(guild.id)
+            self.container.message_state_manager.reset(guild.id)
         except Exception:
-            logger.debug("Could not cleanup music cog message state")
+            logger.debug("Could not cleanup message state for guild %s", guild.id)
 
         try:
             repo = self.container.session_repository
@@ -129,6 +134,56 @@ class EventCog(commands.Cog):
     @commands.Cog.listener()
     async def on_member_unban(self, guild: discord.Guild, user: discord.User) -> None:
         logger.info("User unbanned: %s (%s) guild=%s", user.display_name, user.id, guild.id)
+
+    # ─────────────────────────────────────────────────────────────────
+    # Idle Disconnect (AFK timeout)
+    # ─────────────────────────────────────────────────────────────────
+
+    async def _on_queue_exhausted(self, event: Any) -> None:
+        """Start an idle timer when the queue runs out."""
+        guild_id: int = event.guild_id
+        self._cancel_idle_timer(guild_id)
+
+        from ....domain.shared.constants import TimeConstants
+
+        timeout = TimeConstants.IDLE_DISCONNECT_SECONDS
+        logger.info(
+            "Queue exhausted in guild %s, scheduling idle disconnect in %ss",
+            guild_id,
+            timeout,
+        )
+        self._idle_timers[guild_id] = asyncio.create_task(
+            self._idle_disconnect(guild_id, timeout)
+        )
+
+    async def _on_track_started(self, event: Any) -> None:
+        """Cancel any pending idle timer when a new track starts."""
+        self._cancel_idle_timer(event.guild_id)
+
+    def _cancel_idle_timer(self, guild_id: int) -> None:
+        timer = self._idle_timers.pop(guild_id, None)
+        if timer is not None and not timer.done():
+            timer.cancel()
+            logger.debug("Cancelled idle timer for guild %s", guild_id)
+
+    async def _idle_disconnect(self, guild_id: int, timeout: int) -> None:
+        """Wait *timeout* seconds, then disconnect if still idle."""
+        try:
+            await asyncio.sleep(timeout)
+        except asyncio.CancelledError:
+            return
+
+        # Verify still idle — no current track playing
+        session = await self.container.session_repository.get(guild_id)
+        if session is not None and session.is_playing:
+            return
+
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            return
+
+        logger.info("Idle timeout reached, disconnecting from guild %s", guild_id)
+        await self._disconnect_and_cleanup(guild)
 
     # ─────────────────────────────────────────────────────────────────
     # Voice Events

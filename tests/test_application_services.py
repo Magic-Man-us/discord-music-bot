@@ -1424,7 +1424,7 @@ class TestPlaybackApplicationServiceStartVoicePlayback:
         result = await service._start_voice_playback(session, sample_track, 123456)
 
         assert result is True
-        mock_voice_adapter.play.assert_called_once_with(123456, sample_track)
+        mock_voice_adapter.play.assert_called_once_with(123456, sample_track, start_seconds=None)
         mock_session_repo.save.assert_called_once()
 
     @pytest.mark.asyncio

@@ -419,7 +419,11 @@ class TestLoadCogs:
             await bot._load_cogs()
 
         expected_cogs = [
-            "discord_music_player.infrastructure.discord.cogs.music_cog",
+            "discord_music_player.infrastructure.discord.cogs.playback_cog",
+            "discord_music_player.infrastructure.discord.cogs.queue_cog",
+            "discord_music_player.infrastructure.discord.cogs.skip_cog",
+            "discord_music_player.infrastructure.discord.cogs.radio_cog",
+            "discord_music_player.infrastructure.discord.cogs.now_playing_cog",
             "discord_music_player.infrastructure.discord.cogs.admin_cog",
             "discord_music_player.infrastructure.discord.cogs.health_cog",
             "discord_music_player.infrastructure.discord.cogs.info_cog",
@@ -439,8 +443,8 @@ class TestLoadCogs:
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         async def load_side_effect(cog_name):
-            if "music_cog" in cog_name:
-                raise Exception("Music cog failed")
+            if "playback_cog" in cog_name:
+                raise Exception("Playback cog failed")
 
         with patch.object(
             bot, "load_extension", new_callable=AsyncMock, side_effect=load_side_effect
@@ -448,7 +452,7 @@ class TestLoadCogs:
             await bot._load_cogs()
 
         # Should still attempt to load all cogs
-        assert mock_load.call_count == 6
+        assert mock_load.call_count == 10
 
 
 # =============================================================================

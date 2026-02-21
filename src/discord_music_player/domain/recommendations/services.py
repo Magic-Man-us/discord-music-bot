@@ -24,7 +24,7 @@ class RecommendationDomainService:
     @classmethod
     def create_request_from_track(
         cls,
-        track: "Track",
+        track: Track,
         count: int = DEFAULT_RECOMMENDATION_COUNT,
         exclude_ids: list[str] | None = None,
     ) -> RecommendationRequest:

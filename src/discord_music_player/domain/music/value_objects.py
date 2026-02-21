@@ -87,6 +87,36 @@ class QueuePosition:
         return QueuePosition(max(0, self.value - 1))
 
 
+@dataclass(frozen=True)
+class StartSeconds:
+    """Validated seek offset for starting playback at a specific timestamp."""
+
+    value: int
+
+    def __post_init__(self) -> None:
+        from ..shared.constants import AudioConstants
+
+        if self.value < 0:
+            raise ValueError("Start seconds cannot be negative")
+        if self.value > AudioConstants.MAX_SEEK_SECONDS:
+            raise ValueError(
+                f"Start seconds cannot exceed {AudioConstants.MAX_SEEK_SECONDS}"
+            )
+
+    def __int__(self) -> int:
+        return self.value
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+    @classmethod
+    def from_optional(cls, seconds: int | None) -> StartSeconds | None:
+        """Create from an optional int, returning None if input is None or zero."""
+        if not seconds:
+            return None
+        return cls(seconds)
+
+
 class PlaybackState(Enum):
     """Playback state with enforced transitions.
 

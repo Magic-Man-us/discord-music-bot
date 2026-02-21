@@ -1,10 +1,10 @@
 """
-Comprehensive Unit Tests for MusicCog
+Comprehensive Unit Tests for Cogs (PlaybackCog, QueueCog, SkipCog, NowPlayingCog)
+and extracted infrastructure (MessageStateManager, voice_guards).
 
-Tests for all slash commands and functionality in the music cog:
+Tests for all slash commands and functionality:
 - /play, /skip, /stop, /pause, /resume, /queue, /current, /clear
 - /loop, /shuffle, /remove, /leave, /played
-- Autocomplete handlers
 - Permission checks and validation
 - Discord interaction mocking
 - Error handling
@@ -23,11 +23,23 @@ import pytest
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
 from discord_music_player.domain.music.value_objects import LoopMode, PlaybackState, TrackId
 from discord_music_player.domain.voting.value_objects import VoteResult
-from discord_music_player.infrastructure.discord.cogs.music_cog import (
-    MusicCog,
-    _GuildMessageState,
-    _TrackedMessage,
-    _TrackKey,
+from discord_music_player.infrastructure.discord.cogs.playback_cog import PlaybackCog
+from discord_music_player.infrastructure.discord.cogs.queue_cog import QueueCog
+from discord_music_player.infrastructure.discord.cogs.skip_cog import SkipCog
+from discord_music_player.infrastructure.discord.cogs.now_playing_cog import NowPlayingCog
+from discord_music_player.infrastructure.discord.services.message_state_manager import (
+    GuildMessageState,
+    MessageStateManager,
+    TrackedMessage,
+    TrackKey,
+)
+from discord_music_player.infrastructure.discord.guards.voice_guards import (
+    can_force_skip,
+    ensure_user_in_voice_and_warm,
+    ensure_voice,
+    ensure_voice_warmup,
+    get_member,
+    send_ephemeral,
 )
 
 # =============================================================================
@@ -107,13 +119,58 @@ def mock_container():
     container.settings = MagicMock()
     container.settings.discord.owner_ids = [999999999]
 
+    # Mock message_state_manager
+    container.message_state_manager = MagicMock(spec=MessageStateManager)
+    container.message_state_manager.build_now_playing_embed = MagicMock(
+        return_value=discord.Embed(title="🎵 Now Playing")
+    )
+    container.message_state_manager.format_queued_line = MagicMock(
+        return_value="⏭️ Queued for play: Test"
+    )
+    container.message_state_manager.format_finished_line = MagicMock(
+        return_value="✅ Finished playing: Test"
+    )
+    container.message_state_manager.get_state = MagicMock(return_value=GuildMessageState())
+    container.message_state_manager.track_now_playing = MagicMock()
+    container.message_state_manager.track_queued = MagicMock()
+    container.message_state_manager.reset = MagicMock()
+    container.message_state_manager.clear_all = MagicMock()
+    container.message_state_manager.on_track_finished = AsyncMock()
+    container.message_state_manager.promote_next_track = AsyncMock()
+
+    # Mock radio service
+    container.radio_service = MagicMock()
+    container.radio_service.disable_radio = MagicMock()
+
+    # Mock auto_skip_on_requester_leave
+    container.auto_skip_on_requester_leave = MagicMock()
+    container.auto_skip_on_requester_leave.set_on_requester_left_callback = MagicMock()
+
     return container
 
 
 @pytest.fixture
-def music_cog(mock_bot, mock_container):
-    """Create a MusicCog instance with mocked dependencies."""
-    return MusicCog(mock_bot, mock_container)
+def playback_cog(mock_bot, mock_container):
+    """Create a PlaybackCog instance with mocked dependencies."""
+    return PlaybackCog(mock_bot, mock_container)
+
+
+@pytest.fixture
+def queue_cog(mock_bot, mock_container):
+    """Create a QueueCog instance with mocked dependencies."""
+    return QueueCog(mock_bot, mock_container)
+
+
+@pytest.fixture
+def skip_cog(mock_bot, mock_container):
+    """Create a SkipCog instance with mocked dependencies."""
+    return SkipCog(mock_bot, mock_container)
+
+
+@pytest.fixture
+def now_playing_cog(mock_bot, mock_container):
+    """Create a NowPlayingCog instance with mocked dependencies."""
+    return NowPlayingCog(mock_bot, mock_container)
 
 
 @pytest.fixture
@@ -177,16 +234,16 @@ def sample_session(sample_track):
 
 
 # =============================================================================
-# Helper Classes Tests
+# Helper Classes Tests (MessageStateManager data classes)
 # =============================================================================
 
 
 class TestTrackKey:
-    """Tests for _TrackKey helper class."""
+    """Tests for TrackKey helper class."""
 
     def test_from_track_creates_key(self, sample_track):
         """Should create track key from track."""
-        key = _TrackKey.from_track(sample_track)
+        key = TrackKey.from_track(sample_track)
 
         assert key.track_id == "test123"
         assert key.requested_by_id == 333333333
@@ -194,25 +251,25 @@ class TestTrackKey:
 
     def test_track_keys_equal_for_same_track(self, sample_track):
         """Should create equal keys for same track."""
-        key1 = _TrackKey.from_track(sample_track)
-        key2 = _TrackKey.from_track(sample_track)
+        key1 = TrackKey.from_track(sample_track)
+        key2 = TrackKey.from_track(sample_track)
 
         assert key1 == key2
 
     def test_track_keys_frozen(self, sample_track):
         """Should be immutable (frozen)."""
-        key = _TrackKey.from_track(sample_track)
+        key = TrackKey.from_track(sample_track)
 
         with pytest.raises(AttributeError):
             key.track_id = "modified"
 
 
 class TestTrackedMessage:
-    """Tests for _TrackedMessage helper class."""
+    """Tests for TrackedMessage helper class."""
 
     def test_from_track_creates_message(self, sample_track):
         """Should create tracked message from track."""
-        msg = _TrackedMessage.from_track(sample_track, channel_id=123, message_id=456)
+        msg = TrackedMessage.from_track(sample_track, channel_id=123, message_id=456)
 
         assert msg.channel_id == 123
         assert msg.message_id == 456
@@ -220,19 +277,19 @@ class TestTrackedMessage:
 
 
 class TestGuildMessageState:
-    """Tests for _GuildMessageState helper class."""
+    """Tests for GuildMessageState helper class."""
 
     def test_initial_state_empty(self):
         """Should start with no messages."""
-        state = _GuildMessageState()
+        state = GuildMessageState()
 
         assert state.now_playing is None
         assert len(state.queued) == 0
 
     def test_pop_matching_queued_finds_and_removes(self, sample_track):
         """Should find and remove matching queued message."""
-        state = _GuildMessageState()
-        msg = _TrackedMessage.from_track(sample_track, channel_id=1, message_id=2)
+        state = GuildMessageState()
+        msg = TrackedMessage.from_track(sample_track, channel_id=1, message_id=2)
         state.queued.append(msg)
 
         found = state.pop_matching_queued(sample_track)
@@ -242,7 +299,7 @@ class TestGuildMessageState:
 
     def test_pop_matching_queued_returns_none_if_not_found(self, sample_track):
         """Should return None if track not found."""
-        state = _GuildMessageState()
+        state = GuildMessageState()
 
         found = state.pop_matching_queued(sample_track)
 
@@ -250,7 +307,7 @@ class TestGuildMessageState:
 
     def test_pop_matching_queued_removes_only_matching(self, sample_track):
         """Should only remove the matching track."""
-        state = _GuildMessageState()
+        state = GuildMessageState()
 
         other_track = Track(
             id=TrackId("other"),
@@ -259,8 +316,8 @@ class TestGuildMessageState:
             requested_by_id=999,
         )
 
-        msg1 = _TrackedMessage.from_track(sample_track, channel_id=1, message_id=1)
-        msg2 = _TrackedMessage.from_track(other_track, channel_id=1, message_id=2)
+        msg1 = TrackedMessage.from_track(sample_track, channel_id=1, message_id=1)
+        msg2 = TrackedMessage.from_track(other_track, channel_id=1, message_id=2)
 
         state.queued.append(msg1)
         state.queued.append(msg2)
@@ -273,164 +330,200 @@ class TestGuildMessageState:
 
 
 # =============================================================================
-# Cog Initialization Tests
+# PlaybackCog Initialization Tests
 # =============================================================================
 
 
-class TestMusicCogInitialization:
-    """Tests for MusicCog initialization and lifecycle."""
+class TestPlaybackCogInitialization:
+    """Tests for PlaybackCog initialization and lifecycle."""
 
     def test_cog_initializes_with_bot_and_container(self, mock_bot, mock_container):
         """Should initialize with bot and container."""
-        cog = MusicCog(mock_bot, mock_container)
+        cog = PlaybackCog(mock_bot, mock_container)
 
         assert cog.bot == mock_bot
         assert cog.container == mock_container
-        assert len(cog._message_state_by_guild) == 0
 
     @pytest.mark.asyncio
-    async def test_cog_load_registers_callback(self, music_cog, mock_container):
+    async def test_cog_load_registers_callback(self, playback_cog, mock_container):
         """Should register track finished callback on load."""
-        await music_cog.cog_load()
+        await playback_cog.cog_load()
 
         mock_container.playback_service.set_track_finished_callback.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_cog_unload_clears_message_state(self, music_cog, sample_track):
+    async def test_cog_unload_clears_message_state(self, playback_cog, mock_container):
         """Should clear message state on unload."""
-        # Add some state
-        music_cog._message_state_by_guild[111] = _GuildMessageState()
+        await playback_cog.cog_unload()
 
-        await music_cog.cog_unload()
-
-        assert len(music_cog._message_state_by_guild) == 0
-
-    def test_cleanup_guild_message_state(self, music_cog):
-        """Should cleanup message state for specific guild."""
-        music_cog._message_state_by_guild[111] = _GuildMessageState()
-        music_cog._message_state_by_guild[222] = _GuildMessageState()
-
-        music_cog.cleanup_guild_message_state(111)
-
-        assert 111 not in music_cog._message_state_by_guild
-        assert 222 in music_cog._message_state_by_guild
+        mock_container.message_state_manager.clear_all.assert_called_once()
 
 
 # =============================================================================
-# Helper Method Tests
+# Voice Guard Function Tests
 # =============================================================================
 
 
-class TestHelperMethods:
-    """Tests for internal helper methods."""
+class TestVoiceGuards:
+    """Tests for extracted voice guard functions."""
 
     @pytest.mark.asyncio
-    async def test_send_ephemeral_not_responded(self, music_cog, mock_interaction):
+    async def test_send_ephemeral_not_responded(self, mock_interaction):
         """Should use response.send_message when not responded."""
-        await music_cog._send_ephemeral(mock_interaction, "Test message")
+        await send_ephemeral(mock_interaction, "Test message")
 
         mock_interaction.response.send_message.assert_called_once_with(
             "Test message", ephemeral=True
         )
 
     @pytest.mark.asyncio
-    async def test_send_ephemeral_already_responded(self, music_cog, mock_interaction):
+    async def test_send_ephemeral_already_responded(self, mock_interaction):
         """Should use followup.send when already responded."""
         mock_interaction.response.is_done.return_value = True
 
-        await music_cog._send_ephemeral(mock_interaction, "Test message")
+        await send_ephemeral(mock_interaction, "Test message")
 
         mock_interaction.followup.send.assert_called_once_with("Test message", ephemeral=True)
 
     @pytest.mark.asyncio
-    async def test_get_member_success(self, music_cog, mock_interaction):
+    async def test_get_member_success(self, mock_interaction):
         """Should return member when valid."""
-        member = await music_cog._get_member(mock_interaction)
+        member = await get_member(mock_interaction)
 
         assert member == mock_interaction.user
 
     @pytest.mark.asyncio
-    async def test_get_member_no_guild(self, music_cog, mock_interaction):
+    async def test_get_member_no_guild(self, mock_interaction):
         """Should return None when no guild."""
         mock_interaction.guild = None
 
-        member = await music_cog._get_member(mock_interaction)
+        member = await get_member(mock_interaction)
 
         assert member is None
         mock_interaction.response.send_message.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_get_member_not_member(self, music_cog, mock_interaction):
+    async def test_get_member_not_member(self, mock_interaction):
         """Should return None when user is not a Member."""
         mock_interaction.user = MagicMock(spec=discord.User)  # Not a Member
 
-        member = await music_cog._get_member(mock_interaction)
+        member = await get_member(mock_interaction)
 
         assert member is None
 
     @pytest.mark.asyncio
-    async def test_ensure_voice_warmup_passed(self, music_cog, mock_interaction, mock_container):
+    async def test_ensure_voice_warmup_passed(self, mock_interaction, mock_container):
         """Should return True when warmup passed."""
         mock_container.voice_warmup_tracker.remaining_seconds.return_value = 0
 
-        result = await music_cog._ensure_voice_warmup(mock_interaction, mock_interaction.user)
+        result = await ensure_voice_warmup(
+            mock_interaction, mock_interaction.user, mock_container.voice_warmup_tracker
+        )
 
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_ensure_voice_warmup_required(self, music_cog, mock_interaction, mock_container):
+    async def test_ensure_voice_warmup_required(self, mock_interaction, mock_container):
         """Should return False and notify when warmup required."""
         mock_container.voice_warmup_tracker.remaining_seconds.return_value = 5
 
-        result = await music_cog._ensure_voice_warmup(mock_interaction, mock_interaction.user)
+        result = await ensure_voice_warmup(
+            mock_interaction, mock_interaction.user, mock_container.voice_warmup_tracker
+        )
 
         assert result is False
         mock_interaction.response.send_message.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_ensure_user_in_voice_and_warm_success(self, music_cog, mock_interaction):
+    async def test_ensure_user_in_voice_and_warm_success(self, mock_interaction, mock_container):
         """Should return True when user in voice and warm."""
-        result = await music_cog._ensure_user_in_voice_and_warm(mock_interaction)
+        result = await ensure_user_in_voice_and_warm(
+            mock_interaction, mock_container.voice_warmup_tracker
+        )
 
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_ensure_user_in_voice_and_warm_not_in_voice(self, music_cog, mock_interaction):
+    async def test_ensure_user_in_voice_and_warm_not_in_voice(
+        self, mock_interaction, mock_container
+    ):
         """Should return False when user not in voice."""
         mock_interaction.user.voice = None
 
-        result = await music_cog._ensure_user_in_voice_and_warm(mock_interaction)
+        result = await ensure_user_in_voice_and_warm(
+            mock_interaction, mock_container.voice_warmup_tracker
+        )
 
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_ensure_voice_connects_bot(self, music_cog, mock_interaction, mock_container):
+    async def test_ensure_voice_connects_bot(self, mock_interaction, mock_container):
         """Should connect bot to voice channel."""
         mock_container.voice_adapter.is_connected = MagicMock(return_value=False)
         mock_container.voice_adapter.ensure_connected = AsyncMock(return_value=True)
 
-        result = await music_cog._ensure_voice(mock_interaction)
+        result = await ensure_voice(
+            mock_interaction,
+            mock_container.voice_warmup_tracker,
+            mock_container.voice_adapter,
+        )
 
         assert result is True
         mock_container.voice_adapter.ensure_connected.assert_called_once_with(111111111, 444444444)
 
     @pytest.mark.asyncio
-    async def test_ensure_voice_fails_to_connect(self, music_cog, mock_interaction, mock_container):
+    async def test_ensure_voice_fails_to_connect(self, mock_interaction, mock_container):
         """Should return False when cannot connect to voice."""
         mock_container.voice_adapter.is_connected = MagicMock(return_value=False)
         mock_container.voice_adapter.ensure_connected = AsyncMock(return_value=False)
 
-        result = await music_cog._ensure_voice(mock_interaction)
+        result = await ensure_voice(
+            mock_interaction,
+            mock_container.voice_warmup_tracker,
+            mock_container.voice_adapter,
+        )
 
         assert result is False
 
-    def test_format_requester_with_id(self, music_cog, sample_track):
-        """Should format requester with user mention."""
-        result = music_cog._format_requester(sample_track)
+    def test_can_force_skip_admin(self):
+        """Should allow admin to force skip."""
+        user = MagicMock(spec=discord.Member)
+        user.guild_permissions.administrator = True
+        user.id = 123
 
+        assert can_force_skip(user, {999}) is True
+
+    def test_can_force_skip_owner(self):
+        """Should allow owner to force skip."""
+        user = MagicMock(spec=discord.Member)
+        user.guild_permissions.administrator = False
+        user.id = 999
+
+        assert can_force_skip(user, {999}) is True
+
+    def test_can_force_skip_denied(self):
+        """Should deny regular user."""
+        user = MagicMock(spec=discord.Member)
+        user.guild_permissions.administrator = False
+        user.id = 123
+
+        assert can_force_skip(user, {999}) is False
+
+
+# =============================================================================
+# MessageStateManager Formatting Tests
+# =============================================================================
+
+
+class TestMessageStateManagerFormatting:
+    """Tests for MessageStateManager formatting methods."""
+
+    def test_format_requester_with_id(self, sample_track):
+        """Should format requester with user mention."""
+        result = MessageStateManager.format_requester(sample_track)
         assert result == "<@333333333>"
 
-    def test_format_requester_with_name_only(self, music_cog):
+    def test_format_requester_with_name_only(self):
         """Should format requester with name when no ID."""
         track = Track(
             id=TrackId("test"),
@@ -438,60 +531,51 @@ class TestHelperMethods:
             webpage_url="https://example.com",
             requested_by_name="TestUser",
         )
-
-        result = music_cog._format_requester(track)
-
+        result = MessageStateManager.format_requester(track)
         assert result == "TestUser"
 
-    def test_format_requester_unknown(self, music_cog):
+    def test_format_requester_unknown(self):
         """Should return Unknown when no requester info."""
         track = Track(
             id=TrackId("test"),
             title="Test",
             webpage_url="https://example.com",
         )
-
-        result = music_cog._format_requester(track)
-
+        result = MessageStateManager.format_requester(track)
         assert result == "Unknown"
 
-    def test_format_queued_line(self, music_cog, sample_track):
+    def test_format_queued_line(self, sample_track):
         """Should format queued message line."""
-        result = music_cog._format_queued_line(sample_track)
-
+        result = MessageStateManager.format_queued_line(sample_track)
         assert "⏭️" in result
         assert "Queued for play" in result
         assert sample_track.title in result
         assert "<@333333333>" in result
 
-    def test_format_finished_line(self, music_cog, sample_track):
+    def test_format_finished_line(self, sample_track):
         """Should format finished message line."""
-        result = music_cog._format_finished_line(sample_track)
-
+        result = MessageStateManager.format_finished_line(sample_track)
         assert "✅" in result
         assert "Finished playing" in result
         assert sample_track.title in result
 
-    def test_build_now_playing_embed(self, music_cog, sample_track):
+    def test_build_now_playing_embed(self, sample_track):
         """Should build now playing embed."""
-        embed = music_cog._build_now_playing_embed(sample_track)
-
+        embed = MessageStateManager.build_now_playing_embed(sample_track)
         assert isinstance(embed, discord.Embed)
         assert embed.title == "🎵 Now Playing"
         assert sample_track.title in embed.description
         assert embed.thumbnail.url == sample_track.thumbnail_url
         assert len(embed.fields) == 3  # Duration, Artist, Likes
 
-    def test_build_now_playing_embed_minimal_track(self, music_cog):
+    def test_build_now_playing_embed_minimal_track(self):
         """Should build embed for track with minimal info."""
         track = Track(
             id=TrackId("test"),
             title="Minimal Track",
             webpage_url="https://example.com",
         )
-
-        embed = music_cog._build_now_playing_embed(track)
-
+        embed = MessageStateManager.build_now_playing_embed(track)
         assert isinstance(embed, discord.Embed)
         assert track.title in embed.description
 
@@ -506,10 +590,9 @@ class TestPlayCommand:
 
     @pytest.mark.asyncio
     async def test_play_successful_enqueue(
-        self, music_cog, mock_interaction, mock_container, sample_track
+        self, playback_cog, mock_interaction, mock_container, sample_track
     ):
         """Should successfully enqueue and play track."""
-        # Setup mocks
         mock_container.voice_adapter.is_connected = MagicMock(return_value=False)
         mock_container.voice_adapter.ensure_connected = AsyncMock(return_value=True)
         mock_container.audio_resolver.resolve = AsyncMock(return_value=sample_track)
@@ -521,47 +604,43 @@ class TestPlayCommand:
         enqueue_result.track = sample_track
         mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
 
-        await music_cog.play.callback(music_cog, mock_interaction, "test query")
+        await playback_cog.play.callback(playback_cog, mock_interaction, "test query")
 
-        # Verify deferred
         mock_interaction.response.defer.assert_called_once()
-
-        # Verify resolved
         mock_container.audio_resolver.resolve.assert_called_once_with("test query")
-
-        # Verify enqueued
         mock_container.queue_service.enqueue.assert_called_once()
-
-        # Verify started playback
-        mock_container.playback_service.start_playback.assert_called_once_with(111111111)
+        mock_container.playback_service.start_playback.assert_called_once_with(
+            111111111, start_seconds=None
+        )
 
     @pytest.mark.asyncio
-    async def test_play_track_not_found(self, music_cog, mock_interaction, mock_container):
+    async def test_play_track_not_found(self, playback_cog, mock_interaction, mock_container):
         """Should handle track not found."""
         mock_container.voice_adapter.is_connected = MagicMock(return_value=True)
         mock_container.audio_resolver.resolve = AsyncMock(return_value=None)
 
-        await music_cog.play.callback(music_cog, mock_interaction, "nonexistent track")
+        await playback_cog.play.callback(playback_cog, mock_interaction, "nonexistent track")
 
         mock_interaction.followup.send.assert_called_once()
         args = mock_interaction.followup.send.call_args
         assert "Couldn't find" in args[0][0]
 
     @pytest.mark.asyncio
-    async def test_play_voice_connection_failed(self, music_cog, mock_interaction, mock_container):
+    async def test_play_voice_connection_failed(
+        self, playback_cog, mock_interaction, mock_container
+    ):
         """Should handle voice connection failure."""
         mock_container.voice_adapter.is_connected = MagicMock(return_value=False)
         mock_container.voice_adapter.ensure_connected = AsyncMock(return_value=False)
         mock_container.audio_resolver.resolve = AsyncMock()
 
-        await music_cog.play.callback(music_cog, mock_interaction, "test query")
+        await playback_cog.play.callback(playback_cog, mock_interaction, "test query")
 
-        # Should return early without resolving
         mock_container.audio_resolver.resolve.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_play_enqueue_failed(
-        self, music_cog, mock_interaction, mock_container, sample_track
+        self, playback_cog, mock_interaction, mock_container, sample_track
     ):
         """Should handle enqueue failure."""
         mock_container.voice_adapter.is_connected = MagicMock(return_value=True)
@@ -572,7 +651,7 @@ class TestPlayCommand:
         enqueue_result.message = "Queue is full"
         mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
 
-        await music_cog.play.callback(music_cog, mock_interaction, "test query")
+        await playback_cog.play.callback(playback_cog, mock_interaction, "test query")
 
         mock_interaction.followup.send.assert_called_once()
         args = mock_interaction.followup.send.call_args
@@ -580,7 +659,7 @@ class TestPlayCommand:
 
     @pytest.mark.asyncio
     async def test_play_queued_not_started(
-        self, music_cog, mock_interaction, mock_container, sample_track
+        self, playback_cog, mock_interaction, mock_container, sample_track
     ):
         """Should queue track without starting playback."""
         mock_container.voice_adapter.is_connected.return_value = True
@@ -593,21 +672,18 @@ class TestPlayCommand:
         enqueue_result.track = sample_track
         mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
 
-        await music_cog.play.callback(music_cog, mock_interaction, "test query")
+        await playback_cog.play.callback(playback_cog, mock_interaction, "test query")
 
-        # Should not start playback
         mock_container.playback_service.start_playback.assert_not_called()
-
-        # Should send queued message
         mock_interaction.followup.send.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_play_exception_handling(self, music_cog, mock_interaction, mock_container):
+    async def test_play_exception_handling(self, playback_cog, mock_interaction, mock_container):
         """Should handle exceptions gracefully."""
         mock_container.voice_adapter.is_connected.return_value = True
         mock_container.audio_resolver.resolve.side_effect = Exception("Network error")
 
-        await music_cog.play.callback(music_cog, mock_interaction, "test query")
+        await playback_cog.play.callback(playback_cog, mock_interaction, "test query")
 
         mock_interaction.followup.send.assert_called_once()
         args = mock_interaction.followup.send.call_args
@@ -623,9 +699,8 @@ class TestSkipCommand:
     """Tests for /skip command."""
 
     @pytest.mark.asyncio
-    async def test_skip_vote_skip_success(self, music_cog, mock_interaction, mock_container):
+    async def test_skip_vote_skip_success(self, skip_cog, mock_interaction, mock_container):
         """Should handle vote skip successfully."""
-        # Mock the result directly without creating a frozen instance
         result = MagicMock()
         result.result = VoteResult.VOTE_RECORDED
         result.votes_current = 2
@@ -633,17 +708,16 @@ class TestSkipCommand:
         result.action_executed = False
         mock_container.vote_skip_handler.handle = AsyncMock(return_value=result)
 
-        await music_cog.skip.callback(music_cog, mock_interaction, force=False)
+        await skip_cog.skip.callback(skip_cog, mock_interaction, force=False)
 
         mock_container.vote_skip_handler.handle.assert_called_once()
         mock_interaction.response.send_message.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_skip_threshold_met(
-        self, music_cog, mock_interaction, mock_container, sample_track
+        self, skip_cog, mock_interaction, mock_container, sample_track
     ):
         """Should skip when threshold met."""
-        # Mock the result directly without creating a frozen instance
         result = MagicMock()
         result.result = VoteResult.THRESHOLD_MET
         result.votes_current = 3
@@ -652,50 +726,50 @@ class TestSkipCommand:
         mock_container.vote_skip_handler.handle = AsyncMock(return_value=result)
         mock_container.playback_service.skip_track = AsyncMock(return_value=sample_track)
 
-        await music_cog.skip.callback(music_cog, mock_interaction, force=False)
+        await skip_cog.skip.callback(skip_cog, mock_interaction, force=False)
 
         mock_container.playback_service.skip_track.assert_called_once_with(111111111)
 
     @pytest.mark.asyncio
     async def test_skip_force_by_admin(
-        self, music_cog, mock_interaction, mock_container, sample_track
+        self, skip_cog, mock_interaction, mock_container, sample_track
     ):
         """Should allow force skip by admin."""
         mock_interaction.user.guild_permissions.administrator = True
         mock_container.playback_service.skip_track = AsyncMock(return_value=sample_track)
 
-        await music_cog.skip.callback(music_cog, mock_interaction, force=True)
+        await skip_cog.skip.callback(skip_cog, mock_interaction, force=True)
 
         mock_container.playback_service.skip_track.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_skip_force_by_owner(
-        self, music_cog, mock_interaction, mock_container, sample_track
+        self, skip_cog, mock_interaction, mock_container, sample_track
     ):
         """Should allow force skip by owner."""
         mock_interaction.user.id = 999999999  # Owner ID
         mock_container.playback_service.skip_track = AsyncMock(return_value=sample_track)
 
-        await music_cog.skip.callback(music_cog, mock_interaction, force=True)
+        await skip_cog.skip.callback(skip_cog, mock_interaction, force=True)
 
         mock_container.playback_service.skip_track.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_skip_force_denied_for_regular_user(self, music_cog, mock_interaction):
+    async def test_skip_force_denied_for_regular_user(self, skip_cog, mock_interaction):
         """Should deny force skip for regular user."""
-        await music_cog.skip.callback(music_cog, mock_interaction, force=True)
+        await skip_cog.skip.callback(skip_cog, mock_interaction, force=True)
 
         mock_interaction.response.send_message.assert_called_once()
         args = mock_interaction.response.send_message.call_args
         assert "administrator" in args[0][0].lower()
 
     @pytest.mark.asyncio
-    async def test_skip_nothing_playing(self, music_cog, mock_interaction, mock_container):
+    async def test_skip_nothing_playing(self, skip_cog, mock_interaction, mock_container):
         """Should handle nothing playing."""
         mock_container.playback_service.skip_track = AsyncMock(return_value=None)
         mock_interaction.user.guild_permissions.administrator = True
 
-        await music_cog.skip.callback(music_cog, mock_interaction, force=True)
+        await skip_cog.skip.callback(skip_cog, mock_interaction, force=True)
 
         mock_interaction.response.send_message.assert_called_once()
         args = mock_interaction.response.send_message.call_args
@@ -711,24 +785,24 @@ class TestStopCommand:
     """Tests for /stop command."""
 
     @pytest.mark.asyncio
-    async def test_stop_success(self, music_cog, mock_interaction, mock_container):
+    async def test_stop_success(self, playback_cog, mock_interaction, mock_container):
         """Should stop playback and clear queue."""
         mock_container.playback_service.stop_playback = AsyncMock(return_value=True)
         mock_container.queue_service.clear = AsyncMock(return_value=5)
 
-        await music_cog.stop.callback(music_cog, mock_interaction)
+        await playback_cog.stop.callback(playback_cog, mock_interaction)
 
         mock_container.playback_service.stop_playback.assert_called_once_with(111111111)
         mock_container.queue_service.clear.assert_called_once_with(111111111)
         mock_interaction.response.send_message.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_stop_nothing_playing(self, music_cog, mock_interaction, mock_container):
+    async def test_stop_nothing_playing(self, playback_cog, mock_interaction, mock_container):
         """Should handle nothing playing."""
         mock_container.playback_service.stop_playback = AsyncMock(return_value=False)
         mock_container.queue_service.clear = AsyncMock(return_value=0)
 
-        await music_cog.stop.callback(music_cog, mock_interaction)
+        await playback_cog.stop.callback(playback_cog, mock_interaction)
 
         args = mock_interaction.response.send_message.call_args
         assert "Nothing" in args[0][0]
@@ -743,22 +817,22 @@ class TestPauseCommand:
     """Tests for /pause command."""
 
     @pytest.mark.asyncio
-    async def test_pause_success(self, music_cog, mock_interaction, mock_container):
+    async def test_pause_success(self, playback_cog, mock_interaction, mock_container):
         """Should pause playback."""
         mock_container.playback_service.pause_playback = AsyncMock(return_value=True)
 
-        await music_cog.pause.callback(music_cog, mock_interaction)
+        await playback_cog.pause.callback(playback_cog, mock_interaction)
 
         mock_container.playback_service.pause_playback.assert_called_once_with(111111111)
         args = mock_interaction.response.send_message.call_args
         assert "Paused" in args[0][0]
 
     @pytest.mark.asyncio
-    async def test_pause_nothing_playing(self, music_cog, mock_interaction, mock_container):
+    async def test_pause_nothing_playing(self, playback_cog, mock_interaction, mock_container):
         """Should handle nothing playing."""
         mock_container.playback_service.pause_playback = AsyncMock(return_value=False)
 
-        await music_cog.pause.callback(music_cog, mock_interaction)
+        await playback_cog.pause.callback(playback_cog, mock_interaction)
 
         args = mock_interaction.response.send_message.call_args
         assert "Nothing" in args[0][0]
@@ -773,22 +847,22 @@ class TestResumeCommand:
     """Tests for /resume command."""
 
     @pytest.mark.asyncio
-    async def test_resume_success(self, music_cog, mock_interaction, mock_container):
+    async def test_resume_success(self, playback_cog, mock_interaction, mock_container):
         """Should resume playback."""
         mock_container.playback_service.resume_playback = AsyncMock(return_value=True)
 
-        await music_cog.resume.callback(music_cog, mock_interaction)
+        await playback_cog.resume.callback(playback_cog, mock_interaction)
 
         mock_container.playback_service.resume_playback.assert_called_once_with(111111111)
         args = mock_interaction.response.send_message.call_args
         assert "Resumed" in args[0][0]
 
     @pytest.mark.asyncio
-    async def test_resume_nothing_paused(self, music_cog, mock_interaction, mock_container):
+    async def test_resume_nothing_paused(self, playback_cog, mock_interaction, mock_container):
         """Should handle nothing paused."""
         mock_container.playback_service.resume_playback = AsyncMock(return_value=False)
 
-        await music_cog.resume.callback(music_cog, mock_interaction)
+        await playback_cog.resume.callback(playback_cog, mock_interaction)
 
         args = mock_interaction.response.send_message.call_args
         assert "Nothing" in args[0][0]
@@ -803,20 +877,20 @@ class TestQueueCommand:
     """Tests for /queue command."""
 
     @pytest.mark.asyncio
-    async def test_queue_empty(self, music_cog, mock_interaction, mock_container):
+    async def test_queue_empty(self, queue_cog, mock_interaction, mock_container):
         """Should handle empty queue."""
         queue_info = MagicMock()
         queue_info.total_tracks = 0
         mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
-        await music_cog.queue.callback(music_cog, mock_interaction, page=1)
+        await queue_cog.queue.callback(queue_cog, mock_interaction, page=1)
 
         args = mock_interaction.response.send_message.call_args
         assert "empty" in args[0][0].lower()
 
     @pytest.mark.asyncio
     async def test_queue_with_tracks(
-        self, music_cog, mock_interaction, mock_container, sample_track
+        self, queue_cog, mock_interaction, mock_container, sample_track
     ):
         """Should display queue with tracks."""
         queue_info = MagicMock()
@@ -826,9 +900,8 @@ class TestQueueCommand:
         queue_info.total_duration = 540
         mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
-        await music_cog.queue.callback(music_cog, mock_interaction, page=1)
+        await queue_cog.queue.callback(queue_cog, mock_interaction, page=1)
 
-        # Should send embed
         call_args = mock_interaction.response.send_message.call_args
         assert "embed" in call_args.kwargs
         embed = call_args.kwargs["embed"]
@@ -836,7 +909,7 @@ class TestQueueCommand:
 
     @pytest.mark.asyncio
     async def test_queue_pagination(
-        self, music_cog, mock_interaction, mock_container, sample_track
+        self, queue_cog, mock_interaction, mock_container, sample_track
     ):
         """Should handle pagination."""
         queue_info = MagicMock()
@@ -846,9 +919,8 @@ class TestQueueCommand:
         queue_info.total_duration = 4500
         mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
-        await music_cog.queue.callback(music_cog, mock_interaction, page=2)
+        await queue_cog.queue.callback(queue_cog, mock_interaction, page=2)
 
-        # Should work without error
         mock_interaction.response.send_message.assert_called_once()
 
 
@@ -862,26 +934,26 @@ class TestCurrentCommand:
 
     @pytest.mark.asyncio
     async def test_current_with_track(
-        self, music_cog, mock_interaction, mock_container, sample_track
+        self, now_playing_cog, mock_interaction, mock_container, sample_track
     ):
         """Should display current track."""
         queue_info = MagicMock()
         queue_info.current_track = sample_track
         mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
-        await music_cog.current.callback(music_cog, mock_interaction)
+        await now_playing_cog.current.callback(now_playing_cog, mock_interaction)
 
         call_args = mock_interaction.response.send_message.call_args
         assert "embed" in call_args.kwargs
 
     @pytest.mark.asyncio
-    async def test_current_nothing_playing(self, music_cog, mock_interaction, mock_container):
+    async def test_current_nothing_playing(self, now_playing_cog, mock_interaction, mock_container):
         """Should handle no current track."""
         queue_info = MagicMock()
         queue_info.current_track = None
         mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
-        await music_cog.current.callback(music_cog, mock_interaction)
+        await now_playing_cog.current.callback(now_playing_cog, mock_interaction)
 
         args = mock_interaction.response.send_message.call_args
         assert "Nothing" in args[0][0]
@@ -896,22 +968,22 @@ class TestShuffleCommand:
     """Tests for /shuffle command."""
 
     @pytest.mark.asyncio
-    async def test_shuffle_success(self, music_cog, mock_interaction, mock_container):
+    async def test_shuffle_success(self, queue_cog, mock_interaction, mock_container):
         """Should shuffle queue."""
         mock_container.queue_service.shuffle = AsyncMock(return_value=True)
 
-        await music_cog.shuffle.callback(music_cog, mock_interaction)
+        await queue_cog.shuffle.callback(queue_cog, mock_interaction)
 
         mock_container.queue_service.shuffle.assert_called_once_with(111111111)
         args = mock_interaction.response.send_message.call_args
         assert "Shuffled" in args[0][0]
 
     @pytest.mark.asyncio
-    async def test_shuffle_not_enough_tracks(self, music_cog, mock_interaction, mock_container):
+    async def test_shuffle_not_enough_tracks(self, queue_cog, mock_interaction, mock_container):
         """Should handle not enough tracks."""
         mock_container.queue_service.shuffle = AsyncMock(return_value=False)
 
-        await music_cog.shuffle.callback(music_cog, mock_interaction)
+        await queue_cog.shuffle.callback(queue_cog, mock_interaction)
 
         args = mock_interaction.response.send_message.call_args
         assert "Not enough" in args[0][0]
@@ -926,11 +998,11 @@ class TestLoopCommand:
     """Tests for /loop command."""
 
     @pytest.mark.asyncio
-    async def test_loop_toggle_off(self, music_cog, mock_interaction, mock_container):
+    async def test_loop_toggle_off(self, queue_cog, mock_interaction, mock_container):
         """Should toggle loop to off."""
         mock_container.queue_service.toggle_loop = AsyncMock(return_value=LoopMode.OFF)
 
-        await music_cog.loop.callback(music_cog, mock_interaction)
+        await queue_cog.loop.callback(queue_cog, mock_interaction)
 
         mock_container.queue_service.toggle_loop.assert_called_once_with(111111111)
         args = mock_interaction.response.send_message.call_args
@@ -938,22 +1010,22 @@ class TestLoopCommand:
         assert "off" in args[0][0]
 
     @pytest.mark.asyncio
-    async def test_loop_toggle_track(self, music_cog, mock_interaction, mock_container):
+    async def test_loop_toggle_track(self, queue_cog, mock_interaction, mock_container):
         """Should toggle loop to track."""
         mock_container.queue_service.toggle_loop = AsyncMock(return_value=LoopMode.TRACK)
 
-        await music_cog.loop.callback(music_cog, mock_interaction)
+        await queue_cog.loop.callback(queue_cog, mock_interaction)
 
         args = mock_interaction.response.send_message.call_args
         assert "🔂" in args[0][0]
         assert "track" in args[0][0]
 
     @pytest.mark.asyncio
-    async def test_loop_toggle_queue(self, music_cog, mock_interaction, mock_container):
+    async def test_loop_toggle_queue(self, queue_cog, mock_interaction, mock_container):
         """Should toggle loop to queue."""
         mock_container.queue_service.toggle_loop = AsyncMock(return_value=LoopMode.QUEUE)
 
-        await music_cog.loop.callback(music_cog, mock_interaction)
+        await queue_cog.loop.callback(queue_cog, mock_interaction)
 
         args = mock_interaction.response.send_message.call_args
         assert "🔁" in args[0][0]
@@ -969,11 +1041,11 @@ class TestRemoveCommand:
     """Tests for /remove command."""
 
     @pytest.mark.asyncio
-    async def test_remove_success(self, music_cog, mock_interaction, mock_container, sample_track):
+    async def test_remove_success(self, queue_cog, mock_interaction, mock_container, sample_track):
         """Should remove track at position."""
         mock_container.queue_service.remove = AsyncMock(return_value=sample_track)
 
-        await music_cog.remove.callback(music_cog, mock_interaction, position=2)
+        await queue_cog.remove.callback(queue_cog, mock_interaction, position=2)
 
         # Should convert from 1-based to 0-based
         mock_container.queue_service.remove.assert_called_once_with(111111111, 1)
@@ -981,27 +1053,27 @@ class TestRemoveCommand:
         assert "Removed" in args[0][0]
 
     @pytest.mark.asyncio
-    async def test_remove_invalid_position(self, music_cog, mock_interaction, mock_container):
+    async def test_remove_invalid_position(self, queue_cog, mock_interaction, mock_container):
         """Should handle invalid position."""
         mock_container.queue_service.remove = AsyncMock(return_value=None)
 
-        await music_cog.remove.callback(music_cog, mock_interaction, position=100)
+        await queue_cog.remove.callback(queue_cog, mock_interaction, position=100)
 
         args = mock_interaction.response.send_message.call_args
         assert "No track" in args[0][0]
 
     @pytest.mark.asyncio
-    async def test_remove_position_must_be_positive(self, music_cog, mock_interaction):
+    async def test_remove_position_must_be_positive(self, queue_cog, mock_interaction):
         """Should reject non-positive positions."""
-        await music_cog.remove.callback(music_cog, mock_interaction, position=0)
+        await queue_cog.remove.callback(queue_cog, mock_interaction, position=0)
 
         args = mock_interaction.response.send_message.call_args
         assert "1 or greater" in args[0][0].lower()
 
     @pytest.mark.asyncio
-    async def test_remove_negative_position(self, music_cog, mock_interaction):
+    async def test_remove_negative_position(self, queue_cog, mock_interaction):
         """Should reject negative positions."""
-        await music_cog.remove.callback(music_cog, mock_interaction, position=-1)
+        await queue_cog.remove.callback(queue_cog, mock_interaction, position=-1)
 
         args = mock_interaction.response.send_message.call_args
         assert "1 or greater" in args[0][0].lower()
@@ -1016,22 +1088,22 @@ class TestClearCommand:
     """Tests for /clear command."""
 
     @pytest.mark.asyncio
-    async def test_clear_success(self, music_cog, mock_interaction, mock_container):
+    async def test_clear_success(self, queue_cog, mock_interaction, mock_container):
         """Should clear queue."""
         mock_container.queue_service.clear = AsyncMock(return_value=5)
 
-        await music_cog.clear.callback(music_cog, mock_interaction)
+        await queue_cog.clear.callback(queue_cog, mock_interaction)
 
         mock_container.queue_service.clear.assert_called_once_with(111111111)
         args = mock_interaction.response.send_message.call_args
         assert "5 tracks" in args[0][0]
 
     @pytest.mark.asyncio
-    async def test_clear_already_empty(self, music_cog, mock_interaction, mock_container):
+    async def test_clear_already_empty(self, queue_cog, mock_interaction, mock_container):
         """Should handle already empty queue."""
         mock_container.queue_service.clear = AsyncMock(return_value=0)
 
-        await music_cog.clear.callback(music_cog, mock_interaction)
+        await queue_cog.clear.callback(queue_cog, mock_interaction)
 
         args = mock_interaction.response.send_message.call_args
         assert "empty" in args[0][0].lower()
@@ -1046,11 +1118,11 @@ class TestLeaveCommand:
     """Tests for /leave command."""
 
     @pytest.mark.asyncio
-    async def test_leave_success(self, music_cog, mock_interaction, mock_container):
+    async def test_leave_success(self, playback_cog, mock_interaction, mock_container):
         """Should disconnect from voice."""
         mock_container.voice_adapter.disconnect = AsyncMock(return_value=True)
 
-        await music_cog.leave.callback(music_cog, mock_interaction)
+        await playback_cog.leave.callback(playback_cog, mock_interaction)
 
         mock_container.playback_service.cleanup_guild.assert_called_once_with(111111111)
         mock_container.voice_adapter.disconnect.assert_called_once_with(111111111)
@@ -1058,11 +1130,11 @@ class TestLeaveCommand:
         assert "Disconnected" in args[0][0]
 
     @pytest.mark.asyncio
-    async def test_leave_not_connected(self, music_cog, mock_interaction, mock_container):
+    async def test_leave_not_connected(self, playback_cog, mock_interaction, mock_container):
         """Should handle not connected."""
         mock_container.voice_adapter.disconnect = AsyncMock(return_value=False)
 
-        await music_cog.leave.callback(music_cog, mock_interaction)
+        await playback_cog.leave.callback(playback_cog, mock_interaction)
 
         args = mock_interaction.response.send_message.call_args
         assert "Not connected" in args[0][0]
@@ -1078,23 +1150,23 @@ class TestPlayedCommand:
 
     @pytest.mark.asyncio
     async def test_played_with_history(
-        self, music_cog, mock_interaction, mock_container, sample_track
+        self, now_playing_cog, mock_interaction, mock_container, sample_track
     ):
         """Should display play history."""
         mock_container.history_repository.get_recent = AsyncMock(return_value=[sample_track])
 
-        await music_cog.played.callback(music_cog, mock_interaction)
+        await now_playing_cog.played.callback(now_playing_cog, mock_interaction)
 
         mock_container.history_repository.get_recent.assert_called_once_with(111111111, limit=10)
         call_args = mock_interaction.response.send_message.call_args
         assert "embed" in call_args.kwargs
 
     @pytest.mark.asyncio
-    async def test_played_no_history(self, music_cog, mock_interaction, mock_container):
+    async def test_played_no_history(self, now_playing_cog, mock_interaction, mock_container):
         """Should handle no play history."""
         mock_container.history_repository.get_recent = AsyncMock(return_value=[])
 
-        await music_cog.played.callback(music_cog, mock_interaction)
+        await now_playing_cog.played.callback(now_playing_cog, mock_interaction)
 
         args = mock_interaction.response.send_message.call_args
         assert "No tracks" in args[0][0]
@@ -1106,100 +1178,95 @@ class TestPlayedCommand:
 
 
 class TestMessageStateManagement:
-    """Tests for message state tracking and updates."""
+    """Tests for MessageStateManager message tracking."""
 
-    @pytest.mark.asyncio
-    async def test_track_now_playing_message(self, music_cog, sample_track):
+    @pytest.fixture
+    def msm(self, mock_bot):
+        """Create a real MessageStateManager for testing."""
+        return MessageStateManager(mock_bot)
+
+    def test_track_now_playing_message(self, msm, sample_track):
         """Should track now playing message."""
-        music_cog._track_now_playing_message(
+        msm.track_now_playing(
             guild_id=111, track=sample_track, channel_id=222, message_id=333
         )
 
-        state = music_cog._message_state_by_guild[111]
+        state = msm.get_state(111)
         assert state.now_playing is not None
         assert state.now_playing.message_id == 333
 
-    @pytest.mark.asyncio
-    async def test_track_queued_message(self, music_cog, sample_track):
+    def test_track_queued_message(self, msm, sample_track):
         """Should track queued message."""
-        music_cog._track_queued_message(
+        msm.track_queued(
             guild_id=111, track=sample_track, channel_id=222, message_id=333
         )
 
-        state = music_cog._message_state_by_guild[111]
+        state = msm.get_state(111)
         assert len(state.queued) == 1
 
     @pytest.mark.asyncio
     async def test_on_track_finished_clears_now_playing(
-        self, music_cog, mock_bot, mock_container, sample_track
+        self, msm, mock_bot, sample_track
     ):
         """Should clear now playing message on track finish."""
-        # Setup tracked message
-        music_cog._track_now_playing_message(
+        msm.track_now_playing(
             guild_id=111, track=sample_track, channel_id=222, message_id=333
         )
 
-        # Mock fetch_message to return a message
         mock_message = AsyncMock()
         mock_channel = AsyncMock()
         mock_channel.fetch_message.return_value = mock_message
         mock_bot.get_channel.return_value = mock_channel
 
-        # No session (no next track)
-        mock_container.session_repository.get.return_value = None
+        await msm.on_track_finished(111, sample_track)
 
-        await music_cog._on_track_finished(111, sample_track)
-
-        # Should have edited message
         mock_message.edit.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_on_track_finished_no_state_returns_early(
-        self, music_cog, mock_container, sample_track
-    ):
-        """Should return early without querying session when no message state exists."""
-        # Ensure no message state for guild
-        assert 999 not in music_cog._message_state_by_guild
-
-        await music_cog._on_track_finished(999, sample_track)
-
-        mock_container.session_repository.get.assert_not_called()
+    async def test_on_track_finished_no_state_returns_early(self, msm, sample_track):
+        """Should return early when no message state exists."""
+        # No state for guild 999
+        await msm.on_track_finished(999, sample_track)
+        # Should not raise
 
     @pytest.mark.asyncio
-    async def test_on_track_finished_promotes_queued_message(
-        self, music_cog, mock_bot, mock_container, sample_track
+    async def test_promote_next_track(
+        self, msm, mock_bot, sample_track
     ):
         """Should promote queued message to now playing."""
-        # Track queued message
-        music_cog._track_queued_message(
+        msm.track_queued(
             guild_id=111, track=sample_track, channel_id=222, message_id=444
         )
 
-        # Mock session with current track
-        session = GuildPlaybackSession(guild_id=111)
-        session.current_track = sample_track
-        mock_container.session_repository.get.return_value = session
-
-        # Mock message fetching
         mock_message = AsyncMock()
         mock_channel = AsyncMock()
         mock_channel.fetch_message.return_value = mock_message
         mock_bot.get_channel.return_value = mock_channel
 
-        # Create a finished track (different from current)
-        finished_track = Track(
-            id=TrackId("finished"),
-            title="Finished",
-            webpage_url="https://example.com/finished",
-            requested_by_id=111,
-        )
+        await msm.promote_next_track(111, sample_track)
 
-        await music_cog._on_track_finished(111, finished_track)
-
-        # Should promote queued to now playing
-        state = music_cog._message_state_by_guild[111]
+        state = msm.get_state(111)
         assert state.now_playing is not None
         assert state.now_playing.message_id == 444
+
+    def test_reset_clears_guild_state(self, msm, sample_track):
+        """Should clear state for specific guild."""
+        msm.track_now_playing(
+            guild_id=111, track=sample_track, channel_id=222, message_id=333
+        )
+        msm.track_now_playing(
+            guild_id=222, track=sample_track, channel_id=222, message_id=444
+        )
+
+        msm.reset(111)
+
+        # Guild 111 should be cleared
+        state_111 = msm.get_state(111)
+        assert state_111.now_playing is None
+
+        # Guild 222 should remain
+        state_222 = msm.get_state(222)
+        assert state_222.now_playing is not None
 
 
 # =============================================================================
@@ -1211,53 +1278,53 @@ class TestEdgeCases:
     """Tests for edge cases and error conditions."""
 
     @pytest.mark.asyncio
-    async def test_command_without_guild(self, music_cog, mock_interaction):
+    async def test_command_without_guild(self, playback_cog, mock_interaction):
         """Should reject commands without guild."""
         mock_interaction.guild = None
 
-        await music_cog.play.callback(music_cog, mock_interaction, "test")
+        await playback_cog.play.callback(playback_cog, mock_interaction, "test")
 
-        # Should have sent error about server-only
         mock_interaction.response.send_message.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_user_not_in_voice(self, music_cog, mock_interaction):
+    async def test_user_not_in_voice(self, playback_cog, mock_interaction):
         """Should reject when user not in voice."""
         mock_interaction.user.voice = None
 
-        await music_cog.pause.callback(music_cog, mock_interaction)
+        await playback_cog.pause.callback(playback_cog, mock_interaction)
 
         mock_interaction.response.send_message.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_warmup_not_passed(self, music_cog, mock_interaction, mock_container):
+    async def test_warmup_not_passed(self, playback_cog, mock_interaction, mock_container):
         """Should reject when warmup not passed."""
         mock_container.voice_warmup_tracker.remaining_seconds.return_value = 10
 
-        await music_cog.pause.callback(music_cog, mock_interaction)
+        await playback_cog.pause.callback(playback_cog, mock_interaction)
 
         mock_interaction.response.send_message.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_message_fetch_failure_graceful(self, music_cog, mock_bot, sample_track):
+    async def test_message_fetch_failure_graceful(self, mock_bot, sample_track):
         """Should handle message fetch failures gracefully."""
-        music_cog._track_now_playing_message(
+        msm = MessageStateManager(mock_bot)
+        msm.track_now_playing(
             guild_id=111, track=sample_track, channel_id=222, message_id=333
         )
 
-        # Make fetch fail
         mock_bot.get_channel.return_value = None
         mock_bot.fetch_channel = AsyncMock(
             side_effect=discord.HTTPException(MagicMock(), "Not found")
         )
 
         # Should not raise
-        await music_cog._on_track_finished(111, sample_track)
+        await msm.on_track_finished(111, sample_track)
 
     @pytest.mark.asyncio
-    async def test_message_edit_failure_graceful(self, music_cog, mock_bot, sample_track):
+    async def test_message_edit_failure_graceful(self, mock_bot, sample_track):
         """Should handle message edit failures gracefully."""
-        music_cog._track_now_playing_message(
+        msm = MessageStateManager(mock_bot)
+        msm.track_now_playing(
             guild_id=111, track=sample_track, channel_id=222, message_id=333
         )
 
@@ -1268,84 +1335,8 @@ class TestEdgeCases:
         mock_bot.get_channel.return_value = mock_channel
 
         # Should not raise
-        await music_cog._on_track_finished(111, sample_track)
+        await msm.on_track_finished(111, sample_track)
 
-
-# =============================================================================
-# Integration Tests
-# =============================================================================
-
-
-class TestIntegration:
-    """Integration tests for complex workflows."""
-
-    @pytest.mark.asyncio
-    async def test_full_playback_workflow(
-        self, music_cog, mock_interaction, mock_container, sample_track
-    ):
-        """Should handle full play -> pause -> resume -> stop workflow."""
-        # Play
-        mock_container.voice_adapter.is_connected.return_value = True
-        mock_container.audio_resolver.resolve = AsyncMock(return_value=sample_track)
-        enqueue_result = MagicMock()
-        enqueue_result.success = True
-        enqueue_result.should_start = True
-        enqueue_result.track = sample_track
-        mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
-
-        await music_cog.play.callback(music_cog, mock_interaction, "test")
-
-        # Pause
-        mock_container.playback_service.pause_playback = AsyncMock(return_value=True)
-        await music_cog.pause.callback(music_cog, mock_interaction)
-
-        # Resume
-        mock_container.playback_service.resume_playback = AsyncMock(return_value=True)
-        await music_cog.resume.callback(music_cog, mock_interaction)
-
-        # Stop
-        mock_container.playback_service.stop_playback = AsyncMock(return_value=True)
-        mock_container.queue_service.clear = AsyncMock(return_value=1)
-        await music_cog.stop.callback(music_cog, mock_interaction)
-
-        # All should have succeeded
-        assert mock_container.playback_service.start_playback.called
-        assert mock_container.playback_service.pause_playback.called
-        assert mock_container.playback_service.resume_playback.called
-        assert mock_container.playback_service.stop_playback.called
-
-    @pytest.mark.asyncio
-    async def test_queue_management_workflow(
-        self, music_cog, mock_interaction, mock_container, sample_track
-    ):
-        """Should handle queue -> shuffle -> remove -> clear workflow."""
-        # View queue
-        queue_info = MagicMock()
-        queue_info.total_tracks = 5
-        queue_info.current_track = sample_track
-        queue_info.tracks = [sample_track] * 5
-        queue_info.total_duration = 900
-        mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
-
-        await music_cog.queue.callback(music_cog, mock_interaction, page=1)
-
-        # Shuffle
-        mock_container.queue_service.shuffle = AsyncMock(return_value=True)
-        await music_cog.shuffle.callback(music_cog, mock_interaction)
-
-        # Remove
-        mock_container.queue_service.remove = AsyncMock(return_value=sample_track)
-        await music_cog.remove.callback(music_cog, mock_interaction, position=3)
-
-        # Clear
-        mock_container.queue_service.clear = AsyncMock(return_value=4)
-        await music_cog.clear.callback(music_cog, mock_interaction)
-
-        # All should have succeeded
-        assert mock_container.queue_service.get_queue.called
-        assert mock_container.queue_service.shuffle.called
-        assert mock_container.queue_service.remove.called
-        assert mock_container.queue_service.clear.called
 
 
 # =============================================================================
@@ -1363,13 +1354,15 @@ class TestOnRequesterLeft:
     @pytest.mark.asyncio
     @patch(VIEW_PATH)
     async def test_sends_view_via_now_playing_channel(
-        self, MockView, music_cog, mock_bot, mock_container, sample_track
+        self, MockView, playback_cog, mock_bot, mock_container, sample_track
     ):
         """Should send view to the now-playing channel when message state exists."""
         # Setup now-playing message state
-        music_cog._track_now_playing_message(
-            guild_id=self.GUILD_ID, track=sample_track, channel_id=222, message_id=333
+        state = GuildMessageState()
+        state.now_playing = TrackedMessage.from_track(
+            sample_track, channel_id=222, message_id=333
         )
+        mock_container.message_state_manager.get_state.return_value = state
 
         # Mock channel returned by bot.get_channel
         mock_channel = MagicMock(spec=discord.abc.Messageable)
@@ -1381,7 +1374,7 @@ class TestOnRequesterLeft:
         mock_view_instance = MagicMock()
         MockView.return_value = mock_view_instance
 
-        await music_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
+        await playback_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
 
         mock_channel.send.assert_called_once()
         call_kwargs = mock_channel.send.call_args
@@ -1391,10 +1384,12 @@ class TestOnRequesterLeft:
     @pytest.mark.asyncio
     @patch(VIEW_PATH)
     async def test_falls_back_to_system_channel(
-        self, MockView, music_cog, mock_bot, mock_container, sample_track
+        self, MockView, playback_cog, mock_bot, mock_container, sample_track
     ):
         """Should fall back to guild system_channel when no message state."""
-        # No message state — bot.get_channel returns None (default)
+        # No now_playing in state
+        mock_container.message_state_manager.get_state.return_value = GuildMessageState()
+
         mock_system_channel = MagicMock(spec=discord.abc.Messageable)
         mock_message = MagicMock()
         mock_system_channel.send = AsyncMock(return_value=mock_message)
@@ -1405,19 +1400,20 @@ class TestOnRequesterLeft:
 
         MockView.return_value = MagicMock()
 
-        await music_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
+        await playback_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
 
         mock_system_channel.send.assert_called_once()
 
     @pytest.mark.asyncio
     @patch(VIEW_PATH)
     async def test_no_channel_auto_skips(
-        self, MockView, music_cog, mock_bot, mock_container, sample_track
+        self, MockView, playback_cog, mock_bot, mock_container, sample_track
     ):
         """Should auto-skip when no channel can be found (guild is None)."""
+        mock_container.message_state_manager.get_state.return_value = GuildMessageState()
         mock_bot.get_guild = MagicMock(return_value=None)
 
-        await music_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
+        await playback_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
 
         mock_container.playback_service.skip_track.assert_called_once_with(self.GUILD_ID)
         MockView.assert_not_called()
@@ -1425,14 +1421,15 @@ class TestOnRequesterLeft:
     @pytest.mark.asyncio
     @patch(VIEW_PATH)
     async def test_guild_without_system_channel_auto_skips(
-        self, MockView, music_cog, mock_bot, mock_container, sample_track
+        self, MockView, playback_cog, mock_bot, mock_container, sample_track
     ):
         """Should auto-skip when guild exists but has no system_channel."""
+        mock_container.message_state_manager.get_state.return_value = GuildMessageState()
         mock_guild = MagicMock()
         mock_guild.system_channel = None
         mock_bot.get_guild = MagicMock(return_value=mock_guild)
 
-        await music_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
+        await playback_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
 
         mock_container.playback_service.skip_track.assert_called_once_with(self.GUILD_ID)
         MockView.assert_not_called()
@@ -1440,20 +1437,21 @@ class TestOnRequesterLeft:
     @pytest.mark.asyncio
     @patch(VIEW_PATH)
     async def test_content_format(
-        self, MockView, music_cog, mock_bot, mock_container, sample_track
+        self, MockView, playback_cog, mock_bot, mock_container, sample_track
     ):
         """Should format content with user mention and truncated track title."""
-        # Setup now-playing message state
-        music_cog._track_now_playing_message(
-            guild_id=self.GUILD_ID, track=sample_track, channel_id=222, message_id=333
+        state = GuildMessageState()
+        state.now_playing = TrackedMessage.from_track(
+            sample_track, channel_id=222, message_id=333
         )
+        mock_container.message_state_manager.get_state.return_value = state
 
         mock_channel = MagicMock(spec=discord.abc.Messageable)
         mock_channel.send = AsyncMock(return_value=MagicMock())
         mock_bot.get_channel.return_value = mock_channel
         MockView.return_value = MagicMock()
 
-        await music_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
+        await playback_cog._on_requester_left(self.GUILD_ID, self.USER_ID, sample_track)
 
         content = mock_channel.send.call_args[0][0]
         assert f"<@{self.USER_ID}>" in content

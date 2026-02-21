@@ -7,16 +7,18 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from discord_music_player.infrastructure.discord.guards.voice_guards import check_user_in_voice
+from discord_music_player.infrastructure.discord.views.base_view import BaseInteractiveView
 from discord_music_player.utils.reply import format_duration, truncate
 
 if TYPE_CHECKING:
+    from ....config.container import Container
     from ....domain.music.entities import Track
-    from ..cogs.music_cog import MusicCog
 
 logger = logging.getLogger(__name__)
 
 
-class LongTrackVoteView(discord.ui.View):
+class LongTrackVoteView(BaseInteractiveView):
     """Prompts for a vote to accept/reject a long track."""
 
     def __init__(
@@ -26,22 +28,21 @@ class LongTrackVoteView(discord.ui.View):
         track: Track,
         requester_id: int,
         requester_name: str,
-        cog: MusicCog,
+        container: Container,
     ) -> None:
         super().__init__(timeout=30.0)
         self._guild_id = guild_id
         self._track = track
         self._requester_id = requester_id
         self._requester_name = requester_name
-        self._cog = cog
-        self._message: discord.Message | None = None
+        self._container = container
         self._votes_accept: set[int] = set()
         self._votes_reject: set[int] = set()
 
-    def set_message(self, message: discord.Message) -> None:
-        self._message = message
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await check_user_in_voice(interaction, self._guild_id)
 
-    @discord.ui.button(label="✅ Accept", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="\u2705 Accept", style=discord.ButtonStyle.green)
     async def accept_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[LongTrackVoteView]
     ) -> None:
@@ -54,7 +55,7 @@ class LongTrackVoteView(discord.ui.View):
         await interaction.response.defer()
         await self._check_vote_result()
 
-    @discord.ui.button(label="❌ Reject", style=discord.ButtonStyle.red)
+    @discord.ui.button(label="\u274c Reject", style=discord.ButtonStyle.red)
     async def reject_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[LongTrackVoteView]
     ) -> None:
@@ -70,7 +71,7 @@ class LongTrackVoteView(discord.ui.View):
     async def _check_vote_result(self) -> None:
         """Check if vote threshold is met."""
         # Get listener count from voice channel
-        voice_adapter = self._cog.container.voice_adapter
+        voice_adapter = self._container.voice_adapter
         listeners = await voice_adapter.get_listeners(self._guild_id)
         listener_count = len(listeners)
 
@@ -95,8 +96,8 @@ class LongTrackVoteView(discord.ui.View):
         self._disable_buttons()
 
         # Enqueue the track
-        queue_service = self._cog.container.queue_service
-        playback_service = self._cog.container.playback_service
+        queue_service = self._container.queue_service
+        playback_service = self._container.playback_service
 
         result = await queue_service.enqueue(
             guild_id=self._guild_id,
@@ -110,7 +111,7 @@ class LongTrackVoteView(discord.ui.View):
 
         if self._message:
             await self._message.edit(
-                content=f"✅ Vote passed! Queued: **{truncate(self._track.title, 60)}** ({format_duration(self._track.duration_seconds)})",
+                content=f"\u2705 Vote passed! Queued: **{truncate(self._track.title, 60)}** ({format_duration(self._track.duration_seconds)})",
                 view=self,
             )
 
@@ -121,7 +122,7 @@ class LongTrackVoteView(discord.ui.View):
 
         if self._message:
             await self._message.edit(
-                content=f"❌ Vote failed. Rejected: **{truncate(self._track.title, 60)}**",
+                content=f"\u274c Vote failed. Rejected: **{truncate(self._track.title, 60)}**",
                 view=self,
             )
 
@@ -131,13 +132,8 @@ class LongTrackVoteView(discord.ui.View):
         if self._message:
             try:
                 await self._message.edit(
-                    content=f"❌ Vote timed out. Rejected: **{truncate(self._track.title, 60)}**",
+                    content=f"\u274c Vote timed out. Rejected: **{truncate(self._track.title, 60)}**",
                     view=self,
                 )
             except discord.HTTPException:
                 logger.debug("Failed to edit long track vote message on timeout")
-
-    def _disable_buttons(self) -> None:
-        for item in self.children:
-            if isinstance(item, discord.ui.Button):
-                item.disabled = True

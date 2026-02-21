@@ -16,6 +16,7 @@ from discord_music_player.domain.shared.messages import LogTemplates
 
 if TYPE_CHECKING:
     from ....domain.music.entities import Track
+    from ....domain.music.value_objects import StartSeconds
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +163,11 @@ class DiscordVoiceAdapter(VoiceAdapter):
     # Verify: is_playing() returns True, volume transformer is applied, after_callback fires
     # when the clip ends, and _handle_track_end propagates correctly.
     async def play(
-        self, guild_id: int, track: Track, *, start_seconds: int | None = None
+        self,
+        guild_id: int,
+        track: Track,
+        *,
+        start_seconds: StartSeconds | None = None,
     ) -> bool:
         vc = self._get_voice_client(guild_id)
         if not vc:
@@ -180,8 +185,8 @@ class DiscordVoiceAdapter(VoiceAdapter):
             # User-Agent must match yt-dlp's Android client to prevent YouTube 403
             base_before_opts = self._ffmpeg_options.get("before_options", "")
             before_opts = f'{base_before_opts} -headers "User-Agent: {ANDROID_USER_AGENT}"'
-            if start_seconds:
-                before_opts = f"-ss {start_seconds} {before_opts}"
+            if start_seconds is not None:
+                before_opts = f"-ss {start_seconds.value} {before_opts}"
             base_opts = self._ffmpeg_options.get("options", "")
 
             fade_opts = f'{base_opts} -af "afade=t=in:ss=0:d={FADE_IN_SECONDS}"'

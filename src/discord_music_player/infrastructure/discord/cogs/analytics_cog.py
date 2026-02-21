@@ -213,14 +213,7 @@ class AnalyticsCog(commands.Cog):
         classifier = self.container.genre_classifier
 
         # Get user's tracks with IDs
-        rows = await history_repo._db.fetch_all(
-            """
-            SELECT track_id, title, artist
-            FROM track_history
-            WHERE guild_id = ? AND requested_by_id = ?
-            """,
-            (guild_id, user_id),
-        )
+        rows = await history_repo.get_user_tracks_for_genre(guild_id, user_id)
         if not rows:
             return None
 

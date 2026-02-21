@@ -40,36 +40,3 @@ class DownloadView(discord.ui.View):
 
     def _encode_url(self, url: str) -> str:
         return urllib.parse.quote(url, safe="")
-
-
-class NowPlayingView(discord.ui.View):
-    def __init__(
-        self,
-        webpage_url: str,
-        title: str,
-        timeout: float = 300.0,
-    ) -> None:
-        super().__init__(timeout=timeout)
-
-        self.webpage_url = webpage_url
-        self.title = title
-
-        self._add_buttons()
-
-    def _add_buttons(self) -> None:
-        self.add_item(
-            discord.ui.Button(
-                style=discord.ButtonStyle.link,
-                label="📺 YouTube",
-                url=self.webpage_url,
-            )
-        )
-
-        cobalt_url = f"https://cobalt.tools/#{urllib.parse.quote(self.webpage_url, safe='')}"
-        self.add_item(
-            discord.ui.Button(
-                style=discord.ButtonStyle.link,
-                label="⬇️ Download",
-                url=cobalt_url,
-            )
-        )

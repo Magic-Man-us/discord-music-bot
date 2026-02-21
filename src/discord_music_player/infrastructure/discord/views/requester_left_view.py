@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 import discord
 
 from discord_music_player.domain.shared.messages import DiscordUIMessages
+from discord_music_player.infrastructure.discord.guards.voice_guards import check_user_in_voice
+from discord_music_player.infrastructure.discord.views.base_view import BaseInteractiveView
 
 if TYPE_CHECKING:
     from ....application.services.playback_service import PlaybackApplicationService
@@ -15,7 +17,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class RequesterLeftView(discord.ui.View):
+class RequesterLeftView(BaseInteractiveView):
     def __init__(
         self,
         *,
@@ -29,10 +31,9 @@ class RequesterLeftView(discord.ui.View):
         self._playback_service = playback_service
         self._track_title = track_title
         self._requester_name = requester_name
-        self._message: discord.Message | None = None
 
-    def set_message(self, message: discord.Message) -> None:
-        self._message = message
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await check_user_in_voice(interaction, self._guild_id)
 
     @discord.ui.button(label="Yes, continue", style=discord.ButtonStyle.green)
     async def yes_button(
@@ -63,8 +64,3 @@ class RequesterLeftView(discord.ui.View):
         self.stop()
         self._disable_buttons()
         await interaction.response.edit_message(content=message, view=self)
-
-    def _disable_buttons(self) -> None:
-        for item in self.children:
-            if isinstance(item, discord.ui.Button):
-                item.disabled = True

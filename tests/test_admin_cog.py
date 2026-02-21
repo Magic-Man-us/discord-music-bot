@@ -48,7 +48,7 @@ def mock_bot():
     bot.reload_extension = AsyncMock()
     bot.guilds = [MagicMock() for _ in range(5)]
     bot.voice_clients = [MagicMock(), MagicMock()]
-    bot.cogs = {"MusicCog": MagicMock(), "AdminCog": MagicMock()}
+    bot.cogs = {"PlaybackCog": MagicMock(), "AdminCog": MagicMock()}
     bot.latency = 0.05  # 50ms
     bot.close = AsyncMock()
     return bot

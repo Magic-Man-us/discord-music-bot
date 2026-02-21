@@ -84,8 +84,11 @@ class AudioSettings(BaseModel):
     max_queue_size: int = Field(default=50, ge=1, le=1000)
     ffmpeg_options: dict[str, str] = Field(
         default_factory=lambda: {
-            "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-            "options": "-vn",
+            "before_options": (
+                "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+                " -analyzeduration 0 -probesize 32768 -thread_queue_size 4096"
+            ),
+            "options": "-vn -bufsize 64k",
         }
     )
     ytdlp_format: str = "bestaudio/best"
@@ -107,8 +110,12 @@ class AISettings(BaseModel):
     cache_ttl_seconds: int = Field(
         default=3600, ge=0, validation_alias=AliasChoices("cache_ttl_seconds", "cache_ttl")
     )
+    shuffle_model: str = Field(
+        default="anthropic:claude-haiku-4-5-20251001",
+        validation_alias=AliasChoices("shuffle_model", "ai_shuffle_model"),
+    )
 
-    @field_validator("model")
+    @field_validator("model", "shuffle_model")
     @classmethod
     def validate_model_format(cls, v: str) -> str:
         if ":" not in v:

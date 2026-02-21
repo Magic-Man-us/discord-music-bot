@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from ..domain.voting.services import VotingDomainService
     from ..infrastructure.ai.genre_classifier import AIGenreClassifier
     from ..infrastructure.charts.chart_generator import ChartGenerator
+    from ..infrastructure.discord.services.message_state_manager import MessageStateManager
     from ..infrastructure.discord.services.voice_warmup import VoiceWarmupTracker
     from ..infrastructure.persistence.database import Database
     from ..infrastructure.persistence.repositories.genre_repository import (
@@ -66,6 +67,7 @@ class Container:
     _audio_resolver: AudioResolver | None = None
     _voice_adapter: VoiceAdapter | None = None
     _ai_client: AIClient | None = None
+    _shuffle_ai_client: AIClient | None = None
 
     # Domain services
     _queue_domain_service: QueueDomainService | None = None
@@ -78,6 +80,7 @@ class Container:
 
     # Discord interaction helpers
     _voice_warmup_tracker: VoiceWarmupTracker | None = None
+    _message_state_manager: MessageStateManager | None = None
 
     # Cross-cutting event subscribers
     _auto_skip_on_requester_leave: AutoSkipOnRequesterLeave | None = None
@@ -215,6 +218,17 @@ class Container:
             self._ai_client = AIRecommendationClient(self.settings.ai)
         return self._ai_client
 
+    @property
+    def shuffle_ai_client(self) -> AIClient:
+        if self._shuffle_ai_client is None:
+            from ..infrastructure.ai.recommendation_client import AIRecommendationClient
+
+            shuffle_settings = self.settings.ai.model_copy(
+                update={"model": self.settings.ai.shuffle_model}
+            )
+            self._shuffle_ai_client = AIRecommendationClient(shuffle_settings)
+        return self._shuffle_ai_client
+
     # === Domain Services ===
 
     @property
@@ -339,6 +353,16 @@ class Container:
 
             self._voice_warmup_tracker = VoiceWarmupTracker(warmup_seconds=60)
         return self._voice_warmup_tracker
+
+    @property
+    def message_state_manager(self) -> MessageStateManager:
+        if self._message_state_manager is None:
+            from ..infrastructure.discord.services.message_state_manager import (
+                MessageStateManager,
+            )
+
+            self._message_state_manager = MessageStateManager(self.bot)
+        return self._message_state_manager
 
     # === Event Subscribers ===
 

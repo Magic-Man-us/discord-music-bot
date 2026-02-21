@@ -7,8 +7,10 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from discord_music_player.infrastructure.discord.guards.voice_guards import check_user_in_voice
+
 if TYPE_CHECKING:
-    from ..cogs.music_cog import MusicCog
+    from ....config.container import Container
 
 logger = logging.getLogger(__name__)
 
@@ -20,13 +22,16 @@ class RadioView(discord.ui.View):
         self,
         *,
         guild_id: int,
-        cog: MusicCog,
+        container: Container,
     ) -> None:
         super().__init__(timeout=None)  # Persistent view
         self._guild_id = guild_id
-        self._cog = cog
+        self._container = container
 
-    @discord.ui.button(label="🔀 Shuffle", style=discord.ButtonStyle.primary)
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await check_user_in_voice(interaction, self._guild_id)
+
+    @discord.ui.button(label="\U0001f500 Shuffle", style=discord.ButtonStyle.primary)
     async def shuffle_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[RadioView]
     ) -> None:
@@ -34,11 +39,11 @@ class RadioView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
 
         # Disable radio first
-        self._cog.container.radio_service.disable_radio(self._guild_id)
+        self._container.radio_service.disable_radio(self._guild_id)
 
         # Re-enable radio to get fresh recommendations
         user = interaction.user
-        result = await self._cog.container.radio_service.toggle_radio(
+        result = await self._container.radio_service.toggle_radio(
             guild_id=self._guild_id,
             user_id=user.id,
             user_name=getattr(user, "display_name", user.name),
@@ -46,11 +51,11 @@ class RadioView(discord.ui.View):
 
         if result.enabled:
             await interaction.followup.send(
-                f"🔀 Shuffled! Generated {result.tracks_added} new recommendations based on **{result.seed_title}**.",
+                f"\U0001f500 Shuffled! Generated {result.tracks_added} new recommendations based on **{result.seed_title}**.",
                 ephemeral=True,
             )
         else:
             await interaction.followup.send(
-                f"❌ Couldn't generate new recommendations: {result.message}",
+                f"\u274c Couldn't generate new recommendations: {result.message}",
                 ephemeral=True,
             )

@@ -154,3 +154,10 @@ class TrackHistoryRepository(ABC):
     async def get_activity_by_weekday(self, guild_id: int) -> list[tuple[int, int]]:
         """Get weekly play distribution. Returns (weekday_0_sun, count)."""
         ...
+
+    @abstractmethod
+    async def get_user_tracks_for_genre(
+        self, guild_id: int, user_id: int
+    ) -> list[dict[str, str | None]]:
+        """Get track metadata for genre classification. Returns dicts with track_id, title, artist."""
+        ...

@@ -157,6 +157,9 @@ class AudioConstants:
     FADE_IN_SECONDS = 0.5
     CONNECT_TIMEOUT_SECONDS = 10.0
 
+    # Timestamp / seek limits
+    MAX_SEEK_SECONDS = 86_400  # 24 hours
+
 
 class DatabaseURLSchemes:
     """Valid database URL schemes for validation."""
@@ -219,6 +222,9 @@ class TimeConstants:
     # Voice warmup
     VOICE_WARMUP_SECONDS = 60
 
+    # Idle disconnect — leave voice after this many seconds with no playback
+    IDLE_DISCONNECT_SECONDS = 300  # 5 minutes
+
     # Busy timeout for SQLite
     DEFAULT_BUSY_TIMEOUT_MS = 5000
 
@@ -259,6 +265,10 @@ class LimitConstants:
     MAX_SKIP_THRESHOLD_PERCENTAGE = 1.0
     DEFAULT_SKIP_THRESHOLD_PERCENTAGE = 0.5
     DEFAULT_AUTO_SKIP_LISTENER_COUNT = 2
+
+    # Long track voting
+    LONG_TRACK_THRESHOLD_SECONDS = 360  # 6 minutes
+    LONG_TRACK_VOTE_BYPASS_LISTENERS = 4  # skip vote when <= this many listeners
 
     # Discord limits
     MAX_DISCORD_SNOWFLAKE = 2**64

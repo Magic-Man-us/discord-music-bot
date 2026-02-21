@@ -221,7 +221,11 @@ class MusicBot(commands.Bot):
 
     async def _load_cogs(self) -> None:
         cogs = [
-            "discord_music_player.infrastructure.discord.cogs.music_cog",
+            "discord_music_player.infrastructure.discord.cogs.playback_cog",
+            "discord_music_player.infrastructure.discord.cogs.queue_cog",
+            "discord_music_player.infrastructure.discord.cogs.skip_cog",
+            "discord_music_player.infrastructure.discord.cogs.radio_cog",
+            "discord_music_player.infrastructure.discord.cogs.now_playing_cog",
             "discord_music_player.infrastructure.discord.cogs.admin_cog",
             "discord_music_player.infrastructure.discord.cogs.health_cog",
             "discord_music_player.infrastructure.discord.cogs.info_cog",

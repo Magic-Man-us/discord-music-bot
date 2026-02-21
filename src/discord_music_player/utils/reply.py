@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from functools import cache
 from urllib.parse import parse_qs, urlparse
 
@@ -63,7 +64,9 @@ def extract_youtube_timestamp(url: str) -> int | None:
         return None
 
     host = (parsed.hostname or "").lower()
-    if not any(h in host for h in ("youtube.com", "youtu.be", "youtube-nocookie.com")):
+    _YOUTUBE_DOMAINS = {"youtube.com", "www.youtube.com", "m.youtube.com",
+                        "youtu.be", "www.youtube-nocookie.com"}
+    if host not in _YOUTUBE_DOMAINS:
         return None
 
     params = parse_qs(parsed.query)
@@ -71,21 +74,25 @@ def extract_youtube_timestamp(url: str) -> int | None:
     if raw is None:
         return None
 
+    from discord_music_player.domain.shared.constants import AudioConstants
+
+    max_seconds = AudioConstants.MAX_SEEK_SECONDS
+
     # Pure numeric (e.g. t=4778)
     try:
-        return int(raw)
+        value = int(raw)
+        return value if 0 < value <= max_seconds else None
     except ValueError:
         pass
 
     # Human-readable (e.g. t=1h19m38s)
-    import re
-
     match = re.fullmatch(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?", raw)
     if match and any(match.groups()):
         h = int(match.group(1) or 0)
         m = int(match.group(2) or 0)
         s = int(match.group(3) or 0)
-        return h * 3600 + m * 60 + s
+        value = h * 3600 + m * 60 + s
+        return value if 0 < value <= max_seconds else None
 
     return None
 

@@ -319,6 +319,22 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         )
         return [(row["weekday"], row["count"]) for row in rows]
 
+    async def get_user_tracks_for_genre(
+        self, guild_id: int, user_id: int
+    ) -> list[dict[str, str | None]]:
+        rows = await self._db.fetch_all(
+            """
+            SELECT track_id, title, artist
+            FROM track_history
+            WHERE guild_id = ? AND requested_by_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        return [
+            {"track_id": row["track_id"], "title": row["title"], "artist": row.get("artist")}
+            for row in rows
+        ]
+
     def _row_to_track(self, row: dict) -> Track:
         requested_at = None
         if row.get("requested_at"):

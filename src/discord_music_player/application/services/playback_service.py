@@ -15,6 +15,7 @@ from ...domain.shared.messages import ErrorMessages, LogTemplates
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository, TrackHistoryRepository
     from ...domain.music.services import PlaybackDomainService
+    from ...domain.music.value_objects import StartSeconds
     from ..interfaces.audio_resolver import AudioResolver
     from ..interfaces.voice_adapter import VoiceAdapter
 
@@ -41,8 +42,8 @@ class PlaybackApplicationService:
 
         self._on_track_finished_callback: Callable[[int, Track], Any] | None = None
 
-        # Optional seek offset (seconds) consumed on next playback start per guild.
-        self._pending_start_seconds: dict[int, int] = {}
+        # Optional seek offset consumed on next playback start per guild.
+        self._pending_start_seconds: dict[int, StartSeconds] = {}
 
         # When we intentionally stop audio (skip/stop), discord.py still fires
         # the "after" callback. Suppress the next event per guild to avoid double-advancing.
@@ -68,7 +69,7 @@ class PlaybackApplicationService:
         self._on_track_finished_callback = callback
 
     async def start_playback(
-        self, guild_id: int, *, start_seconds: int | None = None
+        self, guild_id: int, *, start_seconds: StartSeconds | None = None
     ) -> bool:
         """Start playback of the next track in queue."""
         if start_seconds is not None:
@@ -183,6 +184,18 @@ class PlaybackApplicationService:
             )
             await self._history_repo.record_play(guild_id=guild_id, track=track)
             logger.info(LogTemplates.TRACK_STARTED, track.title, guild_id)
+
+            from ...domain.shared.events import TrackStartedPlaying, get_event_bus
+
+            await get_event_bus().publish(
+                TrackStartedPlaying(
+                    guild_id=guild_id,
+                    track_id=track.id,
+                    track_title=track.title,
+                    track_url=track.webpage_url,
+                    duration_seconds=track.duration_seconds,
+                )
+            )
             return True
         except Exception:
             logger.exception("Error starting playback")

@@ -296,6 +296,9 @@ class LogTemplates:
     RADIO_TRACK_RESOLVE_FAILED = "Radio: failed to resolve recommendation '%s': %s"
     RADIO_SESSION_LIMIT = "Radio session limit reached in guild %s (%d/%d tracks)"
 
+    # Shuffle
+    SHUFFLE_ERROR = "Error in shuffle button handler"
+
 
 class DiscordUIMessages:
     """User-facing Discord messages and responses.
@@ -385,12 +388,24 @@ class DiscordUIMessages:
     REQUESTER_LEFT_SKIPPED = "⏭️ Track skipped."
     REQUESTER_LEFT_TIMEOUT = "⏭️ Track skipped (no response)."
 
+    # Resume Playback Messages
+    RESUME_PLAYBACK_RESUMED = "▶️ Resumed playback: **{track_title}**"
+    RESUME_PLAYBACK_CLEARED = "⏭️ Skipped. Playback cleared."
+    RESUME_PLAYBACK_TIMEOUT = "⏭️ Playback cleared (no response)."
+
     # Radio Messages
     RADIO_ENABLED = "📻 Radio enabled! Queued {count} similar tracks based on **{seed_title}**."
     RADIO_DISABLED = "📻 Radio disabled."
     RADIO_NO_CURRENT_TRACK = "📻 Nothing is playing — play a track first, then use `/radio`."
     RADIO_AI_FAILED = "📻 Couldn't get recommendations right now. Try again later."
     RADIO_SESSION_LIMIT = "📻 Radio session limit reached ({limit} tracks). Use `/radio` to start a new session."
+
+    # Shuffle Messages
+    SHUFFLE_ALREADY_IN_PROGRESS = "Someone is already shuffling, please wait."
+    SHUFFLE_QUEUED_NEXT = "\U0001f500 Queued next: **{track_title}**"
+    SHUFFLE_NO_RECOMMENDATION = "Could not generate a recommendation. Try again later."
+    SHUFFLE_TRACK_NOT_FOUND = "Could not find a playable track for: {display_text}"
+    SHUFFLE_ERROR = "An error occurred while shuffling. Please try again."
 
     # Analytics Messages
     ANALYTICS_NO_DATA = "No music has been played yet in this server."

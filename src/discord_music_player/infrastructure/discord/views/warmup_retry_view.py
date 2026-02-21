@@ -4,19 +4,30 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import discord
 
 from discord_music_player.domain.shared.messages import DiscordUIMessages
+from discord_music_player.infrastructure.discord.views.base_view import BaseInteractiveView
 
 if TYPE_CHECKING:
-    from ..cogs.music_cog import MusicCog
+    from ....domain.music.value_objects import StartSeconds
 
 logger = logging.getLogger(__name__)
 
 
-class WarmupRetryView(discord.ui.View):
+class ExecutePlayCallback(Protocol):
+    async def __call__(
+        self,
+        interaction: discord.Interaction,
+        query: str,
+        *,
+        start_seconds: StartSeconds | None = ...,
+    ) -> None: ...
+
+
+class WarmupRetryView(BaseInteractiveView):
     """Shows a disabled Retry button that enables after the warmup period expires."""
 
     def __init__(
@@ -24,17 +35,16 @@ class WarmupRetryView(discord.ui.View):
         *,
         remaining_seconds: int,
         query: str,
-        cog: MusicCog,
+        execute_play: ExecutePlayCallback,
     ) -> None:
         super().__init__(timeout=remaining_seconds + 120)
         self._remaining_seconds = remaining_seconds
         self._query = query
-        self._cog = cog
-        self._message: discord.Message | None = None
+        self._execute_play = execute_play
         self._enable_task: asyncio.Task[None] | None = None
 
     def set_message(self, message: discord.Message) -> None:
-        self._message = message
+        super().set_message(message)
         self._enable_task = asyncio.create_task(self._enable_after_warmup())
 
     async def _enable_after_warmup(self) -> None:
@@ -66,12 +76,7 @@ class WarmupRetryView(discord.ui.View):
             except discord.HTTPException:
                 pass
         self.stop()
-        await self._cog._execute_play(interaction, self._query)
-
-    def _disable_buttons(self) -> None:
-        for item in self.children:
-            if isinstance(item, discord.ui.Button):
-                item.disabled = True
+        await self._execute_play(interaction, self._query)
 
     async def on_timeout(self) -> None:
         if self._enable_task is not None and not self._enable_task.done():

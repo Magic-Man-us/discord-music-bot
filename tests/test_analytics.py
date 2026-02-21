@@ -430,8 +430,7 @@ def mock_history_repo():
     repo.get_activity_by_day = AsyncMock(return_value=[("2026-02-01", 10), ("2026-02-02", 15)])
     repo.get_activity_by_weekday = AsyncMock(return_value=[(0, 5), (1, 12), (3, 8)])
     repo.get_activity_by_hour = AsyncMock(return_value=[(14, 20), (15, 15), (20, 10)])
-    repo._db = MagicMock()
-    repo._db.fetch_all = AsyncMock(return_value=[])
+    repo.get_user_tracks_for_genre = AsyncMock(return_value=[])
     return repo
 
 
@@ -718,7 +717,7 @@ class TestMystatsCogCommand:
     ):
         """Should send embed even if genre chart fails."""
         # Set up some genre data so the chart path is triggered
-        mock_history_repo._db.fetch_all = AsyncMock(
+        mock_history_repo.get_user_tracks_for_genre = AsyncMock(
             return_value=[{"track_id": "t1", "title": "Song", "artist": "A"}]
         )
         analytics_cog.container.genre_repository.get_genres = AsyncMock(
@@ -826,7 +825,7 @@ class TestGetUserGenreData:
     @pytest.mark.asyncio
     async def test_no_rows_returns_none(self, analytics_cog, mock_history_repo):
         """Should return None when user has no history."""
-        mock_history_repo._db.fetch_all = AsyncMock(return_value=[])
+        mock_history_repo.get_user_tracks_for_genre = AsyncMock(return_value=[])
 
         result = await analytics_cog._get_user_genre_data(111, 333)
         assert result is None
@@ -834,7 +833,7 @@ class TestGetUserGenreData:
     @pytest.mark.asyncio
     async def test_cached_genres_used(self, analytics_cog, mock_history_repo):
         """Should use cached genres without calling classifier."""
-        mock_history_repo._db.fetch_all = AsyncMock(
+        mock_history_repo.get_user_tracks_for_genre = AsyncMock(
             return_value=[
                 {"track_id": "t1", "title": "Rock Song", "artist": "A"},
                 {"track_id": "t2", "title": "Pop Song", "artist": "B"},
@@ -854,7 +853,7 @@ class TestGetUserGenreData:
         self, analytics_cog, mock_history_repo
     ):
         """Should mark uncached tracks as Unknown when AI is unavailable."""
-        mock_history_repo._db.fetch_all = AsyncMock(
+        mock_history_repo.get_user_tracks_for_genre = AsyncMock(
             return_value=[{"track_id": "t1", "title": "Song", "artist": "A"}]
         )
         analytics_cog.container.genre_repository.get_genres = AsyncMock(return_value={})
@@ -869,7 +868,7 @@ class TestGetUserGenreData:
         self, analytics_cog, mock_history_repo
     ):
         """Should classify uncached tracks when AI is available."""
-        mock_history_repo._db.fetch_all = AsyncMock(
+        mock_history_repo.get_user_tracks_for_genre = AsyncMock(
             return_value=[{"track_id": "t1", "title": "Rock Song", "artist": "Band A"}]
         )
         analytics_cog.container.genre_repository.get_genres = AsyncMock(return_value={})
@@ -887,7 +886,7 @@ class TestGetUserGenreData:
     @pytest.mark.asyncio
     async def test_genre_aggregation_by_play_count(self, analytics_cog, mock_history_repo):
         """Should aggregate genres by number of plays, not unique tracks."""
-        mock_history_repo._db.fetch_all = AsyncMock(
+        mock_history_repo.get_user_tracks_for_genre = AsyncMock(
             return_value=[
                 {"track_id": "t1", "title": "Song1", "artist": "A"},
                 {"track_id": "t1", "title": "Song1", "artist": "A"},

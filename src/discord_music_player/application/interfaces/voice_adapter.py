@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ...domain.music.entities import Track
+    from ...domain.music.value_objects import StartSeconds
 
 
 class VoiceAdapter(ABC):
@@ -34,7 +35,11 @@ class VoiceAdapter(ABC):
 
     @abstractmethod
     async def play(
-        self, guild_id: int, track: "Track", *, start_seconds: int | None = None
+        self,
+        guild_id: int,
+        track: "Track",
+        *,
+        start_seconds: "StartSeconds | None" = None,
     ) -> bool:
         """Start playing a track, optionally seeking to *start_seconds*."""
         ...

@@ -382,20 +382,19 @@ class TestGuildEvents:
         assert any("Left guild" in record.message for record in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_on_guild_remove_cleans_up_music_cog(self, event_cog, mock_guild):
-        """Should cleanup music cog message state."""
-        mock_music_cog = MagicMock()
-        mock_music_cog.cleanup_guild_message_state = MagicMock()
-        event_cog.bot.get_cog.return_value = mock_music_cog
+    async def test_on_guild_remove_cleans_up_message_state(self, event_cog, mock_guild, mock_container):
+        """Should cleanup message state via container."""
+        mock_container.message_state_manager = MagicMock()
 
         await event_cog.on_guild_remove(mock_guild)
 
-        mock_music_cog.cleanup_guild_message_state.assert_called_once_with(mock_guild.id)
+        mock_container.message_state_manager.reset.assert_called_once_with(mock_guild.id)
 
     @pytest.mark.asyncio
-    async def test_on_guild_remove_handles_missing_music_cog(self, event_cog, mock_guild):
-        """Should handle missing music cog gracefully."""
-        event_cog.bot.get_cog.return_value = None
+    async def test_on_guild_remove_handles_message_state_error(self, event_cog, mock_guild, mock_container):
+        """Should handle message state cleanup error gracefully."""
+        mock_container.message_state_manager = MagicMock()
+        mock_container.message_state_manager.reset.side_effect = Exception("Error")
 
         # Should not raise
         await event_cog.on_guild_remove(mock_guild)

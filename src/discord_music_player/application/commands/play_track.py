@@ -30,6 +30,7 @@ class PlayTrackStatus(Enum):
     RESOLUTION_ERROR = "resolution_error"
     VOICE_ERROR = "voice_error"
     QUEUE_FULL = "queue_full"
+    DUPLICATE = "duplicate"
     PERMISSION_DENIED = "permission_denied"
 
 
@@ -150,6 +151,12 @@ class PlayTrackHandler:
         )
 
         session = await self._session_repo.get_or_create(command.guild_id)
+
+        if session._is_duplicate(track):
+            return PlayTrackResult.error(
+                PlayTrackStatus.DUPLICATE,
+                f'"{track.title}" is already in the queue or currently playing',
+            )
 
         if not session.can_add_to_queue:
             return PlayTrackResult.error(PlayTrackStatus.QUEUE_FULL, "Queue is full")
