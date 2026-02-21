@@ -12,7 +12,9 @@ from typing import TYPE_CHECKING, Any, Literal, TypedDict
 import discord
 from discord.ext import commands, tasks
 
+from discord_music_player.domain.shared.constants import HealthConstants, UIConstants
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
+from discord_music_player.domain.shared.enums import BotStatus
 from discord_music_player.domain.shared.messages import (
     DiscordUIMessages,
     ErrorMessages,
@@ -24,14 +26,6 @@ if TYPE_CHECKING:
     from ....config.container import Container
 
 logger = logging.getLogger(__name__)
-
-
-DEFAULT_FAST_INTERVAL = 180
-DEFAULT_DETAILED_INTERVAL = 300
-LATENCY_OK_MS = 200
-LATENCY_WARN_MS = 800
-LATENCY_RESET_FACTOR = 0.6
-ONE_THOUSAND = 1000.0
 
 
 class BasicStats(TypedDict):
@@ -73,14 +67,14 @@ class HealthCog(commands.Cog):
 
         health_settings = getattr(settings, "health", None)
         fast_interval = (
-            getattr(health_settings, "fast_interval", DEFAULT_FAST_INTERVAL)
+            getattr(health_settings, "fast_interval", HealthConstants.DEFAULT_FAST_INTERVAL)
             if health_settings
-            else DEFAULT_FAST_INTERVAL
+            else HealthConstants.DEFAULT_FAST_INTERVAL
         )
         detailed_interval = (
-            getattr(health_settings, "detailed_interval", DEFAULT_DETAILED_INTERVAL)
+            getattr(health_settings, "detailed_interval", HealthConstants.DEFAULT_DETAILED_INTERVAL)
             if health_settings
-            else DEFAULT_DETAILED_INTERVAL
+            else HealthConstants.DEFAULT_DETAILED_INTERVAL
         )
 
         self.heartbeat_fast.change_interval(seconds=fast_interval)
@@ -112,12 +106,12 @@ class HealthCog(commands.Cog):
         return " ".join(parts)
 
     def _latency_ms(self) -> float:
-        return round((self.bot.latency or 0.0) * ONE_THOUSAND, 1)
+        return round((self.bot.latency or 0.0) * UIConstants.MS_PER_SECOND, 1)
 
     def _latency_emoji(self, ms: float) -> str:
-        if ms < LATENCY_OK_MS:
+        if ms < HealthConstants.LATENCY_OK_MS:
             return "🟢"
-        if ms < LATENCY_WARN_MS:
+        if ms < HealthConstants.LATENCY_WARN_MS:
             return "🟠"
         return "🔴"
 
@@ -125,9 +119,9 @@ class HealthCog(commands.Cog):
         return "🟢" if connected else "🔴"
 
     def _embed_color_for_latency(self, ms: float) -> discord.Color:
-        if ms < LATENCY_OK_MS:
+        if ms < HealthConstants.LATENCY_OK_MS:
             return discord.Color.green()
-        if ms < LATENCY_WARN_MS:
+        if ms < HealthConstants.LATENCY_WARN_MS:
             return discord.Color.gold()
         return discord.Color.red()
 
@@ -169,7 +163,7 @@ class HealthCog(commands.Cog):
             "queue_len": queue_len,
             "current": current_title,
             "connected": connected,
-            "status": "online" if connected else "offline",
+            "status": BotStatus.ONLINE if connected else BotStatus.OFFLINE,
         }
 
     async def _collect_detailed_stats(self) -> DetailedStats:
@@ -205,7 +199,7 @@ class HealthCog(commands.Cog):
     # Heartbeat Loops
     # ─────────────────────────────────────────────────────────────────
 
-    @tasks.loop(seconds=DEFAULT_FAST_INTERVAL, reconnect=True)
+    @tasks.loop(seconds=HealthConstants.DEFAULT_FAST_INTERVAL, reconnect=True)
     async def heartbeat_fast(self) -> None:
         try:
             payload = self._collect_basic_stats()
@@ -219,22 +213,22 @@ class HealthCog(commands.Cog):
             if alert_channel_id:
                 ch = self.bot.get_channel(alert_channel_id)
                 if isinstance(ch, (discord.TextChannel, discord.Thread)):
-                    if lat_ms >= LATENCY_WARN_MS and not self._warned:
+                    if lat_ms >= HealthConstants.LATENCY_WARN_MS and not self._warned:
                         try:
                             await ch.send(
-                                f"⚠️ Heartbeat warning: latency {lat_ms}ms (>= {LATENCY_WARN_MS}ms)"
+                                f"⚠️ Heartbeat warning: latency {lat_ms}ms (>= {HealthConstants.LATENCY_WARN_MS}ms)"
                             )
                             self._warned = True
                         except Exception:
                             pass
-                    elif self._warned and lat_ms < (LATENCY_WARN_MS * LATENCY_RESET_FACTOR):
+                    elif self._warned and lat_ms < (HealthConstants.LATENCY_WARN_MS * HealthConstants.LATENCY_RESET_FACTOR):
                         self._warned = False
 
             logger.debug(LogTemplates.HEARTBEAT_FAST, lat_ms)
         except Exception:
             logger.exception(LogTemplates.HEARTBEAT_FAST_ERROR)
 
-    @tasks.loop(seconds=DEFAULT_DETAILED_INTERVAL, reconnect=True)
+    @tasks.loop(seconds=HealthConstants.DEFAULT_DETAILED_INTERVAL, reconnect=True)
     async def heartbeat_detailed(self) -> None:
         try:
             payload = await self._collect_detailed_stats()

@@ -11,7 +11,8 @@ from discord import app_commands
 from discord.ext import commands
 
 from discord_music_player.domain.music.value_objects import LoopMode
-from discord_music_player.domain.shared.messages import DiscordUIMessages
+from discord_music_player.domain.shared.constants import UIConstants
+from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     ensure_voice,
@@ -25,8 +26,6 @@ if TYPE_CHECKING:
     from ....config.container import Container
 
 logger = logging.getLogger(__name__)
-
-QUEUE_PER_PAGE = 10
 
 
 class QueueCog(commands.Cog):
@@ -53,7 +52,7 @@ class QueueCog(commands.Cog):
             )
             return
 
-        per_page = QUEUE_PER_PAGE
+        per_page = UIConstants.QUEUE_PER_PAGE
         total_pages = max(1, math.ceil(queue_info.total_tracks / per_page))
         page = max(1, min(page, total_pages))
         start_idx = (page - 1) * per_page
@@ -70,7 +69,7 @@ class QueueCog(commands.Cog):
             requester = MessageStateManager.format_requester(ct)
             artist_or_uploader = ct.artist or ct.uploader
 
-            np_parts = [f"[{truncate(ct.title, 80)}]({ct.webpage_url})"]
+            np_parts = [f"[{truncate(ct.title, UIConstants.TITLE_TRUNCATION)}]({ct.webpage_url})"]
             np_parts.append(f"Requested by: {requester}")
             if artist_or_uploader:
                 np_parts.append(f"Artist: {truncate(artist_or_uploader, 64)}")
@@ -86,7 +85,7 @@ class QueueCog(commands.Cog):
         for idx, track in enumerate(tracks, start=start_idx + 1):
             embed.add_field(
                 name=f"{idx}. {truncate(track.title)}",
-                value=f"Requested by: {track.requested_by_name or 'Unknown'}",
+                value=f"Requested by: {track.requested_by_name or UIConstants.UNKNOWN_FALLBACK}",
                 inline=False,
             )
 
@@ -182,7 +181,7 @@ class QueueCog(commands.Cog):
             await playback_service.start_playback(interaction.guild.id)
 
         await interaction.followup.send(
-            f"\U0001f500 Shuffled and queued **{enqueued_count}** tracks from history.",
+            DiscordUIMessages.SHUFFLE_HISTORY_QUEUED.format(count=enqueued_count),
             ephemeral=True,
         )
 
@@ -269,6 +268,6 @@ class QueueCog(commands.Cog):
 async def setup(bot: commands.Bot) -> None:
     container = getattr(bot, "container", None)
     if container is None:
-        raise RuntimeError("Container not found on bot instance")
+        raise RuntimeError(ErrorMessages.CONTAINER_NOT_FOUND)
 
     await bot.add_cog(QueueCog(bot, container))

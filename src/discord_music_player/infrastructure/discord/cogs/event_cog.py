@@ -10,8 +10,12 @@ from typing import TYPE_CHECKING, Any
 import discord
 from discord.ext import commands
 
-from discord_music_player.domain.shared.constants import ConfigKeys
-from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages, LogTemplates
+from discord_music_player.domain.shared.constants import ConfigKeys, UIConstants
+from discord_music_player.domain.shared.messages import (
+    DiscordUIMessages,
+    ErrorMessages,
+    LogTemplates,
+)
 
 if TYPE_CHECKING:
     from ....config.container import Container
@@ -332,7 +336,7 @@ class EventCog(commands.Cog):
         if not (self._chat_logging and logger.isEnabledFor(logging.DEBUG)):
             return
 
-        snippet = (message.content[:80] + "…") if len(message.content) > 80 else message.content
+        snippet = (message.content[:UIConstants.TITLE_TRUNCATION] + "…") if len(message.content) > UIConstants.TITLE_TRUNCATION else message.content
         logger.debug("Message by %s: %s", message.author.display_name, snippet)
 
     @commands.Cog.listener()
@@ -405,7 +409,7 @@ class EventCog(commands.Cog):
     async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
         if isinstance(error, commands.CommandOnCooldown):
             retry_after = error.retry_after
-            time_str = f"{retry_after:.1f}s" if retry_after >= 1 else f"{retry_after * 1000:.0f}ms"
+            time_str = f"{retry_after:.1f}s" if retry_after >= 1 else f"{retry_after * UIConstants.MS_PER_SECOND:.0f}ms"
             logger.debug(
                 "Cooldown triggered for command '%s' by %s (%.2fs remaining)",
                 getattr(ctx.command, "qualified_name", "<unknown>"),

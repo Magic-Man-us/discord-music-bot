@@ -10,6 +10,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from discord_music_player.domain.shared.constants import DiscordEmbedLimits, UIConstants
 from discord_music_player.domain.shared.messages import (
     DiscordUIMessages,
     ErrorMessages,
@@ -111,16 +112,16 @@ class InfoCog(commands.Cog):
         self._add_member_optional_fields(embed, member)
 
     def _add_member_roles_field(self, embed: discord.Embed, member: discord.Member) -> None:
-        roles = [r for r in member.roles if r.name != "@everyone"]
+        roles = [r for r in member.roles if r.name != UIConstants.EVERYONE_ROLE]
         roles_sorted = sorted(roles, key=lambda r: r.position, reverse=True)
         top_roles = roles_sorted[:10]
         roles_value = ", ".join(r.mention for r in top_roles) or "-"
         embed.add_field(name=f"Roles ({len(roles)})", value=roles_value, inline=False)
 
     def _add_member_role_summary(self, embed: discord.Embed, member: discord.Member) -> None:
-        if member.top_role.name != "@everyone":
+        if member.top_role.name != UIConstants.EVERYONE_ROLE:
             embed.add_field(name="Top Role", value=member.top_role.mention, inline=True)
-        role_count = len([r for r in member.roles if r.name != "@everyone"])
+        role_count = len([r for r in member.roles if r.name != UIConstants.EVERYONE_ROLE])
         embed.add_field(name="Role Count", value=str(role_count), inline=True)
 
     def _add_member_optional_fields(self, embed: discord.Embed, member: discord.Member) -> None:
@@ -163,7 +164,7 @@ class InfoCog(commands.Cog):
         )
 
         content = (message.content or "").strip()
-        snippet = (content[:256] + "…") if len(content) > 256 else content or "-"
+        snippet = (content[:DiscordEmbedLimits.MESSAGE_CONTENT_SNIPPET] + "…") if len(content) > DiscordEmbedLimits.MESSAGE_CONTENT_SNIPPET else content or "-"
         embed.add_field(name="Content", value=snippet, inline=False)
 
         embed.add_field(name="Attachments", value=str(len(message.attachments)), inline=True)

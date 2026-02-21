@@ -10,7 +10,8 @@ from discord import app_commands
 from discord.ext import commands
 
 from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.shared.messages import DiscordUIMessages
+from discord_music_player.domain.shared.constants import UIConstants
+from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
 from discord_music_player.domain.shared.types import DiscordSnowflake
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
@@ -67,7 +68,7 @@ class PlaybackCog(commands.Cog):
             raw_seconds = parse_timestamp(timestamp)
             if raw_seconds is None:
                 await interaction.response.send_message(
-                    "Invalid timestamp format. Use `1:30`, `1:30:00`, or seconds like `90`.",
+                    DiscordUIMessages.ERROR_INVALID_TIMESTAMP,
                     ephemeral=True,
                 )
                 return
@@ -174,7 +175,7 @@ class PlaybackCog(commands.Cog):
                 if len(listeners) > LimitConstants.LONG_TRACK_VOTE_BYPASS_LISTENERS:
                     if not interaction.channel_id:
                         await interaction.followup.send(
-                            "Cannot start vote: no channel context.", ephemeral=True
+                            DiscordUIMessages.ERROR_NO_CHANNEL_CONTEXT, ephemeral=True
                         )
                         return
 
@@ -312,7 +313,7 @@ class PlaybackCog(commands.Cog):
         )
         content = DiscordUIMessages.REQUESTER_LEFT_PROMPT.format(
             requester_name=requester_name,
-            track_title=truncate(track.title, 80),
+            track_title=truncate(track.title, UIConstants.TITLE_TRUNCATION),
         )
         message = await channel.send(content, view=view)
         view.set_message(message)
@@ -436,6 +437,6 @@ class PlaybackCog(commands.Cog):
 async def setup(bot: commands.Bot) -> None:
     container = getattr(bot, "container", None)
     if container is None:
-        raise RuntimeError("Container not found on bot instance")
+        raise RuntimeError(ErrorMessages.CONTAINER_NOT_FOUND)
 
     await bot.add_cog(PlaybackCog(bot, container))

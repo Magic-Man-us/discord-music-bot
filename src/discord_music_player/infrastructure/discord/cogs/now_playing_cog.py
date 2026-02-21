@@ -9,7 +9,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from discord_music_player.domain.shared.messages import DiscordUIMessages
+from discord_music_player.domain.shared.constants import AnalyticsConstants, UIConstants
+from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     send_ephemeral,
@@ -83,7 +84,7 @@ class NowPlayingCog(commands.Cog):
             return
 
         history_repo = self.container.history_repository
-        tracks = await history_repo.get_recent(interaction.guild.id, limit=10)
+        tracks = await history_repo.get_recent(interaction.guild.id, limit=AnalyticsConstants.DEFAULT_LEADERBOARD_LIMIT)
         if not tracks:
             await send_ephemeral(interaction, DiscordUIMessages.STATE_NO_TRACKS_PLAYED_YET)
             return
@@ -92,7 +93,7 @@ class NowPlayingCog(commands.Cog):
         for index, history_track in enumerate(tracks, start=1):
             parts: list[str] = []
 
-            title = truncate(history_track.title, 80)
+            title = truncate(history_track.title, UIConstants.TITLE_TRUNCATION)
             parts.append(f"**{index}.** [{title}]({history_track.webpage_url})")
 
             artist_or_uploader = history_track.artist or history_track.uploader
@@ -125,6 +126,6 @@ class NowPlayingCog(commands.Cog):
 async def setup(bot: commands.Bot) -> None:
     container = getattr(bot, "container", None)
     if container is None:
-        raise RuntimeError("Container not found on bot instance")
+        raise RuntimeError(ErrorMessages.CONTAINER_NOT_FOUND)
 
     await bot.add_cog(NowPlayingCog(bot, container))

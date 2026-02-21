@@ -10,7 +10,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from discord_music_player.domain.shared.messages import DiscordUIMessages
+from discord_music_player.domain.shared.enums import RadioAction
+from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
 )
@@ -55,8 +56,8 @@ class RadioCog(commands.Cog):
         assert interaction.guild is not None
 
         # Handle "clear" action
-        action_value = action.value if action else "toggle"
-        if action_value == "clear":
+        action_value = action.value if action else RadioAction.TOGGLE
+        if action_value == RadioAction.CLEAR:
             await interaction.response.defer(ephemeral=True)
             radio_service = self.container.radio_service
             queue_service = self.container.queue_service
@@ -69,12 +70,12 @@ class RadioCog(commands.Cog):
 
             if count > 0:
                 await interaction.followup.send(
-                    f"\U0001f4fb Radio disabled. Removed **{count}** AI recommendation(s) from the queue.",
+                    DiscordUIMessages.RADIO_CLEARED_WITH_COUNT.format(count=count),
                     ephemeral=True,
                 )
             else:
                 await interaction.followup.send(
-                    "\U0001f4fb Radio disabled. No AI recommendations were in the queue.",
+                    DiscordUIMessages.RADIO_CLEARED_EMPTY,
                     ephemeral=True,
                 )
             return
@@ -152,6 +153,6 @@ class RadioCog(commands.Cog):
 async def setup(bot: commands.Bot) -> None:
     container = getattr(bot, "container", None)
     if container is None:
-        raise RuntimeError("Container not found on bot instance")
+        raise RuntimeError(ErrorMessages.CONTAINER_NOT_FOUND)
 
     await bot.add_cog(RadioCog(bot, container))

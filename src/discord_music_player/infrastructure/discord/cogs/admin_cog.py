@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 import discord
 from discord.ext import commands
 
+from discord_music_player.domain.shared.constants import DiscordEmbedLimits, UIConstants
+from discord_music_player.domain.shared.enums import SyncScope
 from discord_music_player.domain.shared.messages import (
     DiscordUIMessages,
     ErrorMessages,
@@ -115,7 +117,7 @@ class AdminCog(commands.Cog):
         try:
             scope_lower = scope.strip().lower()
 
-            if scope_lower == "global":
+            if scope_lower == SyncScope.GLOBAL:
                 synced = await self.bot.tree.sync()
                 await self._reply(
                     ctx, DiscordUIMessages.SUCCESS_SYNCED_GLOBAL.format(count=len(synced))
@@ -148,7 +150,8 @@ class AdminCog(commands.Cog):
             def format_names(cmds: list[discord.app_commands.AppCommand]) -> str:
                 names = [f"/{c.name}" for c in cmds]
                 result = ", ".join(names) or "-"
-                return result[:500] + "…" if len(result) > 500 else result
+                limit = DiscordEmbedLimits.SLASH_STATUS_TRUNCATION
+                return result[:limit] + "…" if len(result) > limit else result
 
             embed = discord.Embed(
                 title=DiscordUIMessages.EMBED_SLASH_COMMAND_STATUS, color=discord.Color.blurple()
@@ -365,7 +368,7 @@ class AdminCog(commands.Cog):
             if issues:
                 embed.add_field(
                     name="Issues",
-                    value="\n".join(f"• {i}" for i in issues)[:1024],
+                    value="\n".join(f"• {i}" for i in issues)[:DiscordEmbedLimits.EMBED_FIELD_VALUE_MAX],
                     inline=False,
                 )
 
@@ -383,7 +386,7 @@ class AdminCog(commands.Cog):
     async def status(self, ctx: commands.Context) -> None:
         embed = discord.Embed(title=DiscordUIMessages.EMBED_BOT_STATUS, color=discord.Color.green())
         embed.add_field(name="Guilds", value=str(len(self.bot.guilds)), inline=True)
-        embed.add_field(name="Latency", value=f"{self.bot.latency * 1000:.0f}ms", inline=True)
+        embed.add_field(name="Latency", value=f"{self.bot.latency * UIConstants.MS_PER_SECOND:.0f}ms", inline=True)
 
         embed.add_field(name="Voice Connections", value=str(len(self.bot.voice_clients)), inline=True)
         embed.add_field(name="Extensions", value=str(len(self.bot.extensions)), inline=True)

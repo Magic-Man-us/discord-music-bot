@@ -281,3 +281,44 @@ class LimitConstants:
     MAX_DISCORD_SNOWFLAKE = 2**64
     MIN_COMMAND_PREFIX_LENGTH = 1
     MAX_COMMAND_PREFIX_LENGTH = 5
+
+
+class DiscordEmbedLimits:
+    """Discord API embed and message size constraints."""
+
+    EMBED_FIELD_VALUE_MAX = 1024
+    SLASH_STATUS_TRUNCATION = 500
+    MESSAGE_CONTENT_SNIPPET = 256
+
+
+class HealthConstants:
+    """Health monitoring thresholds and intervals."""
+
+    DEFAULT_FAST_INTERVAL = 180
+    DEFAULT_DETAILED_INTERVAL = 300
+    LATENCY_OK_MS = 200
+    LATENCY_WARN_MS = 800
+    LATENCY_RESET_FACTOR = 0.6
+
+
+class AnalyticsConstants:
+    """Analytics and charting defaults."""
+
+    BLURPLE = 0x5865F2
+    WEEKDAY_NAMES = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+    CHART_LABEL_TRUNCATION = 40
+    LEADERBOARD_LINE_TRUNCATION = 50
+    DEFAULT_LEADERBOARD_LIMIT = 10
+    ACTIVITY_CHART_FILENAME = "activity.png"
+    GENRE_TOP_N = 10
+    ACTIVITY_DAYS_WINDOW = 30
+
+
+class UIConstants:
+    """Cross-cog UI presentation constants."""
+
+    TITLE_TRUNCATION = 80
+    QUEUE_PER_PAGE = 10
+    UNKNOWN_FALLBACK = "Unknown"
+    EVERYONE_ROLE = "@everyone"
+    MS_PER_SECOND = 1000

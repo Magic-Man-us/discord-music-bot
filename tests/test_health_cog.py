@@ -84,12 +84,14 @@ import discord
 import pytest
 from discord.ext import tasks
 
+from discord_music_player.domain.shared.constants import HealthConstants
 from discord_music_player.infrastructure.discord.cogs.health_cog import (
-    LATENCY_OK_MS,
-    LATENCY_WARN_MS,
     DetailedStats,
     HealthCog,
 )
+
+LATENCY_OK_MS = HealthConstants.LATENCY_OK_MS
+LATENCY_WARN_MS = HealthConstants.LATENCY_WARN_MS
 from discord_music_player.infrastructure.persistence.database import DatabaseStats
 
 # =============================================================================

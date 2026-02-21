@@ -422,6 +422,25 @@ class DiscordUIMessages:
     ANALYTICS_NO_DATA = "No music has been played yet in this server."
     ANALYTICS_GENRE_UNAVAILABLE = "Genre data unavailable (AI service not configured)."
 
+    # Validation Messages
+    ERROR_INVALID_TIMESTAMP = (
+        "Invalid timestamp format. Use `1:30`, `1:30:00`, or seconds like `90`."
+    )
+    ERROR_NO_CHANNEL_CONTEXT = "Cannot start vote: no channel context."
+
+    # Shuffle History
+    SHUFFLE_HISTORY_QUEUED = (
+        "\U0001f500 Shuffled and queued **{count}** tracks from history."
+    )
+
+    # Radio Clear
+    RADIO_CLEARED_WITH_COUNT = (
+        "\U0001f4fb Radio disabled. Removed **{count}** AI recommendation(s) from the queue."
+    )
+    RADIO_CLEARED_EMPTY = (
+        "\U0001f4fb Radio disabled. No AI recommendations were in the queue."
+    )
+
     # Up Next
     UP_NEXT_NONE = "No Track Queued"
 

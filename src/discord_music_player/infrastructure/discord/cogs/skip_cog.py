@@ -9,7 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from discord_music_player.domain.shared.messages import DiscordUIMessages
+from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
 from discord_music_player.domain.voting.value_objects import VoteResult
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     can_force_skip,
@@ -143,6 +143,6 @@ class SkipCog(commands.Cog):
 async def setup(bot: commands.Bot) -> None:
     container = getattr(bot, "container", None)
     if container is None:
-        raise RuntimeError("Container not found on bot instance")
+        raise RuntimeError(ErrorMessages.CONTAINER_NOT_FOUND)
 
     await bot.add_cog(SkipCog(bot, container))
