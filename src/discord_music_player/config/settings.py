@@ -8,6 +8,14 @@ from typing import Literal
 from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ..domain.shared.types import (
+    DiscordSnowflake,
+    NonEmptyStr,
+    NonNegativeInt,
+    PositiveInt,
+    UnitInterval,
+    VolumeFloat,
+)
 from ..domain.shared.validators import validate_discord_snowflake
 
 
@@ -15,19 +23,19 @@ class DatabaseSettings(BaseModel):
 
     model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
 
-    url: str = Field(
+    url: NonEmptyStr = Field(
         default="sqlite:///data/bot.db",
         validation_alias=AliasChoices("url", "database_url", "db_url"),
     )
-    pool_size: int = Field(default=5, ge=1, le=100)
+    pool_size: PositiveInt = Field(default=5, ge=1, le=100)
     echo: bool = False
-    busy_timeout_ms: int = Field(
+    busy_timeout_ms: PositiveInt = Field(
         default=5000,
         ge=1000,
         le=30000,
         validation_alias=AliasChoices("busy_timeout_ms", "busy_timeout"),
     )
-    connection_timeout_s: int = Field(
+    connection_timeout_s: PositiveInt = Field(
         default=10,
         ge=1,
         le=60,
@@ -49,19 +57,19 @@ class DiscordSettings(BaseModel):
     token: SecretStr = Field(
         default=SecretStr(""), validation_alias=AliasChoices("token", "bot_token", "discord_token")
     )
-    command_prefix: str = Field(
+    command_prefix: NonEmptyStr = Field(
         default="!",
         min_length=1,
         max_length=5,
         validation_alias=AliasChoices("command_prefix", "prefix"),
     )
-    owner_ids: tuple[int, ...] = Field(
+    owner_ids: tuple[DiscordSnowflake, ...] = Field(
         default_factory=tuple, validation_alias=AliasChoices("owner_ids", "owners")
     )
-    guild_ids: tuple[int, ...] = Field(
+    guild_ids: tuple[DiscordSnowflake, ...] = Field(
         default_factory=tuple, validation_alias=AliasChoices("guild_ids", "guilds")
     )
-    test_guild_ids: tuple[int, ...] = Field(
+    test_guild_ids: tuple[DiscordSnowflake, ...] = Field(
         default_factory=tuple, validation_alias=AliasChoices("test_guild_ids", "test_guilds")
     )
     sync_on_startup: bool = True
@@ -80,8 +88,8 @@ class AudioSettings(BaseModel):
 
     model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
 
-    default_volume: float = Field(default=0.5, ge=0.0, le=2.0)
-    max_queue_size: int = Field(default=50, ge=1, le=1000)
+    default_volume: VolumeFloat = Field(default=0.5, ge=0.0, le=2.0)
+    max_queue_size: PositiveInt = Field(default=50, ge=1, le=1000)
     ffmpeg_options: dict[str, str] = Field(
         default_factory=lambda: {
             "before_options": (
@@ -91,8 +99,8 @@ class AudioSettings(BaseModel):
             "options": "-vn -bufsize 64k",
         }
     )
-    ytdlp_format: str = "bestaudio/best"
-    pot_server_url: str = Field(
+    ytdlp_format: NonEmptyStr = "bestaudio/best"
+    pot_server_url: NonEmptyStr = Field(
         default="http://127.0.0.1:4416",
         validation_alias=AliasChoices("pot_server_url", "bgutil_pot_server_url"),
     )
@@ -102,15 +110,15 @@ class AISettings(BaseModel):
 
     model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
 
-    model: str = Field(
+    model: NonEmptyStr = Field(
         default="openai:gpt-5-mini", validation_alias=AliasChoices("model", "ai_model")
     )
-    max_tokens: int = Field(default=500, ge=1, le=4096)
+    max_tokens: PositiveInt = Field(default=500, ge=1, le=4096)
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    cache_ttl_seconds: int = Field(
+    cache_ttl_seconds: NonNegativeInt = Field(
         default=3600, ge=0, validation_alias=AliasChoices("cache_ttl_seconds", "cache_ttl")
     )
-    shuffle_model: str = Field(
+    shuffle_model: NonEmptyStr = Field(
         default="anthropic:claude-haiku-4-5-20251001",
         validation_alias=AliasChoices("shuffle_model", "ai_shuffle_model"),
     )
@@ -131,25 +139,25 @@ class VotingSettings(BaseModel):
 
     model_config = SettingsConfigDict(frozen=True, strict=True)
 
-    skip_threshold_percentage: float = Field(default=0.5, ge=0.0, le=1.0)
-    min_voters: int = Field(default=1, ge=1)
-    auto_skip_listener_count: int = Field(default=2, ge=1)
+    skip_threshold_percentage: UnitInterval = Field(default=0.5, ge=0.0, le=1.0)
+    min_voters: PositiveInt = Field(default=1, ge=1)
+    auto_skip_listener_count: PositiveInt = Field(default=2, ge=1)
 
 
 class RadioSettings(BaseModel):
 
     model_config = SettingsConfigDict(frozen=True, strict=True)
 
-    default_count: int = Field(default=5, ge=1, le=10)
-    max_tracks_per_session: int = Field(default=50, ge=1, le=200)
+    default_count: PositiveInt = Field(default=5, ge=1, le=10)
+    max_tracks_per_session: PositiveInt = Field(default=50, ge=1, le=200)
 
 
 class CleanupSettings(BaseModel):
 
     model_config = SettingsConfigDict(frozen=True, strict=True)
 
-    stale_session_hours: int = Field(default=24, ge=1)
-    cleanup_interval_minutes: int = Field(default=30, ge=1)
+    stale_session_hours: PositiveInt = Field(default=24, ge=1)
+    cleanup_interval_minutes: PositiveInt = Field(default=30, ge=1)
 
 
 class Settings(BaseSettings):
@@ -165,7 +173,7 @@ class Settings(BaseSettings):
 
     environment: Literal["development", "production", "test"] = "development"
     debug: bool = False
-    log_level: str = "INFO"
+    log_level: NonEmptyStr = "INFO"
 
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     discord: DiscordSettings = Field(default_factory=DiscordSettings)

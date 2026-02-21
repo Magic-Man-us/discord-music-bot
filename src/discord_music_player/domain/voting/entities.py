@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.shared.datetime_utils import utcnow
 from discord_music_player.domain.shared.messages import ErrorMessages
-from discord_music_player.domain.shared.types import DiscordSnowflake, PositiveInt
+from discord_music_player.domain.shared.types import DiscordSnowflake, PositiveInt, UtcDatetimeField
 from discord_music_player.domain.voting.value_objects import VoteType
 
 
@@ -21,7 +21,7 @@ class Vote(BaseModel):
 
     user_id: DiscordSnowflake
     vote_type: VoteType
-    timestamp: datetime = Field(default_factory=utcnow)
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
     def __hash__(self) -> int:
         return hash((self.user_id, self.vote_type))
@@ -39,9 +39,9 @@ class VoteSession(BaseModel):
     track_id: TrackId
     vote_type: VoteType
     threshold: PositiveInt
-    started_at: datetime = Field(default_factory=utcnow)
-    expires_at: datetime | None = None
-    _voters: set[int] = set()
+    started_at: UtcDatetimeField = Field(default_factory=utcnow)
+    expires_at: UtcDatetimeField | None = None
+    _voters: set[DiscordSnowflake] = set()
 
     DEFAULT_EXPIRATION_MINUTES: ClassVar[int] = 5
 
@@ -77,10 +77,10 @@ class VoteSession(BaseModel):
         return utcnow() > self.expires_at
 
     @property
-    def voters(self) -> frozenset[int]:
+    def voters(self) -> frozenset[DiscordSnowflake]:
         return frozenset(self._voters)
 
-    def add_vote(self, user_id: int) -> bool:
+    def add_vote(self, user_id: DiscordSnowflake) -> bool:
         """Add a vote. Returns True if this vote caused the threshold to be met."""
         if self.has_voted(user_id):
             return False
@@ -88,13 +88,13 @@ class VoteSession(BaseModel):
         self._voters.add(user_id)
         return self.is_threshold_met
 
-    def remove_vote(self, user_id: int) -> bool:
+    def remove_vote(self, user_id: DiscordSnowflake) -> bool:
         if user_id in self._voters:
             self._voters.remove(user_id)
             return True
         return False
 
-    def has_voted(self, user_id: int) -> bool:
+    def has_voted(self, user_id: DiscordSnowflake) -> bool:
         return user_id in self._voters
 
     def reset(self, new_track_id: TrackId | None = None) -> None:

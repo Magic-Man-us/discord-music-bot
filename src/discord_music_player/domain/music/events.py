@@ -16,6 +16,7 @@ from discord_music_player.domain.shared.types import (
 )
 
 from .value_objects import (
+    LoopMode,
     OptionalTrackIdField,
     SessionDestroyReason,
     SkipReason,
@@ -195,8 +196,8 @@ class VoiceChannelLeft(MusicEvent):
 class LoopModeChanged(MusicEvent):
     event_type: Literal["LoopModeChanged"] = "LoopModeChanged"
     guild_id: DiscordSnowflake
-    old_mode: NonEmptyStr
-    new_mode: NonEmptyStr
+    old_mode: LoopMode
+    new_mode: LoopMode
     changed_by_id: DiscordSnowflake | None = None
     timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 

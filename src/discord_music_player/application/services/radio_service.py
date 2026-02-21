@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from ...domain.music.entities import Track
 from ...domain.recommendations.services import RecommendationDomainService
 from ...domain.shared.messages import LogTemplates
+from ...domain.shared.types import NonNegativeInt
 
 if TYPE_CHECKING:
     from ...config.settings import RadioSettings
@@ -25,13 +26,13 @@ class _RadioState(BaseModel):
 
     enabled: bool = False
     seed_track_title: str = ""
-    tracks_generated: int = 0
+    tracks_generated: NonNegativeInt = 0
 
 
 class RadioToggleResult(BaseModel):
 
     enabled: bool
-    tracks_added: int = 0
+    tracks_added: NonNegativeInt = 0
     seed_title: str = ""
     message: str = ""
 

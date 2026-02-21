@@ -17,13 +17,14 @@ from discord_music_player.domain.recommendations.entities import (
     RecommendationRequest,
 )
 from discord_music_player.domain.shared.messages import LogTemplates
+from discord_music_player.domain.shared.types import HttpUrlStr, NonEmptyStr, NonNegativeFloat
 
 
 class AIRecommendationItem(BaseModel):
-    title: str = Field(..., min_length=1)
-    artist: str | None = None
+    title: NonEmptyStr = Field(...)
+    artist: NonEmptyStr | None = None
     query: str = ""
-    url: str | None = None
+    url: HttpUrlStr | None = None
 
     def to_domain(self) -> Recommendation:
         query = self.query or f"{self.artist or ''} {self.title}".strip()
@@ -76,7 +77,7 @@ Format each recommendation with:
 
 class CacheEntry(BaseModel):
     data: list[dict[str, Any]]
-    created_at: float = Field(default_factory=time.time)
+    created_at: NonNegativeFloat = Field(default_factory=time.time)
 
     def is_expired(self, ttl_seconds: int) -> bool:
         return (time.time() - self.created_at) > ttl_seconds

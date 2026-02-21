@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from ...domain.music.entities import Track
 from ...domain.music.value_objects import LoopMode
 from ...domain.shared.messages import LogTemplates
+from ...domain.shared.types import NonNegativeInt
 
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository
@@ -22,8 +23,8 @@ logger = logging.getLogger(__name__)
 class EnqueueResult(BaseModel):
     success: bool
     track: Track | None = None
-    position: int = 0
-    queue_length: int = 0
+    position: NonNegativeInt = 0
+    queue_length: NonNegativeInt = 0
     message: str = ""
     should_start: bool = False
 
@@ -32,8 +33,8 @@ class QueueInfo(BaseModel):
 
     current_track: Track | None
     upcoming_tracks: list[Track]
-    total_length: int
-    total_duration_seconds: int | None
+    total_length: NonNegativeInt
+    total_duration_seconds: NonNegativeInt | None
 
     @property
     def tracks(self) -> list[Track]:

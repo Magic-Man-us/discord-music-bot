@@ -7,7 +7,10 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel
+
 from discord_music_player.domain.shared.messages import LogTemplates
+from discord_music_player.domain.shared.types import NonNegativeInt
 
 if TYPE_CHECKING:
     from ...config.settings import CleanupSettings
@@ -115,24 +118,14 @@ class CleanupJob:
         return self._running
 
 
-class CleanupStats:
-    def __init__(self) -> None:
-        self.sessions_cleaned: int = 0
-        self.history_cleaned: int = 0
-        self.cache_cleaned: int = 0
-        self.votes_cleaned: int = 0
+class CleanupStats(BaseModel):
+    sessions_cleaned: NonNegativeInt = 0
+    history_cleaned: NonNegativeInt = 0
+    cache_cleaned: NonNegativeInt = 0
+    votes_cleaned: NonNegativeInt = 0
 
     @property
     def total_cleaned(self) -> int:
         return (
             self.sessions_cleaned + self.history_cleaned + self.cache_cleaned + self.votes_cleaned
         )
-
-    def to_dict(self) -> dict[str, int]:
-        return {
-            "sessions": self.sessions_cleaned,
-            "history": self.history_cleaned,
-            "cache": self.cache_cleaned,
-            "votes": self.votes_cleaned,
-            "total": self.total_cleaned,
-        }
