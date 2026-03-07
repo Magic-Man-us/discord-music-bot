@@ -21,6 +21,8 @@ class GetCurrentTrackQuery(BaseModel):
 
 class CurrentTrackInfo(BaseModel):
 
+    model_config = ConfigDict(frozen=True)
+
     guild_id: DiscordSnowflake
     track: Track | None = None
     is_playing: bool = False

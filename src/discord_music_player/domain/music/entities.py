@@ -14,6 +14,7 @@ from discord_music_player.domain.music.value_objects import (
     TrackId,
 )
 from discord_music_player.domain.shared.datetime_utils import utcnow
+from discord_music_player.domain.shared.constants import LimitConstants
 from discord_music_player.domain.shared.exceptions import (
     BusinessRuleViolationError,
     InvalidOperationError,
@@ -88,6 +89,15 @@ class Track(BaseModel):
             }
         )
 
+    def with_resolved(self, resolved: Track) -> Track:
+        """Return a copy of this track enriched with data from a resolved Track.
+
+        Fields on the resolved track take priority when present, but existing
+        requester metadata and the original webpage_url are preserved.
+        """
+        resolved_dump = resolved.model_dump(exclude_none=True, exclude={"id", "requested_by_id", "requested_by_name", "requested_at", "is_from_recommendation"})
+        return self.model_copy(update=resolved_dump)
+
     def was_requested_by(self, user_id: DiscordSnowflake) -> bool:
         return self.requested_by_id == user_id
 
@@ -97,7 +107,7 @@ class GuildPlaybackSession(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    MAX_QUEUE_SIZE: ClassVar[int] = 50
+    MAX_QUEUE_SIZE: ClassVar[int] = LimitConstants.MAX_QUEUE_SIZE
 
     guild_id: DiscordSnowflake
     queue: list[Track] = Field(default_factory=list)

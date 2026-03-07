@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from ...domain.music.entities import Track
 from ...domain.music.value_objects import LoopMode
+from ...domain.shared.datetime_utils import utcnow
 from ...domain.shared.messages import LogTemplates
 from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, QueuePositionInt
-from .queue_models import EnqueueResult, QueueInfo
+from .queue_models import EnqueueResult, QueueSnapshot
 
 if TYPE_CHECKING:
     from ...domain.music.queue_service import QueueDomainService
@@ -57,7 +57,7 @@ class QueueApplicationService:
         track_with_requester = track.with_requester(
             user_id=user_id,
             user_name=user_name,
-            requested_at=datetime.now(UTC),
+            requested_at=utcnow(),
         )
 
         position = session.enqueue(track_with_requester)
@@ -104,7 +104,7 @@ class QueueApplicationService:
         track_with_requester = track.with_requester(
             user_id=user_id,
             user_name=user_name,
-            requested_at=datetime.now(UTC),
+            requested_at=utcnow(),
         )
 
         position = session.enqueue_next(track_with_requester)
@@ -175,10 +175,10 @@ class QueueApplicationService:
 
         return success
 
-    async def get_queue(self, guild_id: DiscordSnowflake) -> QueueInfo:
+    async def get_queue(self, guild_id: DiscordSnowflake) -> QueueSnapshot:
         session = await self._session_repo.get(guild_id)
         if session is None:
-            return QueueInfo(
+            return QueueSnapshot(
                 current_track=None,
                 upcoming_tracks=[],
                 total_length=0,
@@ -199,7 +199,7 @@ class QueueApplicationService:
             else:
                 has_all_durations = False
 
-        return QueueInfo(
+        return QueueSnapshot(
             current_track=session.current_track,
             upcoming_tracks=list(session.queue),
             total_length=session.queue_length + (1 if session.current_track else 0),

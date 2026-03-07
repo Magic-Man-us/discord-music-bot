@@ -159,21 +159,7 @@ class PlaybackApplicationService:
             if resolved is None:
                 raise ValueError(ErrorMessages.RESOLVER_RETURNED_NONE)
 
-            track = Track(
-                id=track.id,
-                title=resolved.title or track.title,
-                webpage_url=track.webpage_url,
-                stream_url=resolved.stream_url,
-                duration_seconds=resolved.duration_seconds or track.duration_seconds,
-                thumbnail_url=resolved.thumbnail_url or track.thumbnail_url,
-                artist=resolved.artist or track.artist,
-                uploader=resolved.uploader or track.uploader,
-                like_count=resolved.like_count or track.like_count,
-                view_count=resolved.view_count or track.view_count,
-                requested_by_id=track.requested_by_id,
-                requested_by_name=track.requested_by_name,
-                requested_at=track.requested_at,
-            )
+            track = track.with_resolved(resolved)
             session.set_current_track(track)
             return track
         except Exception:

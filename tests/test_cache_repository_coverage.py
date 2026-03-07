@@ -141,8 +141,8 @@ class TestCacheRepositoryEdgeCases:
 
         stats = await cache_repository.get_stats()
 
-        assert "total_entries" in stats
-        assert stats["total_entries"] == 1
-        assert "expired_entries" in stats
-        assert "oldest_entry" in stats
-        assert "newest_entry" in stats
+        assert stats.total_entries == 1
+        assert stats.expired_entries == 0
+        assert stats.valid_entries == 1
+        assert stats.oldest_entry is not None
+        assert stats.newest_entry is not None

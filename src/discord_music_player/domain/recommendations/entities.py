@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Annotated, ClassVar, Final
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Final
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -62,21 +62,24 @@ class RecommendationRequest(BaseModel):
 class Recommendation(BaseModel):
     """A single track recommendation that hasn't been resolved yet."""
 
+    model_config = ConfigDict(frozen=True)
+
     title: NonEmptyStr
     artist: NonEmptyStr | None = None
-    query: str = ""  # Search query for resolution (set by model validator)
+    query: str = ""  # Search query for resolution (derived from artist + title if empty)
     url: HttpUrlStr | None = None  # Optional direct URL
     confidence: UnitInterval = 1.0  # Confidence score from AI
     reason: NonEmptyStr | None = None  # Why this was recommended
 
-    @model_validator(mode="after")
-    def _set_default_query(self) -> Recommendation:
-        if not self.query:
-            if self.artist:
-                self.query = f"{self.artist} - {self.title}"
-            else:
-                self.query = self.title
-        return self
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_query(cls, data: Any) -> Any:
+        """Derive query from artist + title when not explicitly provided."""
+        if isinstance(data, dict) and not data.get("query"):
+            artist = data.get("artist")
+            title = data.get("title", "")
+            data["query"] = f"{artist} - {title}" if artist else title
+        return data
 
     @property
     def display_text(self) -> str:
@@ -93,6 +96,8 @@ class Recommendation(BaseModel):
 class RecommendationSet(BaseModel):
     """Aggregate grouping recommendations for a specific base track."""
 
+    model_config = ConfigDict()
+
     base_track_title: NonEmptyStr
     base_track_artist: NonEmptyStr | None = None
     recommendations: list[Recommendation] = Field(default_factory=list)
@@ -101,11 +106,14 @@ class RecommendationSet(BaseModel):
 
     DEFAULT_CACHE_HOURS: ClassVar[int] = 24
 
-    @model_validator(mode="after")
-    def _set_default_expires_at(self) -> RecommendationSet:
-        if self.expires_at is None:
-            self.expires_at = self.generated_at + timedelta(hours=self.DEFAULT_CACHE_HOURS)
-        return self
+    @model_validator(mode="before")
+    @classmethod
+    def _set_default_expires_at(cls, data: Any) -> Any:
+        """Set default expiration when not explicitly provided."""
+        if isinstance(data, dict) and data.get("expires_at") is None:
+            generated_at = data.get("generated_at") or utcnow()
+            data["expires_at"] = generated_at + timedelta(hours=cls.DEFAULT_CACHE_HOURS)
+        return data
 
     @property
     def is_expired(self) -> bool:

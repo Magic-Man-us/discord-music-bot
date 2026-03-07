@@ -2,19 +2,36 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+
 from discord_music_player.domain.recommendations.entities import Recommendation, RecommendationSet
 from discord_music_player.domain.recommendations.repository import RecommendationCacheRepository
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
+from discord_music_player.domain.shared.types import NonNegativeInt
 
 if TYPE_CHECKING:
     from ..database import Database
 
 logger = logging.getLogger(__name__)
+
+# TypeAdapter for list[Recommendation] — avoids manual dict plucking
+_recommendation_list_ta = TypeAdapter(list[Recommendation])
+
+
+class CacheStats(BaseModel):
+    """Cache statistics for the recommendation cache repository."""
+
+    model_config = ConfigDict(frozen=True)
+
+    total_entries: NonNegativeInt = 0
+    expired_entries: NonNegativeInt = 0
+    valid_entries: NonNegativeInt = 0
+    oldest_entry: datetime | None = None
+    newest_entry: datetime | None = None
 
 
 class SQLiteCacheRepository(RecommendationCacheRepository):
@@ -46,18 +63,9 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
             return None
 
         try:
-            recommendations_data = json.loads(row["recommendations_json"])
-            recommendations = [
-                Recommendation(
-                    title=r["title"],
-                    artist=r.get("artist"),
-                    query=r.get("query", r["title"]),
-                    url=r.get("url"),
-                    confidence=r.get("confidence", 1.0),
-                    reason=r.get("reason"),
-                )
-                for r in recommendations_data
-            ]
+            recommendations = _recommendation_list_ta.validate_json(
+                row["recommendations_json"]
+            )
 
             expires_at = None
             if row.get("expires_at"):
@@ -70,16 +78,17 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
                 generated_at=UtcDateTime.from_iso(row["generated_at"]).dt,
                 expires_at=expires_at,
             )
-        except (json.JSONDecodeError, KeyError) as e:
+        except (ValueError, KeyError) as e:
             logger.warning("Failed to parse cached recommendations: %s", e)
             return None
 
-    async def set(self, key: str, data: dict, ttl_seconds: int) -> None:
-        recs = [
-            Recommendation(title=title, artist=None, query=title)
-            for title in data.get("recommendations", [])
-        ]
-
+    async def set(
+        self,
+        key: str,
+        recommendations: list[Recommendation],
+        ttl_seconds: int,
+    ) -> None:
+        """Cache a list of recommendations under the given key."""
         now = UtcDateTime.now().dt
         expires_at = now + timedelta(seconds=int(ttl_seconds))
 
@@ -88,7 +97,7 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
         rs = RecommendationSet(
             base_track_title=base_track_title,
             base_track_artist=None,
-            recommendations=recs,
+            recommendations=recommendations,
             generated_at=now,
             expires_at=expires_at,
         )
@@ -101,19 +110,9 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
     async def save(self, recommendation_set: RecommendationSet) -> None:
         cache_key = recommendation_set.cache_key
 
-        recommendations_json = json.dumps(
-            [
-                {
-                    "title": r.title,
-                    "artist": r.artist,
-                    "query": r.query,
-                    "url": r.url,
-                    "confidence": r.confidence,
-                    "reason": r.reason,
-                }
-                for r in recommendation_set.recommendations
-            ]
-        )
+        recommendations_json = _recommendation_list_ta.dump_json(
+            recommendation_set.recommendations
+        ).decode()
 
         await self._db.execute(
             """
@@ -210,7 +209,7 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
         row = await self._db.fetch_one("SELECT COUNT(*) as count FROM recommendation_cache")
         return row["count"] if row else 0
 
-    async def get_stats(self) -> dict[str, int | datetime | None]:
+    async def get_stats(self) -> CacheStats:
         total = await self.count()
 
         expired_row = await self._db.fetch_one(
@@ -237,10 +236,10 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
             else None
         )
 
-        return {
-            "total_entries": total,
-            "expired_entries": expired,
-            "valid_entries": total - expired,
-            "oldest_entry": oldest,
-            "newest_entry": newest,
-        }
+        return CacheStats(
+            total_entries=total,
+            expired_entries=expired,
+            valid_entries=total - expired,
+            oldest_entry=oldest,
+            newest_entry=newest,
+        )

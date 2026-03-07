@@ -59,7 +59,7 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
             vote_type=VoteType(row["vote_type"]),
             threshold=row["threshold"],
             started_at=UtcDateTime.from_iso(row["started_at"]).dt,
-            _voters=voters,
+            initial_voters=voters,
         )
 
         if session.is_expired:
@@ -143,7 +143,7 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
                 )
                 session_id = cursor.lastrowid
 
-            for user_id in session._voters:
+            for user_id in session.voters:
                 await conn.execute(
                     "INSERT OR IGNORE INTO votes (vote_session_id, user_id) VALUES (?, ?)",
                     (session_id, user_id),

@@ -89,21 +89,9 @@ class YtDlpTrackInfo(BaseModel):
             return "Unknown Title"
         return v
 
-    @field_validator("like_count", "view_count", mode="before")
+    @field_validator("like_count", "view_count", "duration", mode="before")
     @classmethod
-    def _coerce_count(cls, v: Any) -> int | None:
-        """Coerce to non-negative int; return None for garbage values."""
-        if v is None:
-            return None
-        try:
-            val = int(v)
-            return val if val >= 0 else None
-        except (TypeError, ValueError):
-            return None
-
-    @field_validator("duration", mode="before")
-    @classmethod
-    def _coerce_duration(cls, v: Any) -> int | None:
+    def _coerce_nonneg_int(cls, v: Any) -> int | None:
         """Coerce to non-negative int; return None for garbage values."""
         if v is None:
             return None

@@ -4,18 +4,42 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, ConfigDict
 
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.repository import TrackHistoryRepository
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
 from discord_music_player.domain.shared.messages import LogTemplates
+from discord_music_player.domain.shared.types import NonEmptyStr, NonNegativeInt, UnitInterval
 
 if TYPE_CHECKING:
     from ..database import Database
 
 logger = logging.getLogger(__name__)
+
+
+class UserStats(BaseModel):
+    """Per-user listening statistics for a guild."""
+
+    model_config = ConfigDict(frozen=True)
+
+    total_tracks: NonNegativeInt = 0
+    unique_tracks: NonNegativeInt = 0
+    total_listen_time: NonNegativeInt = 0
+    skip_rate: UnitInterval = 0.0
+
+
+class GenreTrackInfo(BaseModel):
+    """Minimal track metadata used for genre classification."""
+
+    model_config = ConfigDict(frozen=True)
+
+    track_id: NonEmptyStr
+    title: NonEmptyStr
+    artist: NonEmptyStr | None = None
 
 
 class SQLiteHistoryRepository(TrackHistoryRepository):
@@ -59,15 +83,8 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             guild_id,
         )
 
-    async def get_guild_history(self, guild_id: int, limit: int = 10) -> list[Any]:
-        from dataclasses import dataclass
-
-        @dataclass
-        class _HistoryItem:
-            track: Track
-
-        tracks = await self.get_recent(guild_id, limit=limit)
-        return [_HistoryItem(track=t) for t in tracks]
+    async def get_guild_history(self, guild_id: int, limit: int = 10) -> list[Track]:
+        return await self.get_recent(guild_id, limit=limit)
 
     async def get_recent_titles(self, guild_id: int, limit: int = 10) -> list[str]:
         tracks = await self.get_recent(guild_id, limit=limit)
@@ -237,7 +254,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         )
         return [(row["title"], row["count"]) for row in rows]
 
-    async def get_user_stats(self, guild_id: int, user_id: int) -> dict:
+    async def get_user_stats(self, guild_id: int, user_id: int) -> UserStats:
         row = await self._db.fetch_one(
             """
             SELECT
@@ -251,18 +268,14 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             (guild_id, user_id),
         )
         if not row or row["total_tracks"] == 0:
-            return {
-                "total_tracks": 0,
-                "unique_tracks": 0,
-                "total_listen_time": 0,
-                "skip_rate": 0.0,
-            }
-        return {
-            "total_tracks": row["total_tracks"],
-            "unique_tracks": row["unique_tracks"],
-            "total_listen_time": row["total_listen_time"],
-            "skip_rate": row["skipped_count"] / row["total_tracks"],
-        }
+            return UserStats()
+
+        return UserStats(
+            total_tracks=row["total_tracks"],
+            unique_tracks=row["unique_tracks"],
+            total_listen_time=row["total_listen_time"],
+            skip_rate=row["skipped_count"] / row["total_tracks"],
+        )
 
     async def get_user_top_tracks(
         self, guild_id: int, user_id: int, limit: int = 10
@@ -321,7 +334,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
 
     async def get_user_tracks_for_genre(
         self, guild_id: int, user_id: int
-    ) -> list[dict[str, str | None]]:
+    ) -> list[GenreTrackInfo]:
         rows = await self._db.fetch_all(
             """
             SELECT track_id, title, artist
@@ -331,7 +344,11 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             (guild_id, user_id),
         )
         return [
-            {"track_id": row["track_id"], "title": row["title"], "artist": row.get("artist")}
+            GenreTrackInfo(
+                track_id=row["track_id"],
+                title=row["title"],
+                artist=row.get("artist"),
+            )
             for row in rows
         ]
 

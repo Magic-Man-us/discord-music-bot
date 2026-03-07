@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ..interfaces.voice_adapter import VoiceAdapter
 
 
-class SkipStatus(Enum):
+class SkipStatus(StrEnum):
     """Status codes for skip results."""
 
     SUCCESS = "success"
@@ -35,6 +35,8 @@ class SkipTrackCommand(BaseModel):
 
 
 class SkipResult(BaseModel):
+
+    model_config = ConfigDict(frozen=True)
 
     status: SkipStatus
     message: str

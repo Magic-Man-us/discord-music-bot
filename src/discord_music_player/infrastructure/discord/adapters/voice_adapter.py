@@ -69,7 +69,6 @@ class DiscordVoiceAdapter(VoiceAdapter):
         try:
             async with asyncio.timeout(CONNECT_TIMEOUT):
                 await channel.connect(self_deaf=True)
-            await self._ensure_self_deaf(guild, channel)
             logger.info(
                 LogTemplates.VOICE_CONNECTED,
                 channel.name,

@@ -5,19 +5,20 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from math import ceil
 
-from pydantic import BaseModel
 
-from discord_music_player.domain.shared.types import NonNegativeInt
+class VoiceWarmupTracker:
+    """Blocks interactions until a user has been in voice for ``warmup_seconds``.
 
+    This is a stateful service, not a data model — it maintains mutable
+    in-memory state that is not serialized or validated beyond construction.
+    """
 
-class VoiceWarmupTracker(BaseModel):
-    """Blocks interactions until a user has been in voice for ``warmup_seconds``."""
-
-    warmup_seconds: NonNegativeInt = 60
-
-    def __init__(self, **kwargs: object) -> None:
-        super().__init__(**kwargs)
-        object.__setattr__(self, "_joined_at", {})
+    def __init__(self, *, warmup_seconds: int = 60) -> None:
+        if warmup_seconds < 0:
+            msg = "warmup_seconds must be non-negative"
+            raise ValueError(msg)
+        self.warmup_seconds = warmup_seconds
+        self._joined_at: dict[tuple[int, int], datetime] = {}
 
     def mark_joined(
         self,

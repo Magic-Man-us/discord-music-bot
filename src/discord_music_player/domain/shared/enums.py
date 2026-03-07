@@ -40,3 +40,21 @@ class BotStatus(StrEnum):
 
     ONLINE = "online"
     OFFLINE = "offline"
+
+
+class LogLevel(StrEnum):
+    """Valid logging levels."""
+
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
+
+
+class EnvironmentType(StrEnum):
+    """Valid environment types."""
+
+    DEVELOPMENT = "development"
+    PRODUCTION = "production"
+    TEST = "test"

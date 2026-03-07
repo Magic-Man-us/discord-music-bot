@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 class DatabaseStats(BaseModel):
     """Result of get_stats() — typed instead of dict[str, Any]."""
 
-    model_config = ConfigDict(frozen=False)
+    model_config = ConfigDict(frozen=True)
     db_path: str | None = None
     initialized: bool = False
     tables: dict[str, NonNegativeInt] = Field(default_factory=dict)
@@ -414,47 +414,56 @@ class Database:
             return [dict(row) for row in rows]
 
     async def get_stats(self) -> DatabaseStats:
-        stats = DatabaseStats(
-            db_path=self._db_path,
-            initialized=self._initialized,
-        )
+        file_size_bytes: int | None = None
+        file_size_mb: float | None = None
+        tables: dict[str, int] = {}
+        page_count: int | None = None
+        page_size: int | None = None
+        error: str | None = None
 
         db_file = Path(self._db_path)
         if db_file.exists():
             st = db_file.stat()
-            stats.file_size_bytes = st.st_size
-            stats.file_size_mb = round(st.st_size / BYTES_PER_MB, 2)
+            file_size_bytes = st.st_size
+            file_size_mb = round(st.st_size / BYTES_PER_MB, 2)
 
-        if not self._initialized:
-            return stats
-
-        try:
-            async with self.connection() as conn:
-                cursor = await conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                )
-                tables = await cursor.fetchall()
-
-                for (table_name,) in tables:
-                    count_cursor = await conn.execute(
-                        f"SELECT COUNT(*) FROM {table_name}"  # noqa: S608
+        if self._initialized:
+            try:
+                async with self.connection() as conn:
+                    cursor = await conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
                     )
-                    count_row = await count_cursor.fetchone()
-                    stats.tables[table_name] = count_row[0] if count_row else 0
+                    table_rows = await cursor.fetchall()
 
-                page_cursor = await conn.execute(SQLPragmas.PAGE_COUNT)
-                page_count_row = await page_cursor.fetchone()
-                stats.page_count = page_count_row[0] if page_count_row else 0
+                    for (table_name,) in table_rows:
+                        count_cursor = await conn.execute(
+                            f"SELECT COUNT(*) FROM {table_name}"  # noqa: S608
+                        )
+                        count_row = await count_cursor.fetchone()
+                        tables[table_name] = count_row[0] if count_row else 0
 
-                page_size_cursor = await conn.execute(SQLPragmas.PAGE_SIZE)
-                page_size_row = await page_size_cursor.fetchone()
-                stats.page_size = page_size_row[0] if page_size_row else 0
+                    pc_cursor = await conn.execute(SQLPragmas.PAGE_COUNT)
+                    pc_row = await pc_cursor.fetchone()
+                    page_count = pc_row[0] if pc_row else 0
 
-        except Exception as e:
-            logger.error(LogTemplates.DATABASE_STATS_FAILED, e)
-            stats.error = str(e)
+                    ps_cursor = await conn.execute(SQLPragmas.PAGE_SIZE)
+                    ps_row = await ps_cursor.fetchone()
+                    page_size = ps_row[0] if ps_row else 0
 
-        return stats
+            except Exception as e:
+                logger.error(LogTemplates.DATABASE_STATS_FAILED, e)
+                error = str(e)
+
+        return DatabaseStats(
+            db_path=self._db_path,
+            initialized=self._initialized,
+            tables=tables,
+            file_size_bytes=file_size_bytes,
+            file_size_mb=file_size_mb,
+            page_count=page_count,
+            page_size=page_size,
+            error=error,
+        )
 
     async def validate_schema(self) -> SchemaValidationResult:
         result = SchemaValidationResult()

@@ -177,24 +177,6 @@ class DatabaseURLSchemes:
     MEMORY_SHARED_URI = "file:discord-music-player?mode=memory&cache=shared"
 
 
-class LogLevels:
-    """Valid logging levels."""
-
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARNING = "WARNING"
-    ERROR = "ERROR"
-    CRITICAL = "CRITICAL"
-
-
-class EnvironmentTypes:
-    """Valid environment types."""
-
-    DEVELOPMENT = "development"
-    PRODUCTION = "production"
-    TEST = "test"
-
-
 class HTTPHeaders:
     """HTTP header names and common values."""
 

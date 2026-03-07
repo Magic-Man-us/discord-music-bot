@@ -21,6 +21,8 @@ class GetQueueQuery(BaseModel):
 
 class QueueInfo(BaseModel):
 
+    model_config = ConfigDict(frozen=True)
+
     guild_id: DiscordSnowflake
     tracks: list[Track] = Field(default_factory=list)
     current_track: Track | None = None

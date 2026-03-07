@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from ...domain.music.entities import Track
 from ...domain.shared.types import NonNegativeInt
 
 
 class EnqueueResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     success: bool
     track: Track | None = None
     position: NonNegativeInt = 0
@@ -17,7 +19,8 @@ class EnqueueResult(BaseModel):
     should_start: bool = False
 
 
-class QueueInfo(BaseModel):
+class QueueSnapshot(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
     current_track: Track | None
     upcoming_tracks: list[Track]

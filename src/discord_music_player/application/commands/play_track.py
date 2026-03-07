@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.shared.types import DiscordSnowflake, NonEmptyStr, NonNegativeInt
+from discord_music_player.domain.shared.datetime_utils import utcnow
+from discord_music_player.domain.shared.types import (
+    DiscordSnowflake,
+    NonEmptyStr,
+    NonNegativeInt,
+    UtcDatetimeField,
+)
 
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository
@@ -17,7 +22,7 @@ if TYPE_CHECKING:
     from ..interfaces.voice_adapter import VoiceAdapter
 
 
-class PlayTrackStatus(Enum):
+class PlayTrackStatus(StrEnum):
     """Status codes for play track results."""
 
     SUCCESS = "success"
@@ -45,7 +50,7 @@ class PlayTrackCommand(BaseModel):
     play_next: bool = False
     want_recommendations: bool = False
     start_playing: bool = True
-    requested_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    requested_at: UtcDatetimeField = Field(default_factory=utcnow)
 
     @field_validator("query", mode="before")
     @classmethod

@@ -39,6 +39,8 @@ class TrackKey(BaseModel):
 
 
 class TrackedMessage(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     channel_id: DiscordSnowflake
     message_id: DiscordSnowflake
     track_key: TrackKey
@@ -53,6 +55,8 @@ class TrackedMessage(BaseModel):
 
 
 class GuildMessageState(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     now_playing: TrackedMessage | None = None
     queued: deque[TrackedMessage] = Field(default_factory=deque)
 

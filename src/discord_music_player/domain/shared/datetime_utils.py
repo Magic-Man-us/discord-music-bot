@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from .messages import ErrorMessages
 from .types import UtcDatetimeField
 
 

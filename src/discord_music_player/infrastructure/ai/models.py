@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 from typing import Final
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from discord_music_player.domain.recommendations.entities import Recommendation
 from discord_music_player.domain.shared.types import (
@@ -25,6 +25,8 @@ AI_TIMEOUT: Final[float] = 20.0
 
 class AIRecommendationItem(BaseModel):
     """A single recommendation item from the AI response."""
+
+    model_config = ConfigDict(frozen=True)
 
     title: NonEmptyStr
     artist: NonEmptyStr | None = None
@@ -44,6 +46,8 @@ class AIRecommendationItem(BaseModel):
 class AIRecommendationResponse(BaseModel):
     """Structured output returned by the AI agent."""
 
+    model_config = ConfigDict(frozen=True)
+
     recs: list[AIRecommendationItem] = Field(default_factory=list)
 
     def to_domain_list(self) -> list[Recommendation]:
@@ -52,6 +56,8 @@ class AIRecommendationResponse(BaseModel):
 
 class AICacheEntry(BaseModel):
     """Cached AI recommendation response."""
+
+    model_config = ConfigDict(frozen=True)
 
     data: list[AIRecommendationItem]
     created_at: NonNegativeFloat = Field(default_factory=time.time)
@@ -63,7 +69,7 @@ class AICacheEntry(BaseModel):
 class AICacheStats(BaseModel):
     """Cache statistics for the AI recommendation client."""
 
-    model_config = {"frozen": True}
+    model_config = ConfigDict(frozen=True)
 
     size: NonNegativeInt
     hits: NonNegativeInt

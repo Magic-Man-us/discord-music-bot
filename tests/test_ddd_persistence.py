@@ -300,7 +300,7 @@ class TestHistoryRepository:
         history = await history_repository.get_guild_history(guild_id, limit=10)
 
         assert len(history) == 1
-        assert history[0].track.title == sample_track.title
+        assert history[0].title == sample_track.title
 
     @pytest.mark.asyncio
     async def test_get_guild_history_respects_limit(self, history_repository, sample_track):
@@ -431,16 +431,21 @@ class TestCacheRepository:
     @pytest.mark.asyncio
     async def test_set_and_get_cache(self, cache_repository):
         """Test setting and getting a cache entry."""
+        from discord_music_player.domain.recommendations.entities import Recommendation
+
         key = "test-key-123"
-        data = {"recommendations": ["song1", "song2"], "metadata": {"count": 2}}
+        recommendations = [
+            Recommendation(title="song1", query="song1"),
+            Recommendation(title="song2", query="song2"),
+        ]
         ttl = 3600
 
-        await cache_repository.set(key, data, ttl)
+        await cache_repository.set(key, recommendations, ttl)
 
         result = await cache_repository.get(key)
 
         assert result is not None
-        assert [r.title for r in result.recommendations] == data["recommendations"]
+        assert [r.title for r in result.recommendations] == ["song1", "song2"]
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_cache(self, cache_repository):
@@ -451,9 +456,11 @@ class TestCacheRepository:
     @pytest.mark.asyncio
     async def test_delete_cache(self, cache_repository):
         """Test deleting a cache entry."""
+        from discord_music_player.domain.recommendations.entities import Recommendation
+
         key = "delete-me"
 
-        await cache_repository.set(key, {"data": "test"}, 3600)
+        await cache_repository.set(key, [Recommendation(title="test", query="test")], 3600)
         await cache_repository.delete(key)
 
         result = await cache_repository.get(key)
@@ -462,9 +469,15 @@ class TestCacheRepository:
     @pytest.mark.asyncio
     async def test_clear_all_cache(self, cache_repository):
         """Test clearing all cache entries."""
+        from discord_music_player.domain.recommendations.entities import Recommendation
+
         # Add multiple entries
         for i in range(5):
-            await cache_repository.set(f"key-{i}", {"index": i}, 3600)
+            await cache_repository.set(
+                f"key-{i}",
+                [Recommendation(title=f"song{i}", query=f"song{i}")],
+                3600,
+            )
 
         await cache_repository.clear_all()
 
@@ -540,7 +553,7 @@ class TestRepositoryIntegration:
         for guild_id in guilds:
             history = await history_repository.get_guild_history(guild_id, limit=10)
             assert len(history) == 1
-            assert str(guild_id) in history[0].track.title
+            assert str(guild_id) in history[0].title
 
 
 # === Domain Events Tests ===

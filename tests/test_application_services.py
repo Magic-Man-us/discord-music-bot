@@ -1309,16 +1309,15 @@ class TestPlaybackApplicationServiceEnsureStreamUrl:
         """Should resolve stream URL when not present."""
         session = GuildPlaybackSession(guild_id=123456)
 
-        # Mock resolved result with proper None values for optional fields
-        resolved = MagicMock()
-        resolved.title = "Resolved Title"
-        resolved.stream_url = "https://resolved.stream.com/audio"
-        resolved.duration_seconds = 200
-        resolved.thumbnail_url = "https://thumb.example.com/img.jpg"
-        resolved.artist = None
-        resolved.uploader = None
-        resolved.like_count = None
-        resolved.view_count = None
+        # Resolved Track with stream URL and metadata
+        resolved = Track(
+            id=TrackId("resolved123"),
+            title="Resolved Title",
+            webpage_url="https://youtube.com/watch?v=resolved123",
+            stream_url="https://resolved.stream.com/audio",
+            duration_seconds=200,
+            thumbnail_url="https://thumb.example.com/img.jpg",
+        )
         mock_audio_resolver.resolve.return_value = resolved
 
         result = await service._ensure_stream_url(session, track_without_stream, 123456)
@@ -1609,7 +1608,7 @@ class TestQueueInfoProperties:
 
     def test_tracks_property_alias(self):
         """tracks should be alias for upcoming_tracks."""
-        from discord_music_player.application.services.queue_models import QueueInfo
+        from discord_music_player.application.services.queue_models import QueueSnapshot
 
         tracks = [
             Track(
@@ -1624,7 +1623,7 @@ class TestQueueInfoProperties:
             ),
         ]
 
-        info = QueueInfo(
+        info = QueueSnapshot(
             current_track=None,
             upcoming_tracks=tracks,
             total_length=2,
@@ -1636,9 +1635,9 @@ class TestQueueInfoProperties:
 
     def test_total_tracks_property_alias(self):
         """total_tracks should be alias for total_length."""
-        from discord_music_player.application.services.queue_models import QueueInfo
+        from discord_music_player.application.services.queue_models import QueueSnapshot
 
-        info = QueueInfo(
+        info = QueueSnapshot(
             current_track=None,
             upcoming_tracks=[],
             total_length=5,
@@ -1650,9 +1649,9 @@ class TestQueueInfoProperties:
 
     def test_total_duration_property_alias(self):
         """total_duration should be alias for total_duration_seconds."""
-        from discord_music_player.application.services.queue_models import QueueInfo
+        from discord_music_player.application.services.queue_models import QueueSnapshot
 
-        info = QueueInfo(
+        info = QueueSnapshot(
             current_track=None,
             upcoming_tracks=[],
             total_length=0,
@@ -1664,9 +1663,9 @@ class TestQueueInfoProperties:
 
     def test_total_duration_property_none(self):
         """total_duration should return None when total_duration_seconds is None."""
-        from discord_music_player.application.services.queue_models import QueueInfo
+        from discord_music_player.application.services.queue_models import QueueSnapshot
 
-        info = QueueInfo(
+        info = QueueSnapshot(
             current_track=None,
             upcoming_tracks=[],
             total_length=0,

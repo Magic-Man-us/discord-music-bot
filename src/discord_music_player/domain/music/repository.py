@@ -4,10 +4,17 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.shared.types import DiscordSnowflake, NonEmptyStr, PositiveInt
+
+if TYPE_CHECKING:
+    from discord_music_player.infrastructure.persistence.repositories.history_repository import (
+        GenreTrackInfo,
+        UserStats,
+    )
 
 
 class SessionRepository(ABC):
@@ -138,7 +145,7 @@ class TrackHistoryRepository(ABC):
         ...
 
     @abstractmethod
-    async def get_user_stats(self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake) -> dict:
+    async def get_user_stats(self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake) -> UserStats:
         """Get personal stats for a user in a guild."""
         ...
 
@@ -169,6 +176,6 @@ class TrackHistoryRepository(ABC):
     @abstractmethod
     async def get_user_tracks_for_genre(
         self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake
-    ) -> list[dict[str, str | None]]:
-        """Get track metadata for genre classification. Returns dicts with track_id, title, artist."""
+    ) -> list[GenreTrackInfo]:
+        """Get track metadata for genre classification."""
         ...

@@ -501,7 +501,7 @@ class TestSettings:
         """Should raise ValidationError for invalid log level."""
         monkeypatch.setenv("LOG_LEVEL", "INVALID")
 
-        with pytest.raises(ValidationError, match="Invalid log level"):
+        with pytest.raises(ValidationError):
             Settings()
 
     def test_nested_validation_propagates(self, monkeypatch):

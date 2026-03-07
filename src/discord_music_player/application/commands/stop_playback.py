@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from ..interfaces.voice_adapter import VoiceAdapter
 
 
-class StopStatus(Enum):
+class StopStatus(StrEnum):
     """Status codes for stop results."""
 
     SUCCESS = "success"
@@ -33,6 +33,8 @@ class StopPlaybackCommand(BaseModel):
 
 
 class StopResult(BaseModel):
+
+    model_config = ConfigDict(frozen=True)
 
     status: StopStatus
     message: str

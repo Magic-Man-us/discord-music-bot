@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from discord_music_player.domain.shared.types import DiscordSnowflake, NonNegativeInt
 
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository
 
 
-class ClearStatus(Enum):
+class ClearStatus(StrEnum):
     """Status codes for clear queue results."""
 
     SUCCESS = "success"
@@ -30,6 +30,8 @@ class ClearQueueCommand(BaseModel):
 
 
 class ClearResult(BaseModel):
+
+    model_config = ConfigDict(frozen=True)
 
     status: ClearStatus
     message: str

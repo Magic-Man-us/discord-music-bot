@@ -164,7 +164,7 @@ class AnalyticsCog(commands.Cog):
         history_repo = self.container.history_repository
 
         user_stats = await history_repo.get_user_stats(guild_id, user_id)
-        if user_stats["total_tracks"] == 0:
+        if user_stats.total_tracks == 0:
             await interaction.followup.send(DiscordUIMessages.ANALYTICS_NO_DATA)
             return
 
@@ -178,14 +178,14 @@ class AnalyticsCog(commands.Cog):
             name=interaction.user.display_name,
             icon_url=interaction.user.display_avatar.url,
         )
-        embed.add_field(name="Total Plays", value=str(user_stats["total_tracks"]), inline=True)
-        embed.add_field(name="Unique Songs", value=str(user_stats["unique_tracks"]), inline=True)
+        embed.add_field(name="Total Plays", value=str(user_stats.total_tracks), inline=True)
+        embed.add_field(name="Unique Songs", value=str(user_stats.unique_tracks), inline=True)
         embed.add_field(
             name="Listen Time",
-            value=format_duration(user_stats["total_listen_time"]),
+            value=format_duration(user_stats.total_listen_time),
             inline=True,
         )
-        embed.add_field(name="Skip Rate", value=f"{user_stats['skip_rate']:.0%}", inline=True)
+        embed.add_field(name="Skip Rate", value=f"{user_stats.skip_rate:.0%}", inline=True)
 
         if top_tracks:
             top_lines = [f"{i+1}. {t[:50]} ({c}x)" for i, (t, c) in enumerate(top_tracks)]
@@ -219,7 +219,7 @@ class AnalyticsCog(commands.Cog):
         if not rows:
             return None
 
-        track_ids = list({row["track_id"] for row in rows})
+        track_ids = list({row.track_id for row in rows})
 
         # Look up cached genres
         cached = await genre_repo.get_genres(track_ids)
@@ -227,13 +227,13 @@ class AnalyticsCog(commands.Cog):
 
         # Classify uncached tracks
         if uncached_ids and classifier.is_available():
-            id_to_desc = {}
+            id_to_desc: dict[str, str] = {}
             for row in rows:
-                if row["track_id"] in uncached_ids and row["track_id"] not in id_to_desc:
-                    desc = row["title"]
-                    if row.get("artist"):
-                        desc = f"{row['title']} - {row['artist']}"
-                    id_to_desc[row["track_id"]] = desc
+                if row.track_id in uncached_ids and row.track_id not in id_to_desc:
+                    desc = row.title
+                    if row.artist:
+                        desc = f"{row.title} - {row.artist}"
+                    id_to_desc[row.track_id] = desc
 
             tracks_to_classify = [(tid, id_to_desc.get(tid)) for tid in uncached_ids]
             new_genres = await classifier.classify_tracks(tracks_to_classify)
@@ -248,7 +248,7 @@ class AnalyticsCog(commands.Cog):
         # Build per-track-id play count, then aggregate by genre
         track_id_counts: Counter[str] = Counter()
         for row in rows:
-            track_id_counts[row["track_id"]] += 1
+            track_id_counts[row.track_id] += 1
 
         genre_counts: Counter[str] = Counter()
         for tid, count in track_id_counts.items():

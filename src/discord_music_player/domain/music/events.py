@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from discord_music_player.domain.shared.datetime_utils import utcnow
 from discord_music_player.domain.shared.types import (
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 class MusicEvent(BaseModel):
     """Base class for all music domain events."""
 
-    model_config = {"frozen": True}
+    model_config = ConfigDict(frozen=True)
 
 
 class TrackQueued(MusicEvent):
@@ -209,7 +209,7 @@ class QueueShuffled(MusicEvent):
     timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
 
-DomainEvent = Annotated[
+MusicDomainEvent = Annotated[
     TrackQueued
     | TrackStarted
     | TrackFinished

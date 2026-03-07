@@ -359,9 +359,12 @@ class TestCaching:
         with patch.object(client, "_call_api", return_value=mock_response1):
             await client._fetch_recommendations_raw(sample_request)
 
-        # Expire the cache entry
+        # Expire the cache entry by replacing it with a copy that has an old timestamp
         cache_key = client._cache_key(sample_request)
-        client._cache[cache_key].created_at = time.time() - client._settings.cache_ttl_seconds - 1
+        expired_entry = client._cache[cache_key].model_copy(
+            update={"created_at": time.time() - client._settings.cache_ttl_seconds - 1}
+        )
+        client._cache[cache_key] = expired_entry
 
         # Second call - should refetch
         with patch.object(client, "_call_api", return_value=mock_response2):

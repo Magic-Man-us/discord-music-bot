@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent
 
 from discord_music_player.domain.shared.messages import LogTemplates
@@ -25,6 +25,8 @@ BATCH_SIZE = 20
 
 
 class GenreClassificationResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     genres: dict[str, str] = Field(default_factory=dict)
 
 

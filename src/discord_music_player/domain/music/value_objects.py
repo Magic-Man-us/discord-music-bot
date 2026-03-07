@@ -2,31 +2,22 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, PlainSerializer, PlainValidator, field_validator
+from pydantic import PlainSerializer, PlainValidator, field_validator
 
 from discord_music_player.domain.shared.messages import ErrorMessages
 from discord_music_player.domain.shared.types import DurationSeconds, NonEmptyStr, NonNegativeInt
+from discord_music_player.domain.shared.value_objects import ValueWrapper
 
 
-class TrackId(BaseModel):
+class TrackId(ValueWrapper[NonEmptyStr]):
     """Typically a YouTube video ID or a hash of the URL.
 
     Accepts both ``TrackId("abc")`` (positional str) and ``TrackId(value="abc")``
     for backward compatibility with the former dataclass API.
     """
-
-    model_config = ConfigDict(frozen=True)
-
-    value: NonEmptyStr
-
-    def __init__(self, value: str | None = None, /, **kwargs: object) -> None:
-        """Accept ``TrackId("abc")`` positional syntax for backward compat."""
-        if value is not None and "value" not in kwargs:
-            kwargs["value"] = value
-        super().__init__(**kwargs)
 
     @field_validator("value")
     @classmethod
@@ -34,17 +25,6 @@ class TrackId(BaseModel):
         if not v.strip():
             raise ValueError(ErrorMessages.EMPTY_TRACK_ID)
         return v
-
-    def __str__(self) -> str:
-        return self.value
-
-    def __hash__(self) -> int:
-        return hash(self.value)
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, TrackId):
-            return self.value == other.value
-        return NotImplemented
 
     @classmethod
     def from_url(cls, url: str) -> TrackId:
@@ -81,31 +61,8 @@ OptionalTrackIdField = Annotated[
 ]
 
 
-class QueuePosition(BaseModel):
+class QueuePosition(ValueWrapper[NonNegativeInt]):
     """Value object for queue positioning."""
-
-    model_config = ConfigDict(frozen=True)
-
-    value: NonNegativeInt
-
-    def __init__(self, value: int | None = None, /, **kwargs: object) -> None:
-        if value is not None and "value" not in kwargs:
-            kwargs["value"] = value
-        super().__init__(**kwargs)
-
-    def __str__(self) -> str:
-        return str(self.value)
-
-    def __int__(self) -> int:
-        return self.value
-
-    def __hash__(self) -> int:
-        return hash(self.value)
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, QueuePosition):
-            return self.value == other.value
-        return NotImplemented
 
     def next(self) -> QueuePosition:
         """Return the next position in queue."""
@@ -116,31 +73,8 @@ class QueuePosition(BaseModel):
         return QueuePosition(max(0, self.value - 1))
 
 
-class StartSeconds(BaseModel):
+class StartSeconds(ValueWrapper[DurationSeconds]):
     """Validated seek offset for starting playback at a specific timestamp."""
-
-    model_config = ConfigDict(frozen=True)
-
-    value: DurationSeconds
-
-    def __init__(self, value: int | None = None, /, **kwargs: object) -> None:
-        if value is not None and "value" not in kwargs:
-            kwargs["value"] = value
-        super().__init__(**kwargs)
-
-    def __int__(self) -> int:
-        return self.value
-
-    def __str__(self) -> str:
-        return str(self.value)
-
-    def __hash__(self) -> int:
-        return hash(self.value)
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, StartSeconds):
-            return self.value == other.value
-        return NotImplemented
 
     @classmethod
     def from_optional(cls, seconds: int | None) -> StartSeconds | None:
@@ -150,7 +84,7 @@ class StartSeconds(BaseModel):
         return cls(seconds)
 
 
-class PlaybackState(Enum):
+class PlaybackState(StrEnum):
     """Playback state with enforced transitions.
 
     State transitions:
@@ -199,7 +133,7 @@ class PlaybackState(Enum):
         return self != PlaybackState.STOPPED
 
 
-class TrackFinishReason(Enum):
+class TrackFinishReason(StrEnum):
     """Reasons a track can finish playing."""
 
     COMPLETED = "completed"
@@ -208,7 +142,7 @@ class TrackFinishReason(Enum):
     ERROR = "error"
 
 
-class SkipReason(Enum):
+class SkipReason(StrEnum):
     """Reasons a track can be skipped."""
 
     USER_REQUEST = "user_request"
@@ -216,7 +150,7 @@ class SkipReason(Enum):
     AUTO_SKIP = "auto_skip"
 
 
-class StopReason(Enum):
+class StopReason(StrEnum):
     """Reasons playback can be stopped."""
 
     USER_REQUEST = "user_request"
@@ -225,7 +159,7 @@ class StopReason(Enum):
     DISCONNECT = "disconnect"
 
 
-class SessionDestroyReason(Enum):
+class SessionDestroyReason(StrEnum):
     """Reasons a session can be destroyed."""
 
     CLEANUP = "cleanup"
@@ -233,7 +167,7 @@ class SessionDestroyReason(Enum):
     INACTIVITY = "inactivity"
 
 
-class VoiceLeaveReason(Enum):
+class VoiceLeaveReason(StrEnum):
     """Reasons the bot can leave a voice channel."""
 
     DISCONNECT = "disconnect"
@@ -241,7 +175,7 @@ class VoiceLeaveReason(Enum):
     KICKED = "kicked"
 
 
-class LoopMode(Enum):
+class LoopMode(StrEnum):
     """Loop mode settings for queue playback."""
 
     OFF = "off"

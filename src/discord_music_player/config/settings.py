@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
 
-from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from ..domain.shared.enums import EnvironmentType, LogLevel
 
 from ..domain.shared.types import (
     BusyTimeoutMs,
@@ -30,7 +31,7 @@ from ..domain.shared.types import (
 
 class DatabaseSettings(BaseModel):
 
-    model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
+    model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
 
     url: str = Field(
         default="sqlite:///data/bot.db",
@@ -57,7 +58,7 @@ class DatabaseSettings(BaseModel):
 
 class DiscordSettings(BaseModel):
 
-    model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
+    model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
 
     token: SecretStr = Field(
         default=SecretStr(""), validation_alias=AliasChoices("token", "bot_token", "discord_token")
@@ -87,7 +88,7 @@ class DiscordSettings(BaseModel):
 
 class AudioSettings(BaseModel):
 
-    model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
+    model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
 
     default_volume: VolumeFloat = 0.5
     max_queue_size: MaxQueueSize = 50
@@ -112,7 +113,7 @@ class AudioSettings(BaseModel):
 
 class AISettings(BaseModel):
 
-    model_config = SettingsConfigDict(frozen=True, strict=True, populate_by_name=True)
+    model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
 
     model: NonEmptyStr = Field(
         default="openai:gpt-5-mini", validation_alias=AliasChoices("model", "ai_model")
@@ -141,7 +142,7 @@ class AISettings(BaseModel):
 
 class VotingSettings(BaseModel):
 
-    model_config = SettingsConfigDict(frozen=True, strict=True)
+    model_config = ConfigDict(frozen=True, strict=True)
 
     skip_threshold_percentage: UnitInterval = 0.5
     min_voters: PositiveInt = 1
@@ -150,7 +151,7 @@ class VotingSettings(BaseModel):
 
 class RadioSettings(BaseModel):
 
-    model_config = SettingsConfigDict(frozen=True, strict=True)
+    model_config = ConfigDict(frozen=True, strict=True)
 
     default_count: RadioCount = 5
     max_tracks_per_session: RadioMaxTracks = 50
@@ -158,7 +159,7 @@ class RadioSettings(BaseModel):
 
 class CleanupSettings(BaseModel):
 
-    model_config = SettingsConfigDict(frozen=True, strict=True)
+    model_config = ConfigDict(frozen=True, strict=True)
 
     stale_session_hours: PositiveInt = 24
     cleanup_interval_minutes: PositiveInt = 30
@@ -175,26 +176,26 @@ class Settings(BaseSettings):
         strict=True,
     )
 
-    environment: Literal["development", "production", "test"] = "development"
+    environment: EnvironmentType = EnvironmentType.DEVELOPMENT
     debug: bool = False
-    log_level: str = "INFO"
+    log_level: LogLevel = LogLevel.INFO
 
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _normalize_log_level(cls, v: str | LogLevel) -> LogLevel:
+        """Accept case-insensitive log level strings (e.g. 'debug' -> 'DEBUG')."""
+        if isinstance(v, str) and not isinstance(v, LogLevel):
+            return LogLevel(v.upper())
+        return v
+
     discord: DiscordSettings = Field(default_factory=DiscordSettings)
     audio: AudioSettings = Field(default_factory=AudioSettings)
     ai: AISettings = Field(default_factory=AISettings)
     voting: VotingSettings = Field(default_factory=VotingSettings)
     cleanup: CleanupSettings = Field(default_factory=CleanupSettings)
     radio: RadioSettings = Field(default_factory=RadioSettings)
-
-    @field_validator("log_level")
-    @classmethod
-    def validate_log_level(cls, v: str) -> str:
-        valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
-        v_upper = v.upper()
-        if v_upper not in valid_levels:
-            raise ValueError(f"Invalid log level: {v}. Must be one of {valid_levels}")
-        return v_upper
 
     @classmethod
     def from_env(cls) -> Settings:

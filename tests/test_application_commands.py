@@ -1355,7 +1355,7 @@ class TestVoteSkipHandler:
             track_id=TrackId("test123"),
             vote_type=VoteType.SKIP,
             threshold=2,
-            _voters={111},
+            initial_voters={111},
         )
         mock_vote_repo.get_or_create.return_value = vote_session
 

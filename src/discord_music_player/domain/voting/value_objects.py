@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class VoteType(Enum):
+class VoteType(StrEnum):
     """Types of votes that can be cast."""
 
     SKIP = "skip"
@@ -31,7 +31,7 @@ class VoteType(Enum):
         }[self]
 
 
-class VoteResult(Enum):
+class VoteResult(StrEnum):
     """Results of attempting to cast a vote."""
 
     VOTE_RECORDED = "vote_recorded"

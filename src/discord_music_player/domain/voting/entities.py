@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import ClassVar
+from typing import Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.shared.datetime_utils import utcnow
@@ -33,7 +33,12 @@ class Vote(BaseModel):
 
 
 class VoteSession(BaseModel):
-    """Aggregate tracking votes for an action on a specific track in a guild."""
+    """Mutable aggregate tracking votes for an action on a specific track in a guild.
+
+    ``_voters`` is a private attribute (not serialized) that tracks which
+    users have voted.  Pass ``initial_voters`` at construction time to
+    hydrate from persistence.
+    """
 
     guild_id: DiscordSnowflake
     track_id: TrackId
@@ -41,22 +46,24 @@ class VoteSession(BaseModel):
     threshold: PositiveInt
     started_at: datetime = Field(default_factory=utcnow)
     expires_at: datetime | None = None
-    _voters: set[DiscordSnowflake] = set()
+    initial_voters: set[int] = Field(default_factory=set, exclude=True)
+
+    _voters: set[int] = PrivateAttr(default_factory=set)
 
     DEFAULT_EXPIRATION_MINUTES: ClassVar[int] = 5
 
-    def __init__(self, **kwargs: object) -> None:
-        # Extract _voters before Pydantic init if passed
-        voters = kwargs.pop("_voters", None)
-        super().__init__(**kwargs)
-        # Pydantic ignores _ prefixed attrs, so set manually
-        object.__setattr__(self, "_voters", set(voters) if voters else set())
+    def model_post_init(self, _context: Any) -> None:
+        """Hydrate _voters from the initial_voters construction parameter."""
+        self._voters = set(self.initial_voters)
 
-    @model_validator(mode="after")
-    def _set_default_expires_at(self) -> VoteSession:
-        if self.expires_at is None:
-            self.expires_at = self.started_at + timedelta(minutes=self.DEFAULT_EXPIRATION_MINUTES)
-        return self
+    @model_validator(mode="before")
+    @classmethod
+    def _set_default_expires_at(cls, data: Any) -> Any:
+        """Set default expiration when not explicitly provided."""
+        if isinstance(data, dict) and data.get("expires_at") is None:
+            started_at = data.get("started_at") or utcnow()
+            data["expires_at"] = started_at + timedelta(minutes=cls.DEFAULT_EXPIRATION_MINUTES)
+        return data
 
     @property
     def vote_count(self) -> int:
@@ -77,10 +84,10 @@ class VoteSession(BaseModel):
         return utcnow() > self.expires_at
 
     @property
-    def voters(self) -> frozenset[DiscordSnowflake]:
+    def voters(self) -> frozenset[int]:
         return frozenset(self._voters)
 
-    def add_vote(self, user_id: DiscordSnowflake) -> bool:
+    def add_vote(self, user_id: int) -> bool:
         """Add a vote. Returns True if this vote caused the threshold to be met."""
         if self.has_voted(user_id):
             return False
@@ -88,13 +95,13 @@ class VoteSession(BaseModel):
         self._voters.add(user_id)
         return self.is_threshold_met
 
-    def remove_vote(self, user_id: DiscordSnowflake) -> bool:
+    def remove_vote(self, user_id: int) -> bool:
         if user_id in self._voters:
             self._voters.remove(user_id)
             return True
         return False
 
-    def has_voted(self, user_id: DiscordSnowflake) -> bool:
+    def has_voted(self, user_id: int) -> bool:
         return user_id in self._voters
 
     def reset(self, new_track_id: TrackId | None = None) -> None:
@@ -105,10 +112,10 @@ class VoteSession(BaseModel):
         if new_track_id is not None:
             self.track_id = new_track_id
 
-    def extend_expiration(self, minutes: PositiveInt = 5) -> None:
+    def extend_expiration(self, minutes: int = 5) -> None:
         self.expires_at = utcnow() + timedelta(minutes=minutes)
 
-    def update_threshold(self, new_threshold: PositiveInt) -> None:
+    def update_threshold(self, new_threshold: int) -> None:
         """Update threshold, e.g. when listeners join or leave the channel."""
         if new_threshold < 1:
             raise ValueError(ErrorMessages.INVALID_THRESHOLD)
@@ -119,7 +126,7 @@ class VoteSession(BaseModel):
 
     @classmethod
     def create_skip_session(
-        cls, guild_id: DiscordSnowflake, track_id: TrackId, listener_count: PositiveInt
+        cls, guild_id: int, track_id: TrackId, listener_count: int
     ) -> VoteSession:
         """Create a skip vote session with an auto-calculated threshold."""
         from .services import VotingDomainService

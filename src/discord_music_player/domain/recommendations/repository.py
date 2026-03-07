@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from typing import TYPE_CHECKING
 
 from discord_music_player.domain.recommendations.entities import RecommendationSet
+
+if TYPE_CHECKING:
+    from discord_music_player.infrastructure.persistence.repositories.cache_repository import (
+        CacheStats,
+    )
 
 
 class RecommendationCacheRepository(ABC):
@@ -50,6 +55,6 @@ class RecommendationCacheRepository(ABC):
         ...
 
     @abstractmethod
-    async def get_stats(self) -> dict[str, int | datetime | None]:
+    async def get_stats(self) -> CacheStats:
         """Get cache statistics."""
         ...

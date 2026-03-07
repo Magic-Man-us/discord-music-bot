@@ -12,6 +12,7 @@ from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.shared.messages import DiscordUIMessages
 from discord_music_player.infrastructure.discord.cogs.analytics_cog import AnalyticsCog
+from discord_music_player.infrastructure.persistence.repositories.history_repository import GenreTrackInfo, UserStats
 
 
 # ============================================================================
@@ -113,13 +114,13 @@ class TestHistoryAnalytics:
     async def test_get_user_stats(self, history_repository, make_track):
         await self._seed(history_repository, make_track)
         stats = await history_repository.get_user_stats(1, 100)  # Alice
-        assert stats["total_tracks"] == 4  # 3 + 1
-        assert stats["unique_tracks"] == 2  # t1, t3
-        assert stats["total_listen_time"] == 3 * 200 + 240  # 840
+        assert stats.total_tracks == 4  # 3 + 1
+        assert stats.unique_tracks == 2  # t1, t3
+        assert stats.total_listen_time == 3 * 200 + 240  # 840
 
     async def test_get_user_stats_empty(self, history_repository):
         stats = await history_repository.get_user_stats(999, 999)
-        assert stats["total_tracks"] == 0
+        assert stats.total_tracks == 0
 
     async def test_get_user_top_tracks(self, history_repository, make_track):
         await self._seed(history_repository, make_track)
@@ -419,12 +420,12 @@ def mock_history_repo():
     repo.get_top_requesters = AsyncMock(return_value=[(100, "Alice", 30)])
     repo.get_most_skipped = AsyncMock(return_value=[("Pop Hit", 5)])
     repo.get_user_stats = AsyncMock(
-        return_value={
-            "total_tracks": 20,
-            "unique_tracks": 10,
-            "total_listen_time": 4000,
-            "skip_rate": 0.1,
-        }
+        return_value=UserStats(
+            total_tracks=20,
+            unique_tracks=10,
+            total_listen_time=4000,
+            skip_rate=0.1,
+        )
     )
     repo.get_user_top_tracks = AsyncMock(return_value=[("Rock Anthem", 8), ("Chill Vibes", 4)])
     repo.get_activity_by_day = AsyncMock(return_value=[("2026-02-01", 10), ("2026-02-02", 15)])
@@ -673,12 +674,12 @@ class TestMystatsCogCommand:
     async def test_mystats_no_data(self, analytics_cog, mock_interaction, mock_history_repo):
         """Should send no-data message when user has no plays."""
         mock_history_repo.get_user_stats = AsyncMock(
-            return_value={
-                "total_tracks": 0,
-                "unique_tracks": 0,
-                "total_listen_time": 0,
-                "skip_rate": 0.0,
-            }
+            return_value=UserStats(
+                total_tracks=0,
+                unique_tracks=0,
+                total_listen_time=0,
+                skip_rate=0.0,
+            )
         )
 
         await analytics_cog.mystats.callback(analytics_cog, mock_interaction)
@@ -718,7 +719,7 @@ class TestMystatsCogCommand:
         """Should send embed even if genre chart fails."""
         # Set up some genre data so the chart path is triggered
         mock_history_repo.get_user_tracks_for_genre = AsyncMock(
-            return_value=[{"track_id": "t1", "title": "Song", "artist": "A"}]
+            return_value=[GenreTrackInfo(track_id="t1", title="Song", artist="A")]
         )
         analytics_cog.container.genre_repository.get_genres = AsyncMock(
             return_value={"t1": "Rock"}
@@ -835,8 +836,8 @@ class TestGetUserGenreData:
         """Should use cached genres without calling classifier."""
         mock_history_repo.get_user_tracks_for_genre = AsyncMock(
             return_value=[
-                {"track_id": "t1", "title": "Rock Song", "artist": "A"},
-                {"track_id": "t2", "title": "Pop Song", "artist": "B"},
+                GenreTrackInfo(track_id="t1", title="Rock Song", artist="A"),
+                GenreTrackInfo(track_id="t2", title="Pop Song", artist="B"),
             ]
         )
         analytics_cog.container.genre_repository.get_genres = AsyncMock(
@@ -854,7 +855,7 @@ class TestGetUserGenreData:
     ):
         """Should mark uncached tracks as Unknown when AI is unavailable."""
         mock_history_repo.get_user_tracks_for_genre = AsyncMock(
-            return_value=[{"track_id": "t1", "title": "Song", "artist": "A"}]
+            return_value=[GenreTrackInfo(track_id="t1", title="Song", artist="A")]
         )
         analytics_cog.container.genre_repository.get_genres = AsyncMock(return_value={})
         analytics_cog.container.genre_classifier.is_available = MagicMock(return_value=False)
@@ -869,7 +870,7 @@ class TestGetUserGenreData:
     ):
         """Should classify uncached tracks when AI is available."""
         mock_history_repo.get_user_tracks_for_genre = AsyncMock(
-            return_value=[{"track_id": "t1", "title": "Rock Song", "artist": "Band A"}]
+            return_value=[GenreTrackInfo(track_id="t1", title="Rock Song", artist="Band A")]
         )
         analytics_cog.container.genre_repository.get_genres = AsyncMock(return_value={})
         analytics_cog.container.genre_classifier.is_available = MagicMock(return_value=True)
@@ -888,10 +889,10 @@ class TestGetUserGenreData:
         """Should aggregate genres by number of plays, not unique tracks."""
         mock_history_repo.get_user_tracks_for_genre = AsyncMock(
             return_value=[
-                {"track_id": "t1", "title": "Song1", "artist": "A"},
-                {"track_id": "t1", "title": "Song1", "artist": "A"},
-                {"track_id": "t1", "title": "Song1", "artist": "A"},
-                {"track_id": "t2", "title": "Song2", "artist": "B"},
+                GenreTrackInfo(track_id="t1", title="Song1", artist="A"),
+                GenreTrackInfo(track_id="t1", title="Song1", artist="A"),
+                GenreTrackInfo(track_id="t1", title="Song1", artist="A"),
+                GenreTrackInfo(track_id="t2", title="Song2", artist="B"),
             ]
         )
         analytics_cog.container.genre_repository.get_genres = AsyncMock(
