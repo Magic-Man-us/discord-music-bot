@@ -10,7 +10,6 @@ from discord_music_player.domain.music.entities import GuildPlaybackSession, Tra
 from discord_music_player.domain.music.repository import SessionRepository
 from discord_music_player.domain.music.value_objects import LoopMode, PlaybackState, TrackId
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
-from discord_music_player.domain.shared.messages import LogTemplates
 
 if TYPE_CHECKING:
     from ..database import Database
@@ -111,7 +110,7 @@ class SQLiteSessionRepository(SessionRepository):
                     self._track_to_params(track, session.guild_id, position, False),
                 )
 
-        logger.debug(LogTemplates.SESSION_SAVED, session.guild_id)
+        logger.debug("Saved session for guild %s", session.guild_id)
 
     async def delete(self, guild_id: int) -> bool:
         exists = await self.exists(guild_id)
@@ -128,7 +127,7 @@ class SQLiteSessionRepository(SessionRepository):
                 (guild_id,),
             )
 
-        logger.debug(LogTemplates.SESSION_DELETED, guild_id)
+        logger.debug("Deleted session for guild %s", guild_id)
         return True
 
     async def exists(self, guild_id: int) -> bool:

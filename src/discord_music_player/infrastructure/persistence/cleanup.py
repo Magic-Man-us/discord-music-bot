@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from discord_music_player.domain.shared.messages import LogTemplates
+from pydantic import BaseModel, ConfigDict, computed_field
+
+from discord_music_player.domain.shared.datetime_utils import utcnow
+from discord_music_player.domain.shared.types import NonNegativeInt
+
 
 if TYPE_CHECKING:
     from ...config.settings import CleanupSettings
@@ -38,12 +42,12 @@ class CleanupJob:
 
     def start(self) -> None:
         if self._running:
-            logger.warning(LogTemplates.CLEANUP_ALREADY_RUNNING)
+            logger.warning("Cleanup job is already running")
             return
 
         self._running = True
         self._task = asyncio.create_task(self._run_loop())
-        logger.info(LogTemplates.CLEANUP_STARTED)
+        logger.info("Cleanup job started")
 
     async def stop(self) -> None:
         self._running = False
@@ -56,7 +60,7 @@ class CleanupJob:
                 pass
             self._task = None
 
-        logger.info(LogTemplates.CLEANUP_STOPPED)
+        logger.info("Cleanup job stopped")
 
     async def _run_loop(self) -> None:
         interval_seconds = self._settings.cleanup_interval_minutes * 60
@@ -75,33 +79,33 @@ class CleanupJob:
     async def run_cleanup(self) -> CleanupStats:
         stats = CleanupStats()
 
-        logger.debug(LogTemplates.CLEANUP_CYCLE_RUNNING)
+        logger.debug("Running cleanup cycle")
 
-        stale_cutoff = datetime.now(tz=UTC) - timedelta(hours=self._settings.stale_session_hours)
+        stale_cutoff = utcnow() - timedelta(hours=self._settings.stale_session_hours)
         try:
             stats.sessions_cleaned = await self._session_repo.cleanup_stale(stale_cutoff)
         except Exception as e:
-            logger.error(LogTemplates.CLEANUP_SESSIONS_FAILED, e)
+            logger.error("Failed to cleanup sessions: %r", e)
 
-        history_cutoff = datetime.now(tz=UTC) - timedelta(days=30)
+        history_cutoff = utcnow() - timedelta(days=30)
         try:
             stats.history_cleaned = await self._history_repo.cleanup_old(history_cutoff)
         except Exception as e:
-            logger.error(LogTemplates.CLEANUP_HISTORY_FAILED, e)
+            logger.error("Failed to cleanup history: %r", e)
 
         try:
             stats.cache_cleaned = await self._cache_repo.cleanup_expired()
         except Exception as e:
-            logger.error(LogTemplates.CLEANUP_CACHE_FAILED, e)
+            logger.error("Failed to cleanup cache: %r", e)
 
         try:
             stats.votes_cleaned = await self._vote_repo.cleanup_expired()
         except Exception as e:
-            logger.error(LogTemplates.CLEANUP_VOTE_SESSIONS_FAILED, e)
+            logger.error("Failed to cleanup vote sessions: %r", e)
 
         if stats.total_cleaned > 0:
             logger.info(
-                LogTemplates.CLEANUP_COMPLETED,
+                "Cleanup completed: %s sessions, %s history entries, %s cache entries, %s vote sessions",
                 stats.sessions_cleaned,
                 stats.history_cleaned,
                 stats.cache_cleaned,
@@ -115,24 +119,19 @@ class CleanupJob:
         return self._running
 
 
-class CleanupStats:
-    def __init__(self) -> None:
-        self.sessions_cleaned: int = 0
-        self.history_cleaned: int = 0
-        self.cache_cleaned: int = 0
-        self.votes_cleaned: int = 0
+class CleanupStats(BaseModel):
+    """Accumulator for cleanup operation results."""
 
+    model_config = ConfigDict()
+
+    sessions_cleaned: NonNegativeInt = 0
+    history_cleaned: NonNegativeInt = 0
+    cache_cleaned: NonNegativeInt = 0
+    votes_cleaned: NonNegativeInt = 0
+
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def total_cleaned(self) -> int:
         return (
             self.sessions_cleaned + self.history_cleaned + self.cache_cleaned + self.votes_cleaned
         )
-
-    def to_dict(self) -> dict[str, int]:
-        return {
-            "sessions": self.sessions_cleaned,
-            "history": self.history_cleaned,
-            "cache": self.cache_cleaned,
-            "votes": self.votes_cleaned,
-            "total": self.total_cleaned,
-        }

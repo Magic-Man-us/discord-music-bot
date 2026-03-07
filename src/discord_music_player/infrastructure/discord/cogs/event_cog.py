@@ -14,7 +14,6 @@ from discord_music_player.domain.shared.constants import ConfigKeys, UIConstants
 from discord_music_player.domain.shared.messages import (
     DiscordUIMessages,
     ErrorMessages,
-    LogTemplates,
 )
 
 if TYPE_CHECKING:
@@ -292,7 +291,7 @@ class EventCog(commands.Cog):
         from ....domain.shared.constants import TimeConstants
 
         timeout = getattr(TimeConstants, "EMPTY_CHANNEL_DISCONNECT_SECONDS", 30)
-        logger.info(LogTemplates.EMPTY_CHANNEL_DISCONNECT_SCHEDULED, timeout, guild.id)
+        logger.info("No users left in voice channel, scheduling disconnect in %ss for guild %s", timeout, guild.id)
         self._empty_channel_timers[guild.id] = asyncio.create_task(
             self._empty_channel_disconnect(guild, timeout)
         )
@@ -301,7 +300,7 @@ class EventCog(commands.Cog):
         timer = self._empty_channel_timers.pop(guild_id, None)
         if timer is not None and not timer.done():
             timer.cancel()
-            logger.debug(LogTemplates.EMPTY_CHANNEL_DISCONNECT_CANCELLED, guild_id)
+            logger.debug("Cancelled empty-channel timer for guild %s", guild_id)
 
     async def _empty_channel_disconnect(self, guild: discord.Guild, timeout: int) -> None:
         """Wait *timeout* seconds, then disconnect if the channel is still empty."""
@@ -314,7 +313,7 @@ class EventCog(commands.Cog):
         if bot_channel is None or self._has_non_bot_members(bot_channel):
             return
 
-        logger.info(LogTemplates.EMPTY_CHANNEL_DISCONNECT_EXECUTING, guild.id)
+        logger.info("Empty-channel timeout reached, disconnecting guild %s", guild.id)
         await self._disconnect_and_cleanup(guild)
 
     async def _disconnect_and_cleanup(self, guild: discord.Guild) -> None:

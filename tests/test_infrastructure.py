@@ -330,8 +330,8 @@ class TestCleanupJob:
         assert task.done()
         # Note: task.cancelled() is False because _run_loop catches CancelledError and exits normally
 
-    def test_cleanup_stats_to_dict(self):
-        """Test CleanupStats to_dict method."""
+    def test_cleanup_stats_model_dump(self):
+        """Test CleanupStats model_dump includes computed total."""
         from discord_music_player.infrastructure.persistence.cleanup import CleanupStats
 
         stats = CleanupStats()
@@ -340,13 +340,13 @@ class TestCleanupJob:
         stats.cache_cleaned = 3
         stats.votes_cleaned = 2
 
-        result = stats.to_dict()
+        result = stats.model_dump()
 
-        assert result["sessions"] == 5
-        assert result["history"] == 10
-        assert result["cache"] == 3
-        assert result["votes"] == 2
-        assert result["total"] == 20
+        assert result["sessions_cleaned"] == 5
+        assert result["history_cleaned"] == 10
+        assert result["cache_cleaned"] == 3
+        assert result["votes_cleaned"] == 2
+        assert result["total_cleaned"] == 20
 
     # Exception Tests
 

@@ -282,7 +282,6 @@ class PlaybackCog(commands.Cog):
     # ─────────────────────────────────────────────────────────────────
 
     async def _on_requester_left(self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake, track: Track) -> None:
-        from ....domain.shared.messages import LogTemplates
         from ..views.requester_left_view import RequesterLeftView
 
         msm = self.container.message_state_manager
@@ -300,7 +299,7 @@ class PlaybackCog(commands.Cog):
                 channel = guild.system_channel
 
         if channel is None:
-            logger.warning(LogTemplates.REQUESTER_LEFT_CALLBACK_CHANNEL_FAILED, guild_id)
+            logger.warning("Could not find text channel for requester-left prompt in guild %s, auto-skipping", guild_id)
             await self.container.playback_service.skip_track(guild_id)
             return
 

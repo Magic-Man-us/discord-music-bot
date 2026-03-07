@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 from ...domain.music.entities import Track
 from ...domain.music.value_objects import LoopMode
 from ...domain.shared.datetime_utils import utcnow
-from ...domain.shared.messages import LogTemplates
 from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, QueuePositionInt
 from .queue_models import EnqueueResult, QueueSnapshot
 
@@ -63,7 +62,7 @@ class QueueApplicationService:
         position = session.enqueue(track_with_requester)
         await self._session_repo.save(session)
 
-        logger.info(LogTemplates.QUEUE_ENQUEUED, track.title, position.value, guild_id)
+        logger.info("Enqueued track '%s' at position %s in guild %s", track.title, position.value, guild_id)
 
         if was_idle:
             message = f"Now playing: {track.title}"
@@ -110,7 +109,7 @@ class QueueApplicationService:
         position = session.enqueue_next(track_with_requester)
         await self._session_repo.save(session)
 
-        logger.info(LogTemplates.QUEUE_ENQUEUED_NEXT, track.title, guild_id)
+        logger.info("Enqueued track '%s' to play next in guild %s", track.title, guild_id)
 
         return EnqueueResult(
             success=True,
@@ -128,7 +127,7 @@ class QueueApplicationService:
         track = session.remove_at(position)
         if track:
             await self._session_repo.save(session)
-            logger.info(LogTemplates.QUEUE_REMOVED, track.title, guild_id)
+            logger.info("Removed track '%s' from queue in guild %s", track.title, guild_id)
 
         return track
 
@@ -139,7 +138,7 @@ class QueueApplicationService:
 
         count = session.clear_queue()
         await self._session_repo.save(session)
-        logger.info(LogTemplates.QUEUE_CLEARED, count, guild_id)
+        logger.info("Cleared %s tracks from queue in guild %s", count, guild_id)
         return count
 
     async def clear_recommendations(self, guild_id: DiscordSnowflake) -> int:
@@ -160,7 +159,7 @@ class QueueApplicationService:
 
         session.shuffle()
         await self._session_repo.save(session)
-        logger.info(LogTemplates.QUEUE_SHUFFLED, guild_id)
+        logger.info("Shuffled queue in guild %s", guild_id)
         return True
 
     async def move(self, guild_id: DiscordSnowflake, from_pos: QueuePositionInt, to_pos: QueuePositionInt) -> bool:
@@ -171,7 +170,7 @@ class QueueApplicationService:
         success = session.move_track(from_pos, to_pos)
         if success:
             await self._session_repo.save(session)
-            logger.info(LogTemplates.QUEUE_MOVED, from_pos, to_pos, guild_id)
+            logger.info("Moved track from %s to %s in guild %s", from_pos, to_pos, guild_id)
 
         return success
 
@@ -210,5 +209,5 @@ class QueueApplicationService:
         session = await self._session_repo.get_or_create(guild_id)
         new_mode = session.toggle_loop()
         await self._session_repo.save(session)
-        logger.info(LogTemplates.LOOP_MODE_CHANGED, new_mode.value, guild_id)
+        logger.info("Loop mode changed to %s in guild %s", new_mode.value, guild_id)
         return new_mode

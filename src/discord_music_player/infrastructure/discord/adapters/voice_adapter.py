@@ -13,7 +13,6 @@ import discord
 from discord_music_player.application.interfaces.voice_adapter import VoiceAdapter
 from discord_music_player.config.settings import AudioSettings
 from discord_music_player.domain.shared.constants import AudioConstants
-from discord_music_player.domain.shared.messages import LogTemplates
 
 if TYPE_CHECKING:
     from ....domain.music.entities import Track
@@ -58,31 +57,31 @@ class DiscordVoiceAdapter(VoiceAdapter):
     async def connect(self, guild_id: int, channel_id: int) -> bool:
         guild = self._get_guild(guild_id)
         if not guild:
-            logger.warning(LogTemplates.GUILD_NOT_FOUND, guild_id)
+            logger.warning("Guild %s not found", guild_id)
             return False
 
         channel = guild.get_channel(channel_id)
         if not isinstance(channel, discord.VoiceChannel | discord.StageChannel):
-            logger.warning(LogTemplates.CHANNEL_NOT_VOICE, channel_id)
+            logger.warning("Channel %s is not a voice channel", channel_id)
             return False
 
         try:
             async with asyncio.timeout(CONNECT_TIMEOUT):
                 await channel.connect(self_deaf=True)
             logger.info(
-                LogTemplates.VOICE_CONNECTED,
+                "Connected to voice channel %s in %s",
                 channel.name,
                 guild.name,
             )
             return True
         except TimeoutError:
-            logger.error(LogTemplates.VOICE_CONNECTION_TIMEOUT, channel_id)
+            logger.error("Timeout connecting to channel %s", channel_id)
             return False
         except discord.ClientException as e:
-            logger.error(LogTemplates.VOICE_CLIENT_ERROR, e)
+            logger.error("Client error connecting: %r", e)
             return False
         except discord.Forbidden:
-            logger.error(LogTemplates.VOICE_NO_PERMISSION, channel_id)
+            logger.error("No permission to connect to channel %s", channel_id)
             return False
         except Exception:
             logger.exception("Failed to connect to voice")
@@ -99,7 +98,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
                 return
             await guild.change_voice_state(channel=channel, self_deaf=True)
         except Exception as exc:
-            logger.debug(LogTemplates.VOICE_SELF_DEAFEN_FAILED, guild.id, exc)
+            logger.debug("Failed to self-deafen in guild %s: %r", guild.id, exc)
 
     # TODO(integ): Test real disconnect after a live connect. Verify voice_client is cleaned up.
     async def disconnect(self, guild_id: int) -> bool:
@@ -111,7 +110,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
             self._current_track.pop(guild_id, None)
 
             await vc.disconnect(force=True)
-            logger.info(LogTemplates.VOICE_DISCONNECTED, guild_id)
+            logger.info("Disconnected from voice in guild %s", guild_id)
             return True
         except Exception:
             logger.exception("Failed to disconnect from voice")
@@ -124,7 +123,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
         vc = self._get_voice_client(guild_id)
 
         if vc and not vc.is_connected():
-            logger.warning(LogTemplates.VOICE_STALE_CLEANUP, guild_id)
+            logger.warning("Found stale voice client in guild %s, cleaning up", guild_id)
             await self.disconnect(guild_id)
             vc = None
 
@@ -147,17 +146,17 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
         channel = guild.get_channel(channel_id)
         if not isinstance(channel, discord.VoiceChannel | discord.StageChannel):
-            logger.warning(LogTemplates.CHANNEL_NOT_VOICE, channel_id)
+            logger.warning("Channel %s is not a voice channel", channel_id)
             return False
 
         try:
             async with asyncio.timeout(CONNECT_TIMEOUT):
                 await vc.move_to(channel)
             await self._ensure_self_deaf(guild, channel)
-            logger.info(LogTemplates.VOICE_MOVED, channel.name)
+            logger.info("Moved to voice channel %s", channel.name)
             return True
         except TimeoutError:
-            logger.error(LogTemplates.VOICE_MOVE_TIMEOUT, channel_id)
+            logger.error("Timeout moving to channel %s", channel_id)
             return False
         except Exception:
             logger.exception("Failed to move to channel")
@@ -175,11 +174,11 @@ class DiscordVoiceAdapter(VoiceAdapter):
     ) -> bool:
         vc = self._get_voice_client(guild_id)
         if not vc:
-            logger.warning(LogTemplates.VOICE_NOT_CONNECTED, guild_id)
+            logger.warning("Not connected to voice in guild %s", guild_id)
             return False
 
         if not track.stream_url:
-            logger.error(LogTemplates.YTDLP_NO_STREAM_URL, track.title)
+            logger.error("No stream URL found for %s", track.title)
             return False
 
         if vc.is_playing():
@@ -205,9 +204,9 @@ class DiscordVoiceAdapter(VoiceAdapter):
             self._current_track[guild_id] = track
 
             def after_callback(error: Exception | None = None) -> None:
-                logger.info(LogTemplates.TRACK_ENDED, guild_id, error)
+                logger.info("Track ended in guild %s (error: %s)", guild_id, error)
                 if error:
-                    logger.warning(LogTemplates.PLAYBACK_ERROR, guild_id, error)
+                    logger.warning("Playback error in guild %s: %s", guild_id, error)
 
                 asyncio.run_coroutine_threadsafe(
                     self._handle_track_end(guild_id),
@@ -215,14 +214,14 @@ class DiscordVoiceAdapter(VoiceAdapter):
                 )
 
             vc.play(volume_source, after=after_callback)
-            logger.info(LogTemplates.PLAYBACK_STARTED, track.title, guild_id)
+            logger.info("Started playing '%s' in guild %s", track.title, guild_id)
             return True
 
         except discord.ClientException as e:
-            logger.error(LogTemplates.VOICE_CLIENT_ERROR, e)
+            logger.error("Client error connecting: %r", e)
             return False
         except Exception as e:
-            logger.error(LogTemplates.PLAYBACK_FAILED_START, e)
+            logger.error("Failed to start playback: %s", e)
             return False
 
     # TODO(integ): Test stop while audio is playing. Verify is_playing() becomes False.
@@ -234,7 +233,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
         if vc.is_playing() or vc.is_paused():
             vc.stop()
             self._current_track.pop(guild_id, None)
-            logger.info(LogTemplates.PLAYBACK_STOPPED, guild_id)
+            logger.info("Stopped playback in guild %s", guild_id)
             return True
 
         return True
@@ -248,7 +247,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
         if vc.is_playing():
             vc.pause()
-            logger.info(LogTemplates.PLAYBACK_PAUSED, guild_id)
+            logger.info("Paused playback in guild %s", guild_id)
             return True
 
         return False
@@ -260,7 +259,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
         if vc.is_paused():
             vc.resume()
-            logger.info(LogTemplates.PLAYBACK_RESUMED, guild_id)
+            logger.info("Resumed playback in guild %s", guild_id)
             return True
 
         return False
@@ -317,13 +316,13 @@ class DiscordVoiceAdapter(VoiceAdapter):
         self._current_track.pop(guild_id, None)
 
         if self._on_track_end:
-            logger.debug(LogTemplates.PLAYBACK_CALLING_CALLBACK, guild_id)
+            logger.debug("Calling track end callback for guild %s", guild_id)
             try:
                 await self._on_track_end(guild_id)
             except Exception as e:
-                logger.error(LogTemplates.PLAYBACK_CALLBACK_ERROR, guild_id, e)
+                logger.error("Error in track end callback for guild %s: %s", guild_id, e)
         else:
-            logger.warning(LogTemplates.PLAYBACK_NO_CALLBACK, guild_id)
+            logger.warning("No track end callback set for guild %s", guild_id)
 
     def get_current_track(self, guild_id: int) -> Track | None:
         return self._current_track.get(guild_id)
@@ -357,6 +356,6 @@ class DiscordVoiceAdapter(VoiceAdapter):
             if connected:
                 try:
                     await self.disconnect(guild_id)
-                    logger.debug(LogTemplates.VOICE_CONNECTION_CLEANED_UP, guild_id)
+                    logger.debug("Cleaned up voice connection for guild %s", guild_id)
                 except Exception:
-                    logger.error(LogTemplates.VOICE_CLEANUP_ERROR)
+                    logger.error("Error during voice cleanup")

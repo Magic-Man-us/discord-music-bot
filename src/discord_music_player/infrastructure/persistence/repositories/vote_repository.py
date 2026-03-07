@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
-from discord_music_player.domain.shared.messages import LogTemplates
 from discord_music_player.domain.voting.entities import VoteSession
 from discord_music_player.domain.voting.repository import VoteSessionRepository
 from discord_music_player.domain.voting.value_objects import VoteType
@@ -149,7 +148,7 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
                     (session_id, user_id),
                 )
 
-        logger.debug(LogTemplates.VOTE_SESSION_SAVED, session.guild_id)
+        logger.debug("Saved vote session for guild %s", session.guild_id)
 
     async def delete(self, guild_id: int, vote_type: VoteType) -> bool:
         row = await self._db.fetch_one(
@@ -178,7 +177,7 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
                 (guild_id, vote_type.value),
             )
 
-        logger.debug(LogTemplates.VOTE_SESSION_DELETED, guild_id)
+        logger.debug("Deleted vote session for guild %s", guild_id)
         return True
 
     async def delete_for_guild(self, guild_id: int) -> int:
@@ -199,7 +198,7 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
             (guild_id,),
         )
 
-        logger.debug(LogTemplates.VOTE_SESSIONS_DELETED, count, guild_id)
+        logger.debug("Deleted %s vote sessions for guild %s", count, guild_id)
         return count
 
     async def cleanup_expired(self) -> int:
@@ -226,7 +225,7 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
         )
 
         if count > 0:
-            logger.info(LogTemplates.VOTE_SESSIONS_EXPIRED_CLEANED, count)
+            logger.info("Cleaned up %s expired vote sessions", count)
 
         return count
 
@@ -241,4 +240,4 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
             """,
             (UtcDateTime(now).iso, result, guild_id, vote_type.value),
         )
-        logger.debug(LogTemplates.VOTE_SESSION_COMPLETED, guild_id, result)
+        logger.debug("Completed vote session for guild %s, result=%s", guild_id, result)

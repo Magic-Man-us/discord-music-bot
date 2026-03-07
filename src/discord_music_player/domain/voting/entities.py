@@ -9,7 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.shared.datetime_utils import utcnow
-from discord_music_player.domain.shared.messages import ErrorMessages
 from discord_music_player.domain.shared.types import DiscordSnowflake, PositiveInt
 from discord_music_player.domain.voting.value_objects import VoteType
 
@@ -39,6 +38,8 @@ class VoteSession(BaseModel):
     users have voted.  Pass ``initial_voters`` at construction time to
     hydrate from persistence.
     """
+
+    model_config = ConfigDict()
 
     guild_id: DiscordSnowflake
     track_id: TrackId
@@ -118,7 +119,7 @@ class VoteSession(BaseModel):
     def update_threshold(self, new_threshold: int) -> None:
         """Update threshold, e.g. when listeners join or leave the channel."""
         if new_threshold < 1:
-            raise ValueError(ErrorMessages.INVALID_THRESHOLD)
+            raise ValueError("Threshold must be at least 1")
         self.threshold = new_threshold
 
     def get_progress_string(self) -> str:

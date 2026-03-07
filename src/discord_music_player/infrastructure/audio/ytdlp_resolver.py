@@ -15,7 +15,6 @@ from discord_music_player.application.interfaces.audio_resolver import AudioReso
 from discord_music_player.config.settings import AudioSettings
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.value_objects import TrackId
-from discord_music_player.domain.shared.messages import LogTemplates
 from discord_music_player.domain.shared.types import (
     HttpUrlStr,
     NonEmptyStr,
@@ -90,7 +89,7 @@ class YtDlpResolver(AudioResolver):
         )
 
         logger.info(
-            LogTemplates.YTDLP_POT_CONFIGURED,
+            "bgutil-ytdlp-pot-provider configured (server=%s)",
             self._settings.pot_server_url,
         )
 
@@ -106,14 +105,14 @@ class YtDlpResolver(AudioResolver):
         try:
             url = self._extract_webpage_url(info)
             if not url:
-                logger.warning(LogTemplates.YTDLP_NO_URL_IN_INFO_DICT)
+                logger.warning("No URL found in info dict")
                 return None
 
             title = info.title
             stream_url = self._extract_stream_url(info)
 
             if not stream_url:
-                logger.warning(LogTemplates.YTDLP_NO_STREAM_URL, title)
+                logger.warning("No stream URL found for %s", title)
                 return None
 
             track_id = _generate_track_id(url)
@@ -134,7 +133,7 @@ class YtDlpResolver(AudioResolver):
                 view_count=info.view_count,
             )
         except Exception:
-            logger.exception(LogTemplates.YTDLP_FAILED_INFO_TO_TRACK)
+            logger.exception("Failed to convert info to track")
             return None
 
     def _extract_webpage_url(self, info: YtDlpTrackInfo) -> str | None:
@@ -173,7 +172,7 @@ class YtDlpResolver(AudioResolver):
         cached = _info_cache.get(url)
         if cached is not None:
             if now - cached.cached_at < CACHE_TTL:
-                logger.debug(LogTemplates.CACHE_HIT_URL, url[:LOG_URL_TRUNCATE])
+                logger.debug("Cache hit for URL: %s", url[:LOG_URL_TRUNCATE])
                 return cached.info
             _info_cache.pop(url, None)
 
@@ -193,11 +192,11 @@ class YtDlpResolver(AudioResolver):
                     for k in expired:
                         _info_cache.pop(k, None)
                     if expired:
-                        logger.debug(LogTemplates.CACHE_EXPIRED_CLEANED, len(expired))
+                        logger.debug("Cleaned %d expired cache entries", len(expired))
 
                 return result
         except Exception:
-            logger.exception(LogTemplates.YTDLP_FAILED_EXTRACT_INFO, url)
+            logger.exception("Failed to extract info from %s", url)
             return None
 
     @staticmethod
@@ -214,7 +213,7 @@ class YtDlpResolver(AudioResolver):
                 data = ydl.extract_info(search_query, download=False)
                 return self._parse_extract_result(data).entries
         except Exception:
-            logger.exception(LogTemplates.YTDLP_FAILED_SEARCH, query)
+            logger.exception("Failed to search for %r", query)
             return []
 
     def _extract_playlist_sync(self, url: HttpUrlStr) -> list[YtDlpTrackInfo]:
@@ -223,7 +222,7 @@ class YtDlpResolver(AudioResolver):
                 data = ydl.extract_info(url, download=False)
                 return self._parse_extract_result(data).entries
         except Exception:
-            logger.exception(LogTemplates.YTDLP_FAILED_EXTRACT_PLAYLIST, url)
+            logger.exception("Failed to extract playlist from %s", url)
             return []
 
     async def resolve(self, query: NonEmptyStr) -> Track | None:
@@ -239,7 +238,7 @@ class YtDlpResolver(AudioResolver):
 
             return self._info_to_track(info)
         except Exception:
-            logger.exception(LogTemplates.YTDLP_FAILED_RESOLVE, query)
+            logger.exception("Failed to resolve %r", query)
             return None
 
     async def resolve_many(self, queries: list[NonEmptyStr]) -> list[Track]:
@@ -259,10 +258,10 @@ class YtDlpResolver(AudioResolver):
                         if result is not None:
                             tracks.append(result)
                     except Exception as e:
-                        logger.warning(LogTemplates.RESOLUTION_FAILED.format(error=e))
+                        logger.warning("Resolution failed: {error}".format(error=e))
             except* Exception as eg:
                 for exc in eg.exceptions:
-                    logger.warning(LogTemplates.RESOLUTION_FAILED.format(error=exc))
+                    logger.warning("Resolution failed: {error}".format(error=exc))
 
             if i + RESOLVE_BATCH_SIZE < len(queries):
                 await asyncio.sleep(RESOLVE_BATCH_DELAY)
@@ -281,7 +280,7 @@ class YtDlpResolver(AudioResolver):
 
             return tracks
         except Exception as e:
-            logger.error(LogTemplates.SEARCH_FAILED.format(query=query, error=e))
+            logger.error("Search failed for '{query}': {error}".format(query=query, error=e))
             return []
 
     async def extract_playlist(self, url: HttpUrlStr) -> list[Track]:
@@ -300,7 +299,7 @@ class YtDlpResolver(AudioResolver):
 
             return tracks
         except Exception as e:
-            logger.error(LogTemplates.PLAYLIST_FAILED.format(url=url, error=e))
+            logger.error("Playlist extraction failed for {url}: {error}".format(url=url, error=e))
             return []
 
     def is_url(self, query: NonEmptyStr) -> bool:

@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any
 from ...domain.music.entities import GuildPlaybackSession, Track
 from ...domain.music.value_objects import PlaybackState
 from ...domain.shared.events import QueueExhausted, get_event_bus
-from ...domain.shared.messages import ErrorMessages, LogTemplates
 from ...domain.shared.types import DiscordSnowflake
 
 if TYPE_CHECKING:
@@ -55,7 +54,7 @@ class PlaybackApplicationService:
     async def _on_voice_track_end(self, guild_id: DiscordSnowflake) -> None:
         if guild_id in self._ignore_next_voice_track_end:
             self._ignore_next_voice_track_end.discard(guild_id)
-            logger.debug(LogTemplates.PLAYBACK_IGNORING_CALLBACK, guild_id)
+            logger.debug("Ignoring voice track-end callback for guild %s", guild_id)
             return
 
         session = await self._session_repo.get(guild_id)
@@ -81,12 +80,12 @@ class PlaybackApplicationService:
         """
         if start_seconds is not None:
             self._pending_start_seconds[guild_id] = start_seconds
-        logger.info(LogTemplates.PLAYBACK_START_CALLED, guild_id)
+        logger.info("start_playback called for guild %s", guild_id)
 
         for attempt in range(self._MAX_RESOLVE_RETRIES):
             session = await self._session_repo.get(guild_id)
             if session is None:
-                logger.warning(LogTemplates.SESSION_NOT_FOUND, guild_id)
+                logger.warning("No session found for guild %s", guild_id)
                 return False
 
             logger.info(
@@ -98,16 +97,16 @@ class PlaybackApplicationService:
             )
 
             if session.is_playing:
-                logger.info(LogTemplates.PLAYBACK_ALREADY_PLAYING, guild_id)
+                logger.info("Already playing in guild %s, returning True", guild_id)
                 return True
 
             had_current = session.current_track is not None
             track = await self._get_next_track(session)
             if track is None:
-                logger.warning(LogTemplates.QUEUE_NO_TRACKS, guild_id)
+                logger.warning("No tracks in queue for guild %s", guild_id)
                 return False
 
-            logger.info(LogTemplates.TRACK_GOT_TO_PLAY, track.title)
+            logger.info("Got track to play: %s", track.title)
 
             await self._persist_playback_state(
                 guild_id,
@@ -121,7 +120,7 @@ class PlaybackApplicationService:
                 # Resolution failed — _ensure_stream_url already cleared current_track.
                 # Loop back to try the next track in the queue.
                 logger.warning(
-                    LogTemplates.PLAYBACK_RESOLVE_RETRY,
+                    "Stream resolve failed for '%s' in guild %s, skipping to next (%d/%d)",
                     track if track else "unknown",
                     guild_id,
                     attempt + 1,
@@ -132,7 +131,7 @@ class PlaybackApplicationService:
             return await self._start_voice_playback(session, track, guild_id)
 
         logger.error(
-            LogTemplates.PLAYBACK_RESOLVE_RETRIES_EXHAUSTED,
+            "Exhausted %d resolve retries in guild %s, stopping",
             self._MAX_RESOLVE_RETRIES,
             guild_id,
         )
@@ -157,7 +156,7 @@ class PlaybackApplicationService:
         try:
             resolved = await self._audio_resolver.resolve(track.webpage_url)
             if resolved is None:
-                raise ValueError(ErrorMessages.RESOLVER_RETURNED_NONE)
+                raise ValueError("Resolver returned None")
 
             track = track.with_resolved(resolved)
             session.set_current_track(track)
@@ -181,7 +180,7 @@ class PlaybackApplicationService:
                 guild_id, track, start_seconds=seek
             )
             if not success:
-                logger.error(LogTemplates.VOICE_ADAPTER_FAILED, guild_id)
+                logger.error("Voice adapter failed to play in guild %s", guild_id)
                 session.set_current_track(None)
                 await self._persist_playback_state(
                     guild_id,
@@ -196,7 +195,7 @@ class PlaybackApplicationService:
                 state=PlaybackState.PLAYING,
             )
             await self._history_repo.record_play(guild_id=guild_id, track=track)
-            logger.info(LogTemplates.TRACK_STARTED, track.title, guild_id)
+            logger.info("Started playing: %s in guild %s", track.title, guild_id)
 
             from ...domain.shared.events import TrackStartedPlaying, get_event_bus
 
@@ -234,7 +233,7 @@ class PlaybackApplicationService:
                 current_track=session.current_track,
                 state=session.state,
             )
-            logger.info(LogTemplates.PLAYBACK_STOPPED, guild_id)
+            logger.info("Stopped playback in guild %s", guild_id)
             return True
         except Exception:
             # Stop failed — the voice callback may still fire normally,
@@ -256,7 +255,7 @@ class PlaybackApplicationService:
                 current_track=session.current_track,
                 state=session.state,
             )
-            logger.debug(LogTemplates.PLAYBACK_PAUSED, guild_id)
+            logger.debug("Paused playback in guild %s", guild_id)
             return True
         except Exception:
             logger.exception("Error pausing playback")
@@ -275,7 +274,7 @@ class PlaybackApplicationService:
                 current_track=session.current_track,
                 state=session.state,
             )
-            logger.debug(LogTemplates.PLAYBACK_RESUMED, guild_id)
+            logger.debug("Resumed playback in guild %s", guild_id)
             return True
         except Exception:
             logger.exception("Error resuming playback")
@@ -311,11 +310,11 @@ class PlaybackApplicationService:
             skipped=True,
         )
 
-        logger.info(LogTemplates.TRACK_SKIPPED, skipped_track.title, guild_id)
+        logger.info("Skipped track: %s in guild %s", skipped_track.title, guild_id)
         return skipped_track
 
     async def handle_track_finished(self, guild_id: DiscordSnowflake, track: Track) -> None:
-        logger.debug(LogTemplates.TRACK_FINISHED, track.title, guild_id)
+        logger.debug("Track finished: %s in guild %s", track.title, guild_id)
 
         session = await self._session_repo.get(guild_id)
         if session is None:
@@ -329,7 +328,7 @@ class PlaybackApplicationService:
         if next_track:
             await self.start_playback(guild_id)
         else:
-            logger.info(LogTemplates.QUEUE_EMPTY, guild_id)
+            logger.info("Queue empty in guild %s", guild_id)
             await get_event_bus().publish(
                 QueueExhausted(
                     guild_id=guild_id,
@@ -405,7 +404,7 @@ class PlaybackApplicationService:
             await self._voice_adapter.stop(guild_id)
             await self._voice_adapter.disconnect(guild_id)
         except Exception:
-            logger.debug(LogTemplates.VOICE_CLEANUP_ERROR)
+            logger.debug("Error during voice cleanup")
 
         await self._session_repo.delete(guild_id)
-        logger.info(LogTemplates.SESSION_CLEANED_UP, guild_id)
+        logger.info("Cleaned up guild %s", guild_id)

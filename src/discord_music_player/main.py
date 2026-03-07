@@ -9,7 +9,6 @@ import logging.config
 import sys
 from pathlib import Path
 
-from discord_music_player.domain.shared.messages import ErrorMessages, LogTemplates
 
 _LOGGING_CONFIG_PATH = Path(__file__).resolve().parents[2] / "logging_config.json"
 
@@ -44,10 +43,10 @@ def main() -> int:
 
     token_value = settings.discord.token.get_secret_value()
     if not token_value:
-        logger.error(ErrorMessages.DISCORD_TOKEN_REQUIRED)
+        logger.error("DISCORD_TOKEN environment variable is required")
         return 1
 
-    logger.info(LogTemplates.BOT_STARTING.format(environment=settings.environment))
+    logger.info("Starting Discord Music Bot in %s mode", settings.environment)
 
     from discord_music_player.config.container import create_container
     from discord_music_player.infrastructure.discord.bot import create_bot
@@ -56,15 +55,15 @@ def main() -> int:
     bot = create_bot(container, settings)
 
     try:
-        logger.info(LogTemplates.BOT_STARTING_RUN)
+        logger.info("Starting bot...")
         bot.run_with_graceful_shutdown(token_value)
-        logger.info(LogTemplates.BOT_STOPPED)
+        logger.info("Bot stopped successfully")
         return 0
     except KeyboardInterrupt:
-        logger.info(LogTemplates.BOT_KEYBOARD_INTERRUPT)
+        logger.info("Received keyboard interrupt, shutting down...")
         return 0
     except Exception as e:
-        logger.exception(LogTemplates.BOT_FATAL_ERROR, e)
+        logger.exception("Fatal error: %s", e)
         return 1
 
 

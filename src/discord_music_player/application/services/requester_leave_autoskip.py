@@ -9,7 +9,6 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from ...domain.shared.events import VoiceMemberLeftVoiceChannel, get_event_bus
-from ...domain.shared.messages import LogTemplates
 from ...domain.shared.types import DiscordSnowflake
 
 if TYPE_CHECKING:
@@ -70,7 +69,7 @@ class AutoSkipOnRequesterLeave:
             # If no listeners remain, skip immediately — no one to click buttons
             listeners = await self._voice_adapter.get_listeners(event.guild_id)
             if not listeners:
-                logger.info(LogTemplates.REQUESTER_LEFT_NO_LISTENERS, event.guild_id)
+                logger.info("Requester left voice channel in guild %s, no listeners remain — auto-skipping", event.guild_id)
                 await self._playback_service.skip_track(event.guild_id)
                 return
 
@@ -80,7 +79,7 @@ class AutoSkipOnRequesterLeave:
                 return
 
             logger.info(
-                LogTemplates.REQUESTER_LEFT_PAUSING,
+                "Requester left voice channel in guild %s (user_id=%s, track_id=%s), pausing playback",
                 event.guild_id,
                 event.user_id,
                 current_track.id,

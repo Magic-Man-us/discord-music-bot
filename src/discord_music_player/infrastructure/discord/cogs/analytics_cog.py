@@ -12,7 +12,7 @@ from discord.ext import commands
 
 from discord_music_player.domain.shared.constants import AnalyticsConstants, UIConstants
 from discord_music_player.domain.shared.enums import ActivityPeriod, LeaderboardCategory
-from discord_music_player.domain.shared.messages import DiscordUIMessages, LogTemplates
+from discord_music_player.domain.shared.messages import DiscordUIMessages
 from discord_music_player.utils.reply import format_duration
 
 if TYPE_CHECKING:
@@ -76,7 +76,7 @@ class AnalyticsCog(commands.Cog):
                 )
                 chart_file = chart_gen.to_discord_file(png, "top_tracks.png")
                 embed.set_image(url="attachment://top_tracks.png")
-                logger.debug(LogTemplates.ANALYTICS_CHART_GENERATED, "top_tracks", guild_id)
+                logger.debug("Generated %s chart for guild %s", "top_tracks", guild_id)
             except Exception:
                 logger.exception("Failed to generate stats chart")
 
@@ -147,7 +147,7 @@ class AnalyticsCog(commands.Cog):
             png = await chart_gen.async_horizontal_bar_chart(labels, values, title)
             chart_file = chart_gen.to_discord_file(png, "leaderboard.png")
             embed.set_image(url="attachment://leaderboard.png")
-            logger.debug(LogTemplates.ANALYTICS_CHART_GENERATED, "leaderboard", guild_id)
+            logger.debug("Generated %s chart for guild %s", "leaderboard", guild_id)
         except Exception:
             logger.exception("Failed to generate leaderboard chart")
 
@@ -328,7 +328,7 @@ class AnalyticsCog(commands.Cog):
                     peak_hour = values.index(max(values))
                     embed.description = f"Peak hour: **{peak_hour}:00**"
 
-            logger.debug(LogTemplates.ANALYTICS_CHART_GENERATED, p, guild_id)
+            logger.debug("Generated %s chart for guild %s", p, guild_id)
         except Exception:
             logger.exception("Failed to generate activity chart")
 

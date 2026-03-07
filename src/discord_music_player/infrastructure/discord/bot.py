@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any
 import discord
 from discord.ext import commands
 
-from discord_music_player.domain.shared.messages import LogTemplates
 
 if TYPE_CHECKING:
     from ...config.container import Container
@@ -45,13 +44,13 @@ class MusicBot(commands.Bot):
         container.set_bot(self)
 
     async def setup_hook(self) -> None:
-        logger.info(LogTemplates.BOT_SETUP)
+        logger.info("Setting up bot...")
 
         try:
             await self.container.initialize()
-            logger.info(LogTemplates.BOT_CONTAINER_INITIALIZED)
+            logger.info("Container initialized successfully")
         except Exception as e:
-            logger.exception(LogTemplates.BOT_CONTAINER_INIT_FAILED, e)
+            logger.exception("Failed to initialize container: %s", e)
             raise
 
         await self._resume_sessions()
@@ -61,17 +60,17 @@ class MusicBot(commands.Bot):
         try:
             cleanup_job = self.container.cleanup_job
             cleanup_job.start()
-            logger.info(LogTemplates.CLEANUP_STARTED)
+            logger.info("Cleanup job started")
         except Exception as e:
-            logger.warning(LogTemplates.BOT_CLEANUP_START_FAILED, e)
+            logger.warning("Failed to start cleanup job: %s", e)
 
         if self.settings.discord.sync_on_startup:
             try:
                 await self._sync_commands()
             except Exception as e:
-                logger.warning(LogTemplates.BOT_SYNC_ON_STARTUP_FAILED, e)
+                logger.warning("Failed to sync commands on startup: %s", e)
 
-        logger.info(LogTemplates.BOT_SETUP_COMPLETE)
+        logger.info("Bot setup complete")
 
     async def _resume_sessions(self) -> None:
         """Resume playback sessions that were active before bot restart."""
@@ -111,7 +110,7 @@ class MusicBot(commands.Bot):
                 logger.info("Reset %d stale session(s)", reset_count)
 
         except Exception as e:
-            logger.warning(LogTemplates.BOT_STALE_SESSIONS_RESET_FAILED, e)
+            logger.warning("Failed to reset stale sessions: %s", e)
 
     async def _try_resume_session(self, session: Any, guild: discord.Guild) -> bool:
         """Attempt to resume playback for a single session. Returns True if successful."""
@@ -239,13 +238,13 @@ class MusicBot(commands.Bot):
         for cog in cogs:
             try:
                 await self.load_extension(cog)
-                logger.info(LogTemplates.BOT_COG_LOADED, cog)
+                logger.info("Loaded cog: %s", cog)
                 loaded += 1
             except Exception as e:
-                logger.exception(LogTemplates.BOT_COG_LOAD_FAILED, cog, e)
+                logger.exception("Failed to load cog %s: %s", cog, e)
                 failed += 1
 
-        logger.info(LogTemplates.BOT_COGS_LOADED_SUMMARY, loaded, failed)
+        logger.info("Cogs loaded: %s success, %s failed", loaded, failed)
 
     async def _on_app_command_error(
         self, interaction: discord.Interaction, error: Exception
@@ -254,7 +253,7 @@ class MusicBot(commands.Bot):
         original = getattr(error, "original", error)
 
         logger.error(
-            LogTemplates.BOT_SLASH_COMMAND_ERROR,
+            "Slash command error in '%s': %s",
             getattr(interaction.command, "name", "<unknown>"),
             original,
         )
@@ -267,7 +266,7 @@ class MusicBot(commands.Bot):
             else:
                 await interaction.response.send_message(error_msg, ephemeral=True)
         except discord.HTTPException:
-            logger.warning(LogTemplates.BOT_ERROR_MESSAGE_SEND_FAILED)
+            logger.warning("Failed to send error message to user")
 
     async def _sync_commands(self) -> None:
         test_guilds = self.settings.discord.test_guild_ids
@@ -277,36 +276,36 @@ class MusicBot(commands.Bot):
                 guild = discord.Object(id=guild_id)
                 try:
                     synced = await self.tree.sync(guild=guild)
-                    logger.info(LogTemplates.BOT_SYNCED_GUILD, len(synced), guild_id)
+                    logger.info("Synced %s commands to guild %s", len(synced), guild_id)
                 except Exception as e:
-                    logger.warning(LogTemplates.BOT_SYNC_GUILD_FAILED, guild_id, e)
+                    logger.warning("Failed to sync to guild %s: %s", guild_id, e)
 
         try:
             synced = await self.tree.sync()
-            logger.info(LogTemplates.BOT_SYNCED_GLOBAL, len(synced))
+            logger.info("Synced %s commands globally", len(synced))
         except Exception as e:
-            logger.warning(LogTemplates.BOT_SYNC_GLOBAL_FAILED, e)
+            logger.warning("Failed to sync commands globally: %s", e)
 
     async def on_ready(self) -> None:
         logger.info(
-            LogTemplates.BOT_READY,
+            "Bot ready as %s (%s)",
             self.user,  # type: ignore
             self.user.id,  # type: ignore
         )
-        logger.info(LogTemplates.BOT_CONNECTED_GUILDS, len(self.guilds))
+        logger.info("Connected to %s guilds", len(self.guilds))
 
         activity = discord.Activity(type=discord.ActivityType.listening, name="/play")
         await self.change_presence(activity=activity)
 
     async def close(self) -> None:
-        logger.info(LogTemplates.BOT_SHUTTING_DOWN)
+        logger.info("Shutting down bot...")
 
         try:
             cleanup_job = self.container.cleanup_job
             await cleanup_job.stop()
-            logger.info(LogTemplates.CLEANUP_STOPPED)
+            logger.info("Cleanup job stopped")
         except Exception as e:
-            logger.warning(LogTemplates.BOT_CLEANUP_STOP_ERROR, e)
+            logger.warning("Error stopping cleanup job: %s", e)
 
         for vc in self.voice_clients:
             try:
@@ -316,13 +315,13 @@ class MusicBot(commands.Bot):
 
         try:
             await self.container.shutdown()
-            logger.info(LogTemplates.BOT_CONTAINER_SHUTDOWN)
+            logger.info("Container shutdown complete")
         except Exception as e:
-            logger.warning(LogTemplates.BOT_CONTAINER_SHUTDOWN_ERROR, e)
+            logger.warning("Error during container shutdown: %s", e)
 
         await super().close()
         self._shutdown_event.set()
-        logger.info(LogTemplates.BOT_SHUTDOWN_COMPLETE)
+        logger.info("Bot shutdown complete")
 
     def run_with_graceful_shutdown(self, token: str, *, shutdown_timeout: float = 30.0) -> None:
         async def runner():
@@ -333,7 +332,7 @@ class MusicBot(commands.Bot):
                     try:
                         await asyncio.wait_for(self.close(), timeout=shutdown_timeout)
                     except TimeoutError:
-                        logger.warning(LogTemplates.BOT_SHUTDOWN_TIMEOUT, shutdown_timeout)
+                        logger.warning("Graceful shutdown timed out after %.0fs, forcing exit", shutdown_timeout)
 
                 for sig in (signal.SIGINT, signal.SIGTERM):
                     loop.add_signal_handler(sig, lambda: asyncio.create_task(_graceful_close()))

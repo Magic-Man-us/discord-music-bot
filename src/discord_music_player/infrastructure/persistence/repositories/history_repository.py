@@ -12,7 +12,6 @@ from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.repository import TrackHistoryRepository
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
-from discord_music_player.domain.shared.messages import LogTemplates
 from discord_music_player.domain.shared.types import NonEmptyStr, NonNegativeInt, UnitInterval
 
 if TYPE_CHECKING:
@@ -78,7 +77,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             ),
         )
         logger.debug(
-            LogTemplates.HISTORY_RECORDED,
+            "Recorded play for track %s in guild %s",
             track.title,
             guild_id,
         )
@@ -113,7 +112,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         )
 
         if count > 0:
-            logger.info(LogTemplates.HISTORY_OLD_CLEANED, count)
+            logger.info("Cleaned up %s old history entries", count)
 
         return count
 
@@ -165,7 +164,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             (guild_id,),
         )
 
-        logger.info(LogTemplates.HISTORY_CLEARED, count, guild_id)
+        logger.info("Cleared %s history entries for guild %s", count, guild_id)
         return count
 
     async def mark_finished(self, guild_id: int, track_id: TrackId, skipped: bool = False) -> None:

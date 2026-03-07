@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from ...domain.music.entities import Track
 from ...domain.recommendations.services import RecommendationDomainService
-from ...domain.shared.messages import LogTemplates
 from ...domain.shared.types import (
     DiscordSnowflake,
     NonEmptyStr,
@@ -88,7 +87,7 @@ class RadioApplicationService:
                 message="Couldn't find similar tracks.",
             )
 
-        logger.info(LogTemplates.RADIO_ENABLED, guild_id, current_track.title)
+        logger.info("Radio enabled in guild %s (seed='%s')", guild_id, current_track.title)
         return RadioToggleResult(
             enabled=True,
             tracks_added=len(tracks),
@@ -100,7 +99,7 @@ class RadioApplicationService:
         had_state = guild_id in self._states
         self._states.pop(guild_id, None)
         if had_state:
-            logger.info(LogTemplates.RADIO_DISABLED, guild_id)
+            logger.info("Radio disabled in guild %s", guild_id)
 
     async def reroll_track(
         self,
@@ -176,7 +175,7 @@ class RadioApplicationService:
 
                     return result.track
             except Exception as exc:
-                logger.warning(LogTemplates.RADIO_TRACK_RESOLVE_FAILED, rec.query, str(exc))
+                logger.warning("Radio: failed to resolve recommendation '%s': %s", rec.query, str(exc))
                 continue
 
         return None
@@ -189,7 +188,7 @@ class RadioApplicationService:
 
         if state.tracks_generated >= self._settings.max_tracks_per_session:
             logger.info(
-                LogTemplates.RADIO_SESSION_LIMIT,
+                "Radio session limit reached in guild %s (%d/%d tracks)",
                 guild_id,
                 state.tracks_generated,
                 self._settings.max_tracks_per_session,
@@ -197,7 +196,7 @@ class RadioApplicationService:
             self.disable_radio(guild_id)
             return 0
 
-        logger.info(LogTemplates.RADIO_REFILL_TRIGGERED, guild_id)
+        logger.info("Radio refill triggered in guild %s", guild_id)
 
         session = await self._session_repo.get(guild_id)
         if session is None:
@@ -224,10 +223,10 @@ class RadioApplicationService:
                 count=count,
             )
             added = len(tracks)
-            logger.info(LogTemplates.RADIO_REFILL_COMPLETED, guild_id, added)
+            logger.info("Radio refill completed in guild %s: %d tracks added", guild_id, added)
             return added
         except Exception as exc:
-            logger.exception(LogTemplates.RADIO_REFILL_FAILED, guild_id, exc)
+            logger.exception("Radio refill failed in guild %s: %s", guild_id, exc)
             return 0
 
     async def warmup_next(self, guild_id: DiscordSnowflake, *, recent_limit: int = 10) -> int:
@@ -282,7 +281,7 @@ class RadioApplicationService:
             try:
                 track = await self._audio_resolver.resolve(rec.query)
                 if track is None:
-                    logger.warning(LogTemplates.RADIO_TRACK_RESOLVE_FAILED, rec.query, "no result")
+                    logger.warning("Radio: failed to resolve recommendation '%s': %s", rec.query, "no result")
                     continue
 
                 result = await self._queue_service.enqueue(
@@ -295,7 +294,7 @@ class RadioApplicationService:
                     added += 1
                     break  # Only need one track for warmup
             except Exception as exc:
-                logger.warning(LogTemplates.RADIO_TRACK_RESOLVE_FAILED, rec.query, str(exc))
+                logger.warning("Radio: failed to resolve recommendation '%s': %s", rec.query, str(exc))
                 continue
 
         if state is not None and added > 0:
@@ -342,7 +341,7 @@ class RadioApplicationService:
             try:
                 track = await self._audio_resolver.resolve(rec.query)
                 if track is None:
-                    logger.warning(LogTemplates.RADIO_TRACK_RESOLVE_FAILED, rec.query, "no result")
+                    logger.warning("Radio: failed to resolve recommendation '%s': %s", rec.query, "no result")
                     continue
 
                 result = await self._queue_service.enqueue(
@@ -354,7 +353,7 @@ class RadioApplicationService:
                 if result.success and result.track is not None:
                     enqueued_tracks.append(result.track)
             except Exception as exc:
-                logger.warning(LogTemplates.RADIO_TRACK_RESOLVE_FAILED, rec.query, str(exc))
+                logger.warning("Radio: failed to resolve recommendation '%s': %s", rec.query, str(exc))
                 continue
 
         state = self._states.get(guild_id)

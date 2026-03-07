@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent
 
-from discord_music_player.domain.shared.messages import LogTemplates
 
 if TYPE_CHECKING:
     from discord_music_player.config.settings import AISettings
@@ -116,9 +115,9 @@ class AIGenreClassifier:
                     genre = "Other"
                 result[track_id] = genre
 
-            logger.info(LogTemplates.ANALYTICS_GENRE_CLASSIFIED, len(result))
+            logger.info("Classified %d tracks into genres", len(result))
             return result
 
         except Exception as e:
-            logger.error(LogTemplates.ANALYTICS_GENRE_CLASSIFICATION_FAILED, e)
+            logger.error("Genre classification failed: %s", e)
             return {tid: "Unknown" for tid, _ in batch}

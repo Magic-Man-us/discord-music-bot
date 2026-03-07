@@ -14,7 +14,6 @@ from discord_music_player.domain.shared.enums import SyncScope
 from discord_music_player.domain.shared.messages import (
     DiscordUIMessages,
     ErrorMessages,
-    LogTemplates,
 )
 
 if TYPE_CHECKING:
@@ -104,7 +103,7 @@ class AdminCog(commands.Cog):
             return
 
         original = getattr(error, "original", error)
-        logger.exception(LogTemplates.ADMIN_COMMAND_FAILED, exc_info=original)
+        logger.exception("Admin command failed", exc_info=original)
         await self._reply(ctx, DiscordUIMessages.ERROR_COMMAND_FAILED_SEE_LOGS)
 
     # ─────────────────────────────────────────────────────────────────
@@ -132,7 +131,7 @@ class AdminCog(commands.Cog):
                     ctx, DiscordUIMessages.SUCCESS_SYNCED_GUILD.format(count=len(synced))
                 )
         except Exception:
-            logger.exception(LogTemplates.ADMIN_SYNC_COMMANDS_FAILED)
+            logger.exception("Failed to sync commands")
             await self._reply(ctx, DiscordUIMessages.ERROR_SYNC_FAILED_SEE_LOGS)
 
     @commands.command(name="slash_status", description="Show slash command status.")
@@ -168,7 +167,7 @@ class AdminCog(commands.Cog):
 
             await self._reply(ctx, embed=embed)
         except Exception:
-            logger.exception(LogTemplates.ADMIN_FETCH_SLASH_STATUS_FAILED)
+            logger.exception("Failed to fetch slash status")
             await self._reply(ctx, DiscordUIMessages.ERROR_FETCH_STATUS_FAILED)
 
     # ─────────────────────────────────────────────────────────────────
@@ -196,12 +195,12 @@ class AdminCog(commands.Cog):
                     ctx, DiscordUIMessages.SUCCESS_RELOADED_EXTENSION.format(module=old_mod)
                 )
             except Exception:
-                logger.exception(LogTemplates.ADMIN_RELOAD_FAILED, extension)
+                logger.exception("Failed to reload %s", extension)
                 await self._reply(
                     ctx, DiscordUIMessages.ERROR_RELOAD_FAILED.format(extension=extension)
                 )
         except Exception:
-            logger.exception(LogTemplates.ADMIN_RELOAD_FAILED, mod)
+            logger.exception("Failed to reload %s", mod)
             await self._reply(ctx, DiscordUIMessages.ERROR_RELOAD_FAILED.format(extension=mod))
 
     @commands.command(name="reload_all", description="Reload all cogs.")
@@ -220,7 +219,7 @@ class AdminCog(commands.Cog):
                 ok += 1
             except Exception:
                 failed += 1
-                logger.exception(LogTemplates.ADMIN_RELOAD_FAILED, mod)
+                logger.exception("Failed to reload %s", mod)
 
         await self._reply(
             ctx, DiscordUIMessages.SUCCESS_RELOADED_EXTENSIONS.format(ok=ok, failed=failed)
@@ -248,7 +247,7 @@ class AdminCog(commands.Cog):
 
             await self._reply(ctx, embed=embed)
         except Exception:
-            logger.exception(LogTemplates.ADMIN_CACHE_STATUS_FAILED)
+            logger.exception("Failed to get cache status")
             await self._reply(ctx, DiscordUIMessages.ERROR_CACHE_STATUS_FAILED)
 
     @commands.command(name="cache_clear", description="Clear the AI cache.")
@@ -259,7 +258,7 @@ class AdminCog(commands.Cog):
             cleared = ai_client.clear_cache()
             await self._reply(ctx, DiscordUIMessages.SUCCESS_CACHE_CLEARED.format(cleared=cleared))
         except Exception:
-            logger.exception(LogTemplates.ADMIN_CACHE_CLEAR_FAILED)
+            logger.exception("Failed to clear cache")
             await self._reply(ctx, DiscordUIMessages.ERROR_CACHE_CLEAR_FAILED)
 
     @commands.command(name="cache_prune", description="Prune old cache entries.")
@@ -270,7 +269,7 @@ class AdminCog(commands.Cog):
             pruned = ai_client.prune_cache(max_age_seconds)
             await self._reply(ctx, DiscordUIMessages.SUCCESS_CACHE_PRUNED.format(pruned=pruned))
         except Exception:
-            logger.exception(LogTemplates.ADMIN_CACHE_PRUNE_FAILED)
+            logger.exception("Failed to prune cache")
             await self._reply(ctx, DiscordUIMessages.ERROR_CACHE_PRUNE_FAILED)
 
     # ─────────────────────────────────────────────────────────────────
@@ -295,7 +294,7 @@ class AdminCog(commands.Cog):
 
             await self._reply(ctx, embed=embed)
         except Exception:
-            logger.exception(LogTemplates.ADMIN_CLEANUP_FAILED)
+            logger.exception("Failed to run cleanup")
             await self._reply(ctx, DiscordUIMessages.ERROR_CLEANUP_FAILED)
 
     @commands.command(name="db_stats", description="Show database statistics.")
@@ -325,7 +324,7 @@ class AdminCog(commands.Cog):
 
             await self._reply(ctx, embed=embed)
         except Exception:
-            logger.exception(LogTemplates.ADMIN_DB_STATS_FAILED)
+            logger.exception("Failed to get db stats")
             await self._reply(ctx, DiscordUIMessages.ERROR_DB_STATS_FAILED)
 
     @commands.command(name="db_validate", description="Validate database schema.")
@@ -374,7 +373,7 @@ class AdminCog(commands.Cog):
 
             await self._reply(ctx, embed=embed)
         except Exception:
-            logger.exception(LogTemplates.ADMIN_DB_VALIDATE_FAILED)
+            logger.exception("Failed to validate database schema")
             await self._reply(ctx, DiscordUIMessages.ERROR_DB_VALIDATE_FAILED)
 
     # ─────────────────────────────────────────────────────────────────

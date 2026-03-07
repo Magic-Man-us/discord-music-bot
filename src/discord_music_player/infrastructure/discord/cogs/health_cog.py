@@ -18,7 +18,6 @@ from discord_music_player.domain.shared.enums import BotStatus
 from discord_music_player.domain.shared.messages import (
     DiscordUIMessages,
     ErrorMessages,
-    LogTemplates,
 )
 from discord_music_player.domain.shared.types import BYTES_PER_MB
 
@@ -83,12 +82,12 @@ class HealthCog(commands.Cog):
     async def cog_load(self) -> None:
         self.heartbeat_fast.start()
         self.heartbeat_detailed.start()
-        logger.info(LogTemplates.COG_LOADED_HEALTH)
+        logger.info("Health cog loaded, heartbeat loops started")
 
     async def cog_unload(self) -> None:
         self.heartbeat_fast.cancel()
         self.heartbeat_detailed.cancel()
-        logger.info(LogTemplates.COG_UNLOADED_HEALTH)
+        logger.info("Health cog unloaded, heartbeat loops stopped")
 
     # ─────────────────────────────────────────────────────────────────
     # Helper Methods
@@ -224,18 +223,18 @@ class HealthCog(commands.Cog):
                     elif self._warned and lat_ms < (HealthConstants.LATENCY_WARN_MS * HealthConstants.LATENCY_RESET_FACTOR):
                         self._warned = False
 
-            logger.debug(LogTemplates.HEARTBEAT_FAST, lat_ms)
+            logger.debug("Fast heartbeat: latency=%.1fms", lat_ms)
         except Exception:
-            logger.exception(LogTemplates.HEARTBEAT_FAST_ERROR)
+            logger.exception("Fast heartbeat error")
 
     @tasks.loop(seconds=HealthConstants.DEFAULT_DETAILED_INTERVAL, reconnect=True)
     async def heartbeat_detailed(self) -> None:
         try:
             payload = await self._collect_detailed_stats()
             self._atomic_write(self.detailed_file, payload)
-            logger.debug(LogTemplates.HEARTBEAT_DETAILED)
+            logger.debug("Detailed heartbeat collected")
         except Exception:
-            logger.exception(LogTemplates.HEARTBEAT_DETAILED_ERROR)
+            logger.exception("Detailed heartbeat error")
 
     @heartbeat_fast.before_loop
     async def _wait_ready_fast(self) -> None:

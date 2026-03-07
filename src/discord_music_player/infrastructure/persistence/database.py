@@ -12,7 +12,6 @@ import aiosqlite
 from pydantic import BaseModel, ConfigDict, Field
 
 from discord_music_player.domain.shared.constants import SQLPragmas
-from discord_music_player.domain.shared.messages import LogTemplates
 from discord_music_player.domain.shared.types import (
     BYTES_PER_MB,
     FileBytes,
@@ -165,7 +164,7 @@ class Database:
             await conn.commit()
 
         self._initialized = True
-        logger.info(LogTemplates.DATABASE_INITIALIZED, self._db_path)
+        logger.info("Database initialized at %s", self._db_path)
 
     async def _ensure_schema(self, conn: aiosqlite.Connection) -> None:
         await conn.execute(
@@ -328,7 +327,7 @@ class Database:
             return
 
         await conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type_sql}")
-        logger.info(LogTemplates.TABLE_MIGRATED, table, column)
+        logger.info("Migrated table %s: added column %s", table, column)
 
     async def _connect(self) -> aiosqlite.Connection:
         # SQLite ":memory:" is per-connection, so use a shared URI to allow
@@ -451,7 +450,7 @@ class Database:
                     page_size = ps_row[0] if ps_row else 0
 
             except Exception as e:
-                logger.error(LogTemplates.DATABASE_STATS_FAILED, e)
+                logger.error("Failed to get database stats: %s", e)
                 error = str(e)
 
         return DatabaseStats(
@@ -561,4 +560,4 @@ class Database:
             finally:
                 self._keepalive_conn = None
         self._initialized = False
-        logger.info(LogTemplates.DATABASE_CLOSED)
+        logger.info("Database manager closed")

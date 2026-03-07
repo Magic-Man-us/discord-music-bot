@@ -7,7 +7,6 @@ from typing import Annotated
 
 from pydantic import PlainSerializer, PlainValidator, field_validator
 
-from discord_music_player.domain.shared.messages import ErrorMessages
 from discord_music_player.domain.shared.types import DurationSeconds, NonEmptyStr, NonNegativeInt
 from discord_music_player.domain.shared.value_objects import ValueWrapper
 
@@ -23,7 +22,7 @@ class TrackId(ValueWrapper[NonEmptyStr]):
     @classmethod
     def _reject_whitespace_only(cls, v: str) -> str:
         if not v.strip():
-            raise ValueError(ErrorMessages.EMPTY_TRACK_ID)
+            raise ValueError("Track ID cannot be empty")
         return v
 
     @classmethod

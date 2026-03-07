@@ -14,7 +14,6 @@ from discord_music_player.domain.recommendations.entities import (
     Recommendation,
     RecommendationRequest,
 )
-from discord_music_player.domain.shared.messages import LogTemplates
 from discord_music_player.domain.shared.types import NonEmptyStr, PositiveInt
 from discord_music_player.infrastructure.ai.models import (
     AI_TIMEOUT,
@@ -71,7 +70,7 @@ class AIRecommendationClient(AIClient):
             output_type=AIRecommendationResponse,
             system_prompt=SYSTEM_PROMPT,
         )
-        logger.info(LogTemplates.AI_CLIENT_INITIALIZED, self._settings.model, AI_TIMEOUT)
+        logger.info("AI client initialized (model=%s, timeout=%ss)", self._settings.model, AI_TIMEOUT)
         return self._agent
 
     def _cache_key(self, request: RecommendationRequest) -> NonEmptyStr:
@@ -98,7 +97,7 @@ class AIRecommendationClient(AIClient):
 
     def _handle_api_error(self, error: Exception) -> None:
         logger.warning(
-            LogTemplates.AI_API_ERROR_RETRY,
+            "AI API error attempt=%d/%d: %s",
             1,
             1,
             error.__class__.__name__,
@@ -113,7 +112,7 @@ class AIRecommendationClient(AIClient):
             entry = self._cache[cache_key]
             if not entry.is_expired(self._settings.cache_ttl_seconds):
                 self._cache_hits += 1
-                logger.debug(LogTemplates.CACHE_HIT, request.base_track_title)
+                logger.debug("Cache hit for '%s'", request.base_track_title)
                 return entry.data
             else:
                 del self._cache[cache_key]
@@ -122,7 +121,7 @@ class AIRecommendationClient(AIClient):
 
         # Singleflight: deduplicate concurrent identical requests
         if cache_key in self._inflight:
-            logger.debug(LogTemplates.CACHE_JOIN_INFLIGHT, request.base_track_title)
+            logger.debug("Joining in-flight request for '%s'", request.base_track_title)
             return await self._inflight[cache_key]
 
         future: asyncio.Future[list[AIRecommendationItem]] = asyncio.Future()
@@ -136,7 +135,7 @@ class AIRecommendationClient(AIClient):
             )
 
             logger.debug(
-                LogTemplates.AI_FETCHING_RECOMMENDATIONS, request.base_track_title, request.count
+                "Fetching recommendations for '%s' (count=%d)", request.base_track_title, request.count
             )
 
             response = await self._call_api(user_prompt)
@@ -145,7 +144,7 @@ class AIRecommendationClient(AIClient):
             future.set_result(response.recs)
 
             logger.debug(
-                LogTemplates.AI_GENERATED_RECOMMENDATIONS, len(response.recs), request.base_track_title
+                "Generated %d recommendations for '%s'", len(response.recs), request.base_track_title
             )
 
             return response.recs
@@ -165,7 +164,7 @@ class AIRecommendationClient(AIClient):
             return recommendations[: request.count]
 
         except Exception as e:
-            logger.error(LogTemplates.AI_REQUEST_FAILED, e)
+            logger.error("Failed to get recommendations: %s", e)
             return []
 
     async def is_available(self) -> bool:
@@ -180,7 +179,7 @@ class AIRecommendationClient(AIClient):
         self._cache.clear()
         self._cache_hits = 0
         self._cache_misses = 0
-        logger.info(LogTemplates.CACHE_CLEARED, count)
+        logger.info("Cleared %d cache entries", count)
         return count
 
     def prune_cache(self, max_age_seconds: PositiveInt) -> int:
@@ -192,7 +191,7 @@ class AIRecommendationClient(AIClient):
             del self._cache[key]
 
         if expired_keys:
-            logger.info(LogTemplates.CACHE_EXPIRED_PRUNED, len(expired_keys))
+            logger.info("Pruned %d expired cache entries", len(expired_keys))
 
         return len(expired_keys)
 

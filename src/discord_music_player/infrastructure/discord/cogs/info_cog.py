@@ -14,7 +14,6 @@ from discord_music_player.domain.shared.constants import DiscordEmbedLimits, UIC
 from discord_music_player.domain.shared.messages import (
     DiscordUIMessages,
     ErrorMessages,
-    LogTemplates,
 )
 
 if TYPE_CHECKING:
@@ -50,12 +49,12 @@ class InfoCog(commands.Cog):
     async def cog_load(self) -> None:
         self.bot.tree.add_command(self._user_info_ctx)
         self.bot.tree.add_command(self._message_info_ctx)
-        logger.info(LogTemplates.COG_LOADED_INFO)
+        logger.info("Info cog loaded with context menus")
 
     async def cog_unload(self) -> None:
         self.bot.tree.remove_command(self._user_info_ctx.name, type=self._user_info_ctx.type)
         self.bot.tree.remove_command(self._message_info_ctx.name, type=self._message_info_ctx.type)
-        logger.info(LogTemplates.COG_UNLOADED_INFO)
+        logger.info("Info cog unloaded, context menus removed")
 
     # ─────────────────────────────────────────────────────────────────
     # Context Menus

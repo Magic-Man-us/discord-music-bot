@@ -12,7 +12,6 @@ import discord
 from discord_music_player.domain.recommendations.entities import RecommendationRequest
 from discord_music_player.domain.shared.messages import (
     DiscordUIMessages,
-    LogTemplates,
 )
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     check_user_in_voice,
@@ -178,7 +177,7 @@ class NowPlayingView(BaseInteractiveView):
                 edited = True
 
             except Exception:
-                logger.exception(LogTemplates.SHUFFLE_ERROR)
+                logger.exception("Error in shuffle button handler")
                 await interaction.followup.send(
                     DiscordUIMessages.SHUFFLE_ERROR,
                     ephemeral=True,
