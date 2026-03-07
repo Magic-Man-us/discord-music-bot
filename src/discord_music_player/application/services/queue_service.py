@@ -39,7 +39,7 @@ class QueueApplicationService:
     ) -> EnqueueResult:
         session = await self._session_repo.get_or_create(guild_id)
 
-        if session._is_duplicate(track):
+        if session.is_duplicate(track):
             return EnqueueResult(
                 success=False,
                 message=f'"{track.title}" is already in the queue or currently playing',
@@ -88,7 +88,7 @@ class QueueApplicationService:
         """Add a track to the front of the queue."""
         session = await self._session_repo.get_or_create(guild_id)
 
-        if session._is_duplicate(track):
+        if session.is_duplicate(track):
             return EnqueueResult(
                 success=False,
                 message=f'"{track.title}" is already in the queue or currently playing',

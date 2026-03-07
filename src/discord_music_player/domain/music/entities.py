@@ -148,7 +148,7 @@ class GuildPlaybackSession(BaseModel):
         """Update last activity timestamp."""
         self.last_activity = utcnow()
 
-    def _is_duplicate(self, track: Track) -> bool:
+    def is_duplicate(self, track: Track) -> bool:
         """Check if a track with the same ID already exists in the queue or is currently playing."""
         if self.current_track and self.current_track.id == track.id:
             return True
@@ -156,7 +156,7 @@ class GuildPlaybackSession(BaseModel):
 
     def enqueue(self, track: Track) -> QueuePosition:
         """Add a track to the end of the queue."""
-        if self._is_duplicate(track):
+        if self.is_duplicate(track):
             raise BusinessRuleViolationError(
                 rule="NO_DUPLICATES",
                 message=f'"{track.title}" is already in the queue or currently playing',
@@ -173,7 +173,7 @@ class GuildPlaybackSession(BaseModel):
 
     def enqueue_next(self, track: Track) -> QueuePosition:
         """Add a track to the front of the queue (play next)."""
-        if self._is_duplicate(track):
+        if self.is_duplicate(track):
             raise BusinessRuleViolationError(
                 rule="NO_DUPLICATES",
                 message=f'"{track.title}" is already in the queue or currently playing',

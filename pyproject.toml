@@ -10,7 +10,8 @@ readme = "README.md"
 license = {text = "BSD-3-Clause"}
 requires-python = ">=3.12"
 dependencies = [
-    "discord.py>=2.3.2",
+    "discord.py>=2.7.1",
+    "davey>=0.1.4",
     "yt-dlp",
     "bgutil-ytdlp-pot-provider",
     "pydantic>=2.0.0",

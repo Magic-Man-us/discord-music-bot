@@ -42,11 +42,18 @@ if TYPE_CHECKING:
     from ..infrastructure.persistence.repositories.genre_repository import (
         SQLiteGenreCacheRepository,
     )
+    from ..infrastructure.persistence.cleanup import CleanupJob
     from .settings import Settings
 
 
 @dataclass
 class Container:
+    """Lazy-initializing service locator for all application components.
+
+    Uses stdlib ``dataclass`` intentionally — this is not a data boundary.
+    It is a mutable service registry with lazy property accessors, so
+    Pydantic's validation/serialization overhead is unnecessary.
+    """
 
     settings: Settings
     _bot: Bot | None = None
@@ -100,7 +107,7 @@ class Container:
     _get_current_handler: GetCurrentTrackHandler | None = None
 
     # Background jobs
-    _cleanup_job: Any = None  # CleanupJob
+    _cleanup_job: CleanupJob | None = None
 
     def set_bot(self, bot: Bot) -> None:
         self._bot = bot
@@ -432,7 +439,7 @@ class Container:
     # === Background Jobs ===
 
     @property
-    def cleanup_job(self) -> Any:
+    def cleanup_job(self) -> CleanupJob:
         if self._cleanup_job is None:
             from ..infrastructure.persistence.cleanup import CleanupJob
 

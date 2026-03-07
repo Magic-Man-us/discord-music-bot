@@ -594,24 +594,23 @@ class TestDomainEvents:
         """Test unsubscribing from events."""
         from discord_music_player.domain.shared.events import (
             EventBus,
-            TrackSkipped,
+            TrackFinishedPlaying,
         )
 
         bus = EventBus()
         call_count = 0
 
-        async def handler(event: TrackSkipped):
+        async def handler(event: TrackFinishedPlaying):
             nonlocal call_count
             call_count += 1
 
-        bus.subscribe(TrackSkipped, handler)
-        bus.unsubscribe(TrackSkipped, handler)
+        bus.subscribe(TrackFinishedPlaying, handler)
+        bus.unsubscribe(TrackFinishedPlaying, handler)
 
-        event = TrackSkipped(
+        event = TrackFinishedPlaying(
             guild_id=123,
             track_id=TrackId("test"),
             track_title="Test",
-            skipped_by_id=456,
         )
 
         asyncio.run(bus.publish(event))
@@ -622,28 +621,27 @@ class TestDomainEvents:
         """Test multiple handlers for same event type."""
         from discord_music_player.domain.shared.events import (
             EventBus,
-            QueueCleared,
+            QueueExhausted,
         )
 
         bus = EventBus()
         handler1_called = False
         handler2_called = False
 
-        async def handler1(event: QueueCleared):
+        async def handler1(event: QueueExhausted):
             nonlocal handler1_called
             handler1_called = True
 
-        async def handler2(event: QueueCleared):
+        async def handler2(event: QueueExhausted):
             nonlocal handler2_called
             handler2_called = True
 
-        bus.subscribe(QueueCleared, handler1)
-        bus.subscribe(QueueCleared, handler2)
+        bus.subscribe(QueueExhausted, handler1)
+        bus.subscribe(QueueExhausted, handler2)
 
-        event = QueueCleared(
+        event = QueueExhausted(
             guild_id=123,
-            cleared_by_id=456,
-            track_count=5,
+            last_track_title="Test",
         )
 
         asyncio.run(bus.publish(event))

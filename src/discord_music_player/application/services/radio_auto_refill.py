@@ -62,8 +62,7 @@ class RadioAutoRefill:
         if not self._radio_service.is_enabled(guild_id):
             return
 
-        session = await self._radio_service._session_repo.get(guild_id)
-        if session is None or session.queue_length > 0:
+        if await self._radio_service.has_queued_tracks(guild_id):
             return
 
         try:

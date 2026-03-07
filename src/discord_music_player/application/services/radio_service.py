@@ -49,6 +49,11 @@ class RadioApplicationService:
         state = self._states.get(guild_id)
         return state is not None and state.enabled
 
+    async def has_queued_tracks(self, guild_id: DiscordSnowflake) -> bool:
+        """Check whether the guild's queue has any tracks waiting."""
+        session = await self._session_repo.get(guild_id)
+        return session is not None and session.queue_length > 0
+
     async def toggle_radio(
         self,
         guild_id: DiscordSnowflake,

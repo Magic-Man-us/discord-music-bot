@@ -154,7 +154,7 @@ class PlayTrackHandler:
 
         session = await self._session_repo.get_or_create(command.guild_id)
 
-        if session._is_duplicate(track):
+        if session.is_duplicate(track):
             return PlayTrackResult.error(
                 PlayTrackStatus.DUPLICATE,
                 f'"{track.title}" is already in the queue or currently playing',

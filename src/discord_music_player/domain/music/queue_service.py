@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
 from discord_music_player.domain.music.value_objects import LoopMode, PlaybackState
+from discord_music_player.domain.shared.constants import LimitConstants
 
 
 class QueueDomainService:
     """Domain service for queue-related business rules."""
 
-    MAX_QUEUE_SIZE = 50
+    MAX_QUEUE_SIZE = LimitConstants.MAX_QUEUE_SIZE
     MAX_TRACK_DURATION_SECONDS = 3 * 60 * 60
 
     @classmethod

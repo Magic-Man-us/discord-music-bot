@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from ...domain.music.entities import GuildPlaybackSession, Track
 from ...domain.music.value_objects import PlaybackState
-from ...domain.shared.events import QueueExhausted, get_event_bus
+from ...domain.shared.events import QueueExhausted, TrackStartedPlaying, get_event_bus
 from ...domain.shared.types import DiscordSnowflake
 
 if TYPE_CHECKING:
@@ -197,8 +197,6 @@ class PlaybackApplicationService:
             await self._history_repo.record_play(guild_id=guild_id, track=track)
             logger.info("Started playing: %s in guild %s", track.title, guild_id)
 
-            from ...domain.shared.events import TrackStartedPlaying, get_event_bus
-
             await get_event_bus().publish(
                 TrackStartedPlaying(
                     guild_id=guild_id,
@@ -350,9 +348,6 @@ class PlaybackApplicationService:
                     await result
             except Exception:
                 logger.exception("Error in track finished callback")
-
-    def _handle_track_finished(self, guild_id: DiscordSnowflake, track: Track) -> None:
-        asyncio.create_task(self.handle_track_finished(guild_id, track))
 
     def _tracks_match(self, left: Track, right: Track) -> bool:
         """Check whether two tracks refer to the same queued entry."""
