@@ -52,7 +52,7 @@ class EventCog(commands.Cog):
 
     @staticmethod
     def _is_bot_or_none(user: discord.abc.User | discord.Member | None) -> bool:
-        return user is None or bool(getattr(user, "bot", False))
+        return user is None or user.bot
 
     # ─────────────────────────────────────────────────────────────────
     # Lifecycle Events
@@ -60,7 +60,8 @@ class EventCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
-        logger.info("Bot ready as %s (%s)", self.bot.user, getattr(self.bot.user, "id", "?"))
+        bot_user = self.bot.user
+        logger.info("Bot ready as %s (%s)", bot_user, bot_user.id if bot_user else "?")
 
     @commands.Cog.listener()
     async def on_connect(self) -> None:
@@ -92,6 +93,9 @@ class EventCog(commands.Cog):
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild) -> None:
         logger.info("Left guild: %s (%s)", guild.name, guild.id)
+
+        self._cancel_idle_timer(guild.id)
+        self._cancel_empty_channel_timer(guild.id)
 
         try:
             self.container.message_state_manager.reset(guild.id)
@@ -290,7 +294,7 @@ class EventCog(commands.Cog):
 
         from ....domain.shared.constants import TimeConstants
 
-        timeout = getattr(TimeConstants, "EMPTY_CHANNEL_DISCONNECT_SECONDS", 30)
+        timeout = TimeConstants.EMPTY_CHANNEL_DISCONNECT_SECONDS
         logger.info("No users left in voice channel, scheduling disconnect in %ss for guild %s", timeout, guild.id)
         self._empty_channel_timers[guild.id] = asyncio.create_task(
             self._empty_channel_disconnect(guild, timeout)
@@ -381,7 +385,7 @@ class EventCog(commands.Cog):
         logger.debug(
             "Reaction add msg=%s user=%s emoji=%s",
             payload.message_id,
-            getattr(payload.member, "display_name", f"user_id={payload.user_id}"),
+            payload.member.display_name if payload.member else f"user_id={payload.user_id}",
             payload.emoji,
         )
 
@@ -411,8 +415,8 @@ class EventCog(commands.Cog):
             time_str = f"{retry_after:.1f}s" if retry_after >= 1 else f"{retry_after * UIConstants.MS_PER_SECOND:.0f}ms"
             logger.debug(
                 "Cooldown triggered for command '%s' by %s (%.2fs remaining)",
-                getattr(ctx.command, "qualified_name", "<unknown>"),
-                getattr(ctx.author, "id", "?"),
+                ctx.command.qualified_name if ctx.command else "<unknown>",
+                ctx.author.id,
                 retry_after,
             )
             try:
@@ -439,10 +443,10 @@ class EventCog(commands.Cog):
         if isinstance(error, commands.CommandNotFound):
             return
 
-        original = getattr(error, "original", error)
+        original = error.original if isinstance(error, commands.CommandInvokeError) else error
         logger.exception(
             "Unhandled command error in '%s'",
-            getattr(ctx.command, "qualified_name", "<unknown>"),
+            ctx.command.qualified_name if ctx.command else "<unknown>",
             exc_info=original,
         )
 

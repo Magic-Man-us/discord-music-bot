@@ -511,15 +511,6 @@ class TestSettings:
         with pytest.raises(ValidationError, match="Database URL must start with"):
             Settings()
 
-    def test_from_env_class_method(self, monkeypatch):
-        """Should create settings using from_env() class method."""
-        monkeypatch.setenv("ENVIRONMENT", "test")
-
-        settings = Settings.from_env()
-
-        assert settings.environment == "test"
-        assert isinstance(settings, Settings)
-
     def test_case_insensitive_env_vars(self, monkeypatch):
         """Should accept environment variables in any case."""
         monkeypatch.setenv("environment", "production")  # lowercase

@@ -40,9 +40,9 @@ class VoiceAdapter(ABC):
     async def play(
         self,
         guild_id: DiscordSnowflake,
-        track: "Track",
+        track: Track,
         *,
-        start_seconds: "StartSeconds | None" = None,
+        start_seconds: StartSeconds | None = None,
     ) -> bool:
         """Start playing a track, optionally seeking to *start_seconds*."""
         ...

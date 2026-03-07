@@ -143,9 +143,10 @@ class RadioApplicationService:
             for t in session.queue:
                 exclude_ids.append(t.id.value)
 
+        # Request 3 candidates so we have fallbacks if yt-dlp fails on some
         request = RecommendationDomainService.create_request_from_track(
             track=base_track,
-            count=1,
+            count=3,
             exclude_ids=exclude_ids,
         )
 

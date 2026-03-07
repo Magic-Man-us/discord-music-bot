@@ -12,12 +12,8 @@ from discord_music_player.domain.shared.exceptions import (
     InvalidOperationError,
     ValidationError,
 )
-from discord_music_player.domain.shared.value_objects import ChannelId, GuildId, UserId
 
 __all__ = [
-    "GuildId",
-    "UserId",
-    "ChannelId",
     "DomainError",
     "ValidationError",
     "EntityNotFoundError",

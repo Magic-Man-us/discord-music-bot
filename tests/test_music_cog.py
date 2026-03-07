@@ -87,6 +87,9 @@ def mock_container():
     container.audio_resolver = MagicMock()
     container.audio_resolver.resolve = AsyncMock()
     container.audio_resolver.search = AsyncMock()
+    container.audio_resolver.is_url = MagicMock(return_value=False)
+    container.audio_resolver.is_playlist = MagicMock(return_value=False)
+    container.audio_resolver.preview_playlist = AsyncMock(return_value=[])
 
     # Mock voice adapter (mix of sync and async methods)
     container.voice_adapter = MagicMock()
@@ -1136,19 +1139,18 @@ class TestLeaveCommand:
     @pytest.mark.asyncio
     async def test_leave_success(self, playback_cog, mock_interaction, mock_container):
         """Should disconnect from voice."""
-        mock_container.voice_adapter.disconnect = AsyncMock(return_value=True)
+        mock_container.voice_adapter.is_connected = MagicMock(return_value=True)
 
         await playback_cog.leave.callback(playback_cog, mock_interaction)
 
         mock_container.playback_service.cleanup_guild.assert_called_once_with(111111111)
-        mock_container.voice_adapter.disconnect.assert_called_once_with(111111111)
         args = mock_interaction.response.send_message.call_args
         assert "Disconnected" in args[0][0]
 
     @pytest.mark.asyncio
     async def test_leave_not_connected(self, playback_cog, mock_interaction, mock_container):
         """Should handle not connected."""
-        mock_container.voice_adapter.disconnect = AsyncMock(return_value=False)
+        mock_container.voice_adapter.is_connected = MagicMock(return_value=False)
 
         await playback_cog.leave.callback(playback_cog, mock_interaction)
 

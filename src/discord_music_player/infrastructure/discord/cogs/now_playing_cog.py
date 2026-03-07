@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
-
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from discord_music_player.domain.shared.constants import AnalyticsConstants, UIConstants
 from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
+from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     send_ephemeral,
@@ -20,16 +19,10 @@ from discord_music_player.infrastructure.discord.services.message_state_manager 
 )
 from discord_music_player.utils.reply import format_duration, truncate
 
-if TYPE_CHECKING:
-    from ....config.container import Container
-
 logger = logging.getLogger(__name__)
 
 
-class NowPlayingCog(commands.Cog):
-    def __init__(self, bot: commands.Bot, container: Container) -> None:
-        self.bot = bot
-        self.container = container
+class NowPlayingCog(BaseCog):
 
     @app_commands.command(name="current", description="Show the current track.")
     async def current(self, interaction: discord.Interaction) -> None:

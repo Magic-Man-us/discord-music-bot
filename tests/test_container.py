@@ -93,17 +93,11 @@ class TestContainerInitialization:
         assert container._audio_resolver is None
         assert container._voice_adapter is None
         assert container._ai_client is None
-        assert container._queue_domain_service is None
-        assert container._playback_domain_service is None
-        assert container._voting_domain_service is None
         assert container._playback_service is None
         assert container._queue_service is None
         assert container._voice_warmup_tracker is None
         assert container._auto_skip_on_requester_leave is None
 
-    def test_instances_dict_initialized_empty(self, container):
-        """Should initialize with empty instances dict."""
-        assert container._instances == {}
 
 
 # =============================================================================
@@ -341,82 +335,6 @@ class TestAIClient:
 # =============================================================================
 # Domain Service Tests
 # =============================================================================
-
-
-class TestQueueDomainService:
-    """Unit tests for queue_domain_service property."""
-
-    def test_lazy_initialization(self, container):
-        """Should create service on first access."""
-        with patch("discord_music_player.domain.music.queue_service.QueueDomainService") as MockService:
-            service = container.queue_domain_service
-            MockService.assert_called_once_with()
-            assert service == MockService.return_value
-
-    def test_caching(self, container):
-        """Should return same instance on subsequent calls."""
-        with patch("discord_music_player.domain.music.queue_service.QueueDomainService") as MockService:
-            service1 = container.queue_domain_service
-            service2 = container.queue_domain_service
-            assert service1 is service2
-            MockService.assert_called_once()
-
-
-class TestPlaybackDomainService:
-    """Unit tests for playback_domain_service property."""
-
-    def test_lazy_initialization(self, container):
-        """Should create service on first access."""
-        with patch(
-            "discord_music_player.domain.music.playback_service.PlaybackDomainService"
-        ) as MockService:
-            service = container.playback_domain_service
-            MockService.assert_called_once_with()
-            assert service == MockService.return_value
-
-    def test_caching(self, container):
-        """Should return same instance on subsequent calls."""
-        with patch(
-            "discord_music_player.domain.music.playback_service.PlaybackDomainService"
-        ) as MockService:
-            service1 = container.playback_domain_service
-            service2 = container.playback_domain_service
-            assert service1 is service2
-            MockService.assert_called_once()
-
-
-class TestVotingDomainService:
-    """Unit tests for voting_domain_service property."""
-
-    def test_lazy_initialization(self, container):
-        """Should create service on first access."""
-        with patch(
-            "discord_music_player.domain.voting.services.VotingDomainService"
-        ) as MockService:
-            service = container.voting_domain_service
-            MockService.assert_called_once_with()
-            assert service == MockService.return_value
-
-    def test_caching(self, container):
-        """Should return same instance on subsequent calls."""
-        with patch(
-            "discord_music_player.domain.voting.services.VotingDomainService"
-        ) as MockService:
-            service1 = container.voting_domain_service
-            service2 = container.voting_domain_service
-            assert service1 is service2
-            MockService.assert_called_once()
-
-
-# =============================================================================
-# Application Service Tests
-# =============================================================================
-
-
-class TestPlaybackService:
-    """Unit tests for playback_service property."""
-
-    def test_lazy_initialization(self, container, mock_bot):
         """Should create service with correct dependencies."""
         container.set_bot(mock_bot)
         with patch(
@@ -428,7 +346,7 @@ class TestPlaybackService:
                 history_repository=container.history_repository,
                 voice_adapter=container.voice_adapter,
                 audio_resolver=container.audio_resolver,
-                playback_domain_service=container.playback_domain_service,
+                playback_domain_service=container.playback_service,
             )
             assert service == MockService.return_value
 
@@ -455,7 +373,7 @@ class TestQueueService:
             service = container.queue_service
             MockService.assert_called_once_with(
                 session_repository=container.session_repository,
-                queue_domain_service=container.queue_domain_service,
+                queue_domain_service=container.queue_service,
             )
             assert service == MockService.return_value
 
@@ -473,124 +391,6 @@ class TestQueueService:
 # =============================================================================
 # Command Handler Tests
 # =============================================================================
-
-
-class TestPlayTrackHandler:
-    """Unit tests for play_track_handler property."""
-
-    def test_lazy_initialization(self, container, mock_bot):
-        """Should create handler with correct dependencies."""
-        container.set_bot(mock_bot)
-        with patch(
-            "discord_music_player.application.commands.play_track.PlayTrackHandler"
-        ) as MockHandler:
-            handler = container.play_track_handler
-            MockHandler.assert_called_once_with(
-                session_repository=container.session_repository,
-                audio_resolver=container.audio_resolver,
-                voice_adapter=container.voice_adapter,
-            )
-            assert handler == MockHandler.return_value
-
-    def test_caching(self, container, mock_bot):
-        """Should return same instance on subsequent calls."""
-        container.set_bot(mock_bot)
-        with patch(
-            "discord_music_player.application.commands.play_track.PlayTrackHandler"
-        ) as MockHandler:
-            handler1 = container.play_track_handler
-            handler2 = container.play_track_handler
-            assert handler1 is handler2
-            MockHandler.assert_called_once()
-
-
-class TestSkipTrackHandler:
-    """Unit tests for skip_track_handler property."""
-
-    def test_lazy_initialization(self, container, mock_bot):
-        """Should create handler with correct dependencies."""
-        container.set_bot(mock_bot)
-        with patch(
-            "discord_music_player.application.commands.skip_track.SkipTrackHandler"
-        ) as MockHandler:
-            handler = container.skip_track_handler
-            MockHandler.assert_called_once_with(
-                session_repository=container.session_repository,
-                voice_adapter=container.voice_adapter,
-            )
-            assert handler == MockHandler.return_value
-
-    def test_caching(self, container, mock_bot):
-        """Should return same instance on subsequent calls."""
-        container.set_bot(mock_bot)
-        with patch(
-            "discord_music_player.application.commands.skip_track.SkipTrackHandler"
-        ) as MockHandler:
-            handler1 = container.skip_track_handler
-            handler2 = container.skip_track_handler
-            assert handler1 is handler2
-            MockHandler.assert_called_once()
-
-
-class TestStopPlaybackHandler:
-    """Unit tests for stop_playback_handler property."""
-
-    def test_lazy_initialization(self, container, mock_bot):
-        """Should create handler with correct dependencies."""
-        container.set_bot(mock_bot)
-        with patch(
-            "discord_music_player.application.commands.stop_playback.StopPlaybackHandler"
-        ) as MockHandler:
-            handler = container.stop_playback_handler
-            MockHandler.assert_called_once_with(
-                session_repository=container.session_repository,
-                voice_adapter=container.voice_adapter,
-            )
-            assert handler == MockHandler.return_value
-
-    def test_caching(self, container, mock_bot):
-        """Should return same instance on subsequent calls."""
-        container.set_bot(mock_bot)
-        with patch(
-            "discord_music_player.application.commands.stop_playback.StopPlaybackHandler"
-        ) as MockHandler:
-            handler1 = container.stop_playback_handler
-            handler2 = container.stop_playback_handler
-            assert handler1 is handler2
-            MockHandler.assert_called_once()
-
-
-class TestClearQueueHandler:
-    """Unit tests for clear_queue_handler property."""
-
-    def test_lazy_initialization(self, container):
-        """Should create handler with correct dependencies."""
-        with patch(
-            "discord_music_player.application.commands.clear_queue.ClearQueueHandler"
-        ) as MockHandler:
-            handler = container.clear_queue_handler
-            MockHandler.assert_called_once_with(
-                session_repository=container.session_repository,
-            )
-            assert handler == MockHandler.return_value
-
-    def test_caching(self, container):
-        """Should return same instance on subsequent calls."""
-        with patch(
-            "discord_music_player.application.commands.clear_queue.ClearQueueHandler"
-        ) as MockHandler:
-            handler1 = container.clear_queue_handler
-            handler2 = container.clear_queue_handler
-            assert handler1 is handler2
-            MockHandler.assert_called_once()
-
-
-class TestVoteSkipHandler:
-    """Unit tests for vote_skip_handler property."""
-
-    def test_lazy_initialization(self, container, mock_bot):
-        """Should create handler with correct dependencies."""
-        container.set_bot(mock_bot)
         with patch(
             "discord_music_player.application.commands.vote_skip.VoteSkipHandler"
         ) as MockHandler:
@@ -617,65 +417,6 @@ class TestVoteSkipHandler:
 # =============================================================================
 # Query Handler Tests
 # =============================================================================
-
-
-class TestGetQueueHandler:
-    """Unit tests for get_queue_handler property."""
-
-    def test_lazy_initialization(self, container):
-        """Should create handler with correct dependencies."""
-        with patch(
-            "discord_music_player.application.queries.get_queue.GetQueueHandler"
-        ) as MockHandler:
-            handler = container.get_queue_handler
-            MockHandler.assert_called_once_with(
-                session_repository=container.session_repository,
-            )
-            assert handler == MockHandler.return_value
-
-    def test_caching(self, container):
-        """Should return same instance on subsequent calls."""
-        with patch(
-            "discord_music_player.application.queries.get_queue.GetQueueHandler"
-        ) as MockHandler:
-            handler1 = container.get_queue_handler
-            handler2 = container.get_queue_handler
-            assert handler1 is handler2
-            MockHandler.assert_called_once()
-
-
-class TestGetCurrentHandler:
-    """Unit tests for get_current_handler property."""
-
-    def test_lazy_initialization(self, container):
-        """Should create handler with correct dependencies."""
-        with patch(
-            "discord_music_player.application.queries.get_current.GetCurrentTrackHandler"
-        ) as MockHandler:
-            handler = container.get_current_handler
-            MockHandler.assert_called_once_with(
-                session_repository=container.session_repository,
-            )
-            assert handler == MockHandler.return_value
-
-    def test_caching(self, container):
-        """Should return same instance on subsequent calls."""
-        with patch(
-            "discord_music_player.application.queries.get_current.GetCurrentTrackHandler"
-        ) as MockHandler:
-            handler1 = container.get_current_handler
-            handler2 = container.get_current_handler
-            assert handler1 is handler2
-            MockHandler.assert_called_once()
-
-
-# =============================================================================
-# Voice Warmup Tracker Tests
-# =============================================================================
-
-
-class TestVoiceWarmupTracker:
-    """Unit tests for voice_warmup_tracker property."""
 
     def test_lazy_initialization(self, container):
         """Should create tracker with warmup_seconds=60."""
@@ -853,7 +594,7 @@ class TestLifecycleShutdown:
 
         await container.shutdown()
 
-        assert container._instances == {}
+        # _instances removed
 
     @pytest.mark.asyncio
     async def test_shutdown_without_database(self, container):
@@ -877,7 +618,7 @@ class TestLifecycleShutdown:
 
         mock_subscriber.stop.assert_called_once()
         mock_db.close.assert_called_once()
-        assert container._instances == {}
+        # _instances removed
 
 
 # =============================================================================
@@ -903,23 +644,14 @@ class TestContainerIntegration:
             assert container._history_repository is not None
             assert container._voice_adapter is not None
             assert container._audio_resolver is not None
-            assert container._playback_domain_service is not None
+            assert container._playback_service is not None
 
-    def test_multiple_handlers_share_repositories(self, container, mock_bot):
-        """Should share repository instances across handlers."""
+    def test_services_share_repositories(self, container, mock_bot):
+        """Should share repository instances across services."""
         container.set_bot(mock_bot)
 
-        with (
-            patch("discord_music_player.application.commands.play_track.PlayTrackHandler"),
-            patch("discord_music_player.application.commands.skip_track.SkipTrackHandler"),
-            patch("discord_music_player.application.commands.vote_skip.VoteSkipHandler"),
-        ):
-            # Access multiple handlers
-            _ = container.play_track_handler
-            _ = container.skip_track_handler
+        with patch("discord_music_player.application.commands.vote_skip.VoteSkipHandler"):
             _ = container.vote_skip_handler
+            _ = container.queue_service
 
-            # All should share the same session_repository instance
             assert container._session_repo is not None
-            # The repository should only be created once
-            # (Verified by caching tests above)

@@ -33,6 +33,7 @@ HASH_ID_LENGTH: Final[int] = 16
 LOG_URL_TRUNCATE: Final[int] = 60
 RESOLVE_BATCH_SIZE: Final[int] = 5
 RESOLVE_BATCH_DELAY: Final[float] = 0.5
+EXTRACT_TIMEOUT: Final[int] = 30  # seconds — max time for a single yt-dlp extraction
 
 
 # ── Pydantic models for yt-dlp data ────────────────────────────────────

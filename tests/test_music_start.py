@@ -108,7 +108,7 @@ class TestSessionManagement:
             cmd_str = " ".join(call_args)
             assert "while true" in cmd_str
             assert "process exited with code" in cmd_str
-            assert "sleep 2" in cmd_str
+            assert "sleep $DELAY" in cmd_str
 
     def test_start_session_with_log_file(self):
         """Should configure tee logging when log file provided."""

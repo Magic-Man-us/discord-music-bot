@@ -18,6 +18,8 @@ from pathlib import Path
 
 DEFAULT_SESSION = "music_bot"
 DEFAULT_LOG_FILE = "logs/music_bot.log"  # Changed from None for better UX
+MAX_RAPID_CRASHES = 5
+RAPID_CRASH_WINDOW = 60  # seconds — if MAX_RAPID_CRASHES occur within this window, stop respawning
 
 
 def _default_cmd() -> str:
@@ -105,12 +107,34 @@ def start_session(
     inner_cmd = f"{env_prelude} {cmd} 2>&1 | tee -a {shlex.quote(str(log_path))}"
 
     if respawn:
-        # Keep restarting the bot if it crashes
+        # Keep restarting the bot with crash-loop detection.
+        # If MAX_RAPID_CRASHES exits happen within RAPID_CRASH_WINDOW seconds,
+        # stop respawning to avoid resource exhaustion.
         inner_cmd = (
+            f"CRASH_TIMES=(); "
             f"while true; do "
             f"{inner_cmd}; "
-            f'echo "[respawn] process exited with code $?" ; '
-            f"sleep 2; "
+            f"EXIT_CODE=$?; "
+            f'echo "[respawn] process exited with code $EXIT_CODE"; '
+            f"NOW=$(date +%s); "
+            f"CRASH_TIMES+=(\"$NOW\"); "
+            # Trim crash times outside the window
+            f"CUTOFF=$((NOW - {RAPID_CRASH_WINDOW})); "
+            f"RECENT=(); "
+            f'for T in "${{CRASH_TIMES[@]}}"; do '
+            f'  [ "$T" -ge "$CUTOFF" ] && RECENT+=("$T"); '
+            f"done; "
+            f"CRASH_TIMES=(\"${{RECENT[@]}}\"); "
+            # Check if crash limit exceeded
+            f'if [ "${{#CRASH_TIMES[@]}}" -ge {MAX_RAPID_CRASHES} ]; then '
+            f'  echo "[respawn] {MAX_RAPID_CRASHES} crashes in {RAPID_CRASH_WINDOW}s — stopping respawn loop"; '
+            f"  break; "
+            f"fi; "
+            # Exponential backoff: 2s, 4s, 8s, 16s, capped at 30s
+            f"DELAY=$((2 << (${{#CRASH_TIMES[@]}} - 1))); "
+            f'[ "$DELAY" -gt 30 ] && DELAY=30; '
+            f'echo "[respawn] restarting in ${{DELAY}}s..."; '
+            f"sleep $DELAY; "
             f"done"
         )
 

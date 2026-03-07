@@ -24,3 +24,4 @@ uv.lock
 tools/
 .coverage
 .wily/
+bot.pid

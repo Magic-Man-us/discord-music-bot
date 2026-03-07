@@ -26,6 +26,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_SHUFFLE_LABEL = "\U0001f500 Shuffle"
+_SHUFFLE_THINKING_LABEL = "\U0001f500 Thinking..."
+_MAX_GUILD_LOCKS = 256
+
 
 class NowPlayingView(BaseInteractiveView):
     """View for now-playing embeds: YouTube link, Download link, and AI Shuffle button."""
@@ -70,13 +74,18 @@ class NowPlayingView(BaseInteractiveView):
     @classmethod
     def _get_lock(cls, guild_id: int) -> asyncio.Lock:
         if guild_id not in cls._guild_locks:
+            # Evict stale entries if the dict grows too large
+            if len(cls._guild_locks) >= _MAX_GUILD_LOCKS:
+                unlocked = [gid for gid, lk in cls._guild_locks.items() if not lk.locked()]
+                for gid in unlocked:
+                    del cls._guild_locks[gid]
             cls._guild_locks[guild_id] = asyncio.Lock()
         return cls._guild_locks[guild_id]
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return await check_user_in_voice(interaction, self.guild_id)
 
-    @discord.ui.button(label="\U0001f500 Shuffle", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label=_SHUFFLE_LABEL, style=discord.ButtonStyle.primary)
     async def shuffle_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[NowPlayingView]
     ) -> None:
@@ -95,7 +104,7 @@ class NowPlayingView(BaseInteractiveView):
             try:
                 # Disable the shuffle button while processing
                 button.disabled = True
-                button.label = "\U0001f500 Thinking..."
+                button.label = _SHUFFLE_THINKING_LABEL
                 await self._try_edit_message()
 
                 # Get current track info for the recommendation
@@ -147,7 +156,7 @@ class NowPlayingView(BaseInteractiveView):
                     guild_id=self.guild_id,
                     track=track,
                     user_id=user.id,
-                    user_name=getattr(user, "display_name", user.name),
+                    user_name=user.display_name,
                 )
 
                 if not result.success:
@@ -166,7 +175,7 @@ class NowPlayingView(BaseInteractiveView):
 
                 # Re-enable button and update embed with "Next Up" in a single edit
                 button.disabled = False
-                button.label = "\U0001f500 Shuffle"
+                button.label = _SHUFFLE_LABEL
                 if self._message:
                     from ..services.message_state_manager import MessageStateManager
 
@@ -186,7 +195,7 @@ class NowPlayingView(BaseInteractiveView):
                 # Re-enable the button if the success path didn't already do it
                 if not edited:
                     button.disabled = False
-                    button.label = "\U0001f500 Shuffle"
+                    button.label = _SHUFFLE_LABEL
                     await self._try_edit_message()
 
     async def _try_edit_message(self, *, embed: discord.Embed | None = None) -> None:

@@ -75,7 +75,7 @@ class InfoCog(commands.Cog):
 
         embed = discord.Embed(
             title=DiscordUIMessages.EMBED_USER_INFO.format(
-                display_name=getattr(user, "display_name", user.name)
+                display_name=user.display_name
             ),
             color=discord.Color.blurple(),
         )
@@ -127,12 +127,12 @@ class InfoCog(commands.Cog):
         if member.voice and member.voice.channel:
             embed.add_field(name="Voice", value=member.voice.channel.mention, inline=True)
 
-        if getattr(member, "timed_out_until", None):
+        if member.timed_out_until:
             embed.add_field(
                 name="Timeout Until", value=_format_abs_rel(member.timed_out_until), inline=True
             )
 
-        if getattr(member, "premium_since", None):
+        if member.premium_since:
             embed.add_field(
                 name="Boosting Since", value=_format_abs_rel(member.premium_since), inline=True
             )
@@ -151,9 +151,12 @@ class InfoCog(commands.Cog):
         embed.add_field(name="Author", value=message.author.mention, inline=True)
 
         ch = message.channel
-        ch_value = getattr(ch, "mention", None) or (
-            f"#{getattr(ch, 'name', 'DM')}" if hasattr(ch, "name") else "DM"
-        )
+        if isinstance(ch, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.ForumChannel, discord.Thread)):
+            ch_value = ch.mention
+        elif isinstance(ch, discord.DMChannel):
+            ch_value = "DM"
+        else:
+            ch_value = f"#{ch}" if ch else "DM"
         embed.add_field(name="Channel", value=ch_value, inline=True)
 
         embed.add_field(
@@ -259,7 +262,7 @@ class InfoCog(commands.Cog):
 
         embed = discord.Embed(
             title=DiscordUIMessages.EMBED_AVATAR.format(
-                display_name=getattr(target, "display_name", target.name)
+                display_name=target.display_name
             ),
             color=discord.Color.blurple(),
         )

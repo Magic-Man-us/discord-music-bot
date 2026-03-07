@@ -195,17 +195,19 @@ class TestSetupHook:
         mock_container.initialize.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_setup_hook_resets_stale_sessions(self, mock_container, mock_settings):
-        """Should reset stale sessions during setup."""
+    async def test_on_ready_resumes_sessions(self, mock_container, mock_settings):
+        """Should resume sessions during on_ready (after guild cache is populated)."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
         bot = MusicBot(container=mock_container, settings=mock_settings)
+        bot._connection._guilds = {}  # simulate empty guild cache for user property
+        bot._connection.user = MagicMock()
 
-        with patch.object(bot, "_load_cogs", new_callable=AsyncMock):
-            with patch.object(bot, "_resume_sessions", new_callable=AsyncMock) as mock_reset:
-                await bot.setup_hook()
+        with patch.object(bot, "_resume_sessions", new_callable=AsyncMock) as mock_resume:
+            with patch.object(bot, "change_presence", new_callable=AsyncMock):
+                await bot.on_ready()
 
-        mock_reset.assert_called_once()
+        mock_resume.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_setup_hook_loads_cogs(self, mock_container, mock_settings):
@@ -592,7 +594,7 @@ class TestAppCommandErrorHandler:
 
         # Wrapped error
         original = ValueError("Original error")
-        wrapper = MagicMock()
+        wrapper = MagicMock(spec=discord.app_commands.CommandInvokeError)
         wrapper.original = original
 
         await bot._on_app_command_error(interaction, wrapper)

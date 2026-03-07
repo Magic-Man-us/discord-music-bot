@@ -82,7 +82,7 @@ class RerollButton(discord.ui.Button["RadioView"]):
                 guild_id=view._guild_id,
                 queue_position=self.queue_position,
                 user_id=user.id,
-                user_name=getattr(user, "display_name", user.name),
+                user_name=user.display_name,
             )
 
             if new_track is None:
@@ -119,6 +119,13 @@ class AcceptButton(discord.ui.Button["RadioView"]):
     async def callback(self, interaction: discord.Interaction) -> None:
         assert self.view is not None
         view: RadioView = self.view
+
+        if view._reroll_in_progress:
+            await interaction.response.send_message(
+                "A re-roll is in progress, please wait before accepting.",
+                ephemeral=True,
+            )
+            return
 
         # Disable all buttons
         for item in view.children:

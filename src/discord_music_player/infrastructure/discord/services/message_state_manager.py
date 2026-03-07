@@ -265,6 +265,41 @@ class MessageStateManager:
         except discord.HTTPException:
             return None
 
+    # ── Live "Next Up" update ──────────────────────────────────────
+
+    async def update_next_up(self, guild_id: int, next_track: Track | None) -> None:
+        """Update the 'Next Up' field on the current Now Playing embed."""
+        from ....domain.shared.messages import DiscordUIMessages
+
+        state = self._state_by_guild.get(guild_id)
+        if state is None or state.now_playing is None:
+            return
+
+        message = await self._fetch_message(state.now_playing)
+        if message is None:
+            return
+
+        if not message.embeds:
+            return
+
+        embed = message.embeds[0]
+
+        # Find and replace the "Next Up" field
+        next_up_value = (
+            truncate(next_track.title, 60)
+            if next_track
+            else DiscordUIMessages.UP_NEXT_NONE
+        )
+        for i, field in enumerate(embed.fields):
+            if field.name and "\u23ed" in field.name:  # ⏭ emoji
+                embed.set_field_at(i, name=field.name, value=next_up_value, inline=False)
+                break
+
+        try:
+            await message.edit(embed=embed)
+        except Exception:
+            logger.debug("Failed to update Next Up for guild %s", guild_id)
+
     # ── Track-finished callback ─────────────────────────────────────
 
     async def on_track_finished(self, guild_id: int, track: Track) -> None:

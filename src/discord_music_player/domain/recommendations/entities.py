@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Final
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from discord_music_player.domain.shared.datetime_utils import utcnow
+from discord_music_player.domain.shared.mixins import ExpirableMixin
 from discord_music_player.domain.shared.types import HttpUrlStr, NonEmptyStr, PositiveInt, UnitInterval
 
 if TYPE_CHECKING:
@@ -93,7 +94,7 @@ class Recommendation(BaseModel):
         return f"{(self.artist or '').lower()}|{self.title.lower()}"
 
 
-class RecommendationSet(BaseModel):
+class RecommendationSet(ExpirableMixin, BaseModel):
     """Aggregate grouping recommendations for a specific base track."""
 
     model_config = ConfigDict()
@@ -114,12 +115,6 @@ class RecommendationSet(BaseModel):
             generated_at = data.get("generated_at") or utcnow()
             data["expires_at"] = generated_at + timedelta(hours=cls.DEFAULT_CACHE_HOURS)
         return data
-
-    @property
-    def is_expired(self) -> bool:
-        if self.expires_at is None:
-            return False
-        return utcnow() > self.expires_at
 
     @property
     def count(self) -> int:

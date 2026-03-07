@@ -785,15 +785,6 @@ class TestAvatarCommand:
 class TestEdgeCases:
     """Tests for edge cases and error conditions."""
 
-    def test_build_user_info_embed_no_display_name(self, info_cog, mock_user):
-        """Should handle users without display_name attribute."""
-        delattr(mock_user, "display_name")
-
-        embed = info_cog._build_user_info_embed(mock_user, include_roles=False)
-
-        # Should use name as fallback
-        assert isinstance(embed, discord.Embed)
-        assert "testuser" in embed.title.lower()
 
     def test_build_user_info_embed_member_no_top_role(self, info_cog, mock_member):
         """Should handle members where top role is @everyone."""
@@ -853,10 +844,8 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_message_info_dm_channel(self, info_cog, mock_interaction, mock_message):
         """Should handle messages in DM channels."""
-        # Make channel a DM (no mention attribute)
-        mock_message.channel = MagicMock()
-        delattr(mock_message.channel, "mention")
-        mock_message.channel.name = "DM"
+        # Make channel a DMChannel instance
+        mock_message.channel = MagicMock(spec=discord.DMChannel)
 
         await info_cog._message_info_context_menu(mock_interaction, mock_message)
 

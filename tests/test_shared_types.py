@@ -11,7 +11,6 @@ from discord_music_player.domain.shared.types import (
     ChannelIdField,
     DiscordSnowflake,
     DurationSeconds,
-    GuildIdField,
     HttpUrlStr,
     NonEmptyStr,
     NonNegativeFloat,
@@ -276,11 +275,7 @@ class TestUtcDatetimeField:
 
 
 class TestIdFieldAliases:
-    """GuildIdField, UserIdField, ChannelIdField should behave as DiscordSnowflake."""
-
-    def test_guild_id_valid(self):
-        M = _model_for(GuildIdField)
-        assert M(v=123456789).v == 123456789
+    """UserIdField, ChannelIdField should behave as DiscordSnowflake."""
 
     def test_user_id_valid(self):
         M = _model_for(UserIdField)
@@ -289,11 +284,6 @@ class TestIdFieldAliases:
     def test_channel_id_valid(self):
         M = _model_for(ChannelIdField)
         assert M(v=123456789).v == 123456789
-
-    def test_guild_id_zero_rejected(self):
-        M = _model_for(GuildIdField)
-        with pytest.raises(ValidationError):
-            M(v=0)
 
     def test_user_id_zero_rejected(self):
         M = _model_for(UserIdField)

@@ -36,78 +36,6 @@ class ConfigKeys:
     LOG_EVENT_REACTIONS = "LOG_EVENT_REACTIONS"
 
 
-class DatabaseTables:
-    """Database table names."""
-
-    GUILD_SESSIONS = "guild_sessions"
-    QUEUE_TRACKS = "queue_tracks"
-    TRACK_HISTORY = "track_history"
-    VOTE_SESSIONS = "vote_sessions"
-    VOTES = "votes"
-    RECOMMENDATION_CACHE = "recommendation_cache"
-    TRACK_GENRES = "track_genres"
-
-
-class DatabaseColumns:
-    """Database column names."""
-
-    # Primary Keys
-    ID = "id"
-
-    # Foreign Keys & IDs
-    GUILD_ID = "guild_id"
-    USER_ID = "user_id"
-    TRACK_ID = "track_id"
-    VOTE_SESSION_ID = "vote_session_id"
-    BASE_TRACK_ID = "base_track_id"
-
-    # Track Fields
-    TITLE = "title"
-    WEBPAGE_URL = "webpage_url"
-    STREAM_URL = "stream_url"
-    DURATION_SECONDS = "duration_seconds"
-    THUMBNAIL_URL = "thumbnail_url"
-    ARTIST = "artist"
-    UPLOADER = "uploader"
-    LIKE_COUNT = "like_count"
-    VIEW_COUNT = "view_count"
-
-    # Requester Fields
-    REQUESTED_BY_ID = "requested_by_id"
-    REQUESTED_BY_NAME = "requested_by_name"
-    REQUESTED_AT = "requested_at"
-
-    # Queue Fields
-    POSITION = "position"
-    IS_CURRENT = "is_current"
-
-    # Session Fields
-    STATE = "state"
-    LOOP_MODE = "loop_mode"
-    CREATED_AT = "created_at"
-    LAST_ACTIVITY = "last_activity"
-
-    # History Fields
-    PLAYED_AT = "played_at"
-    FINISHED_AT = "finished_at"
-    SKIPPED = "skipped"
-
-    # Vote Fields
-    VOTE_TYPE = "vote_type"
-    THRESHOLD = "threshold"
-    STARTED_AT = "started_at"
-    COMPLETED_AT = "completed_at"
-    RESULT = "result"
-
-    # Cache Fields
-    CACHE_KEY = "cache_key"
-    BASE_TRACK_TITLE = "base_track_title"
-    BASE_TRACK_ARTIST = "base_track_artist"
-    RECOMMENDATIONS_JSON = "recommendations_json"
-    GENERATED_AT = "generated_at"
-    EXPIRES_AT = "expires_at"
-
-
 class SQLPragmas:
     """SQLite PRAGMA statements."""
 
@@ -117,24 +45,6 @@ class SQLPragmas:
     TABLE_INFO = "PRAGMA table_info({table})"
     PAGE_COUNT = "PRAGMA page_count"
     PAGE_SIZE = "PRAGMA page_size"
-
-
-class SQLQueries:
-    """Common SQL query templates."""
-
-    # Table metadata queries
-    GET_TABLE_NAMES = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '%_%'"
-    GET_TABLE_INFO = "PRAGMA table_info({table})"
-
-    # Count queries
-    COUNT_ALL = "SELECT COUNT(*) as count FROM {table}"
-    COUNT_WHERE = "SELECT COUNT(*) as count FROM {table} WHERE {condition}"
-
-    # Index creation templates
-    CREATE_INDEX = "CREATE INDEX IF NOT EXISTS {index_name} ON {table}({columns})"
-
-    # Alter table template
-    ALTER_TABLE_ADD_COLUMN = "ALTER TABLE {table} ADD COLUMN {column} {column_type}"
 
 
 class AudioConstants:
@@ -163,30 +73,6 @@ class AudioConstants:
 
     # Timestamp / seek limits
     MAX_SEEK_SECONDS = 86_400  # 24 hours
-
-
-class DatabaseURLSchemes:
-    """Valid database URL schemes for validation."""
-
-    SQLITE = "sqlite://"
-    POSTGRESQL = "postgresql://"
-    MYSQL = "mysql://"
-
-    # For in-memory testing
-    MEMORY = ":memory:"
-    MEMORY_SHARED_URI = "file:discord-music-player?mode=memory&cache=shared"
-
-
-class HTTPHeaders:
-    """HTTP header names and common values."""
-
-    USER_AGENT = "User-Agent"
-    CONTENT_TYPE = "Content-Type"
-    AUTHORIZATION = "Authorization"
-
-    # Common content types
-    JSON = "application/json"
-    FORM_URLENCODED = "application/x-www-form-urlencoded"
 
 
 class TimeConstants:
@@ -269,6 +155,7 @@ class DiscordEmbedLimits:
     """Discord API embed and message size constraints."""
 
     EMBED_FIELD_VALUE_MAX = 1024
+    EMBED_FIELD_CHUNK_SAFE = 1000  # Safe margin below EMBED_FIELD_VALUE_MAX
     SLASH_STATUS_TRUNCATION = 500
     MESSAGE_CONTENT_SNIPPET = 256
 
@@ -295,6 +182,13 @@ class AnalyticsConstants:
     GENRE_TOP_N = 10
     ACTIVITY_DAYS_WINDOW = 30
 
+
+class PlaylistConstants:
+    """Playlist import limits."""
+
+    MAX_SELECT_OPTIONS = 25  # Discord select menu limit
+    MAX_PLAYLIST_TRACKS = 50  # Max tracks to show from a playlist
+    VIEW_TIMEOUT = 120.0  # 2 minutes
 
 class UIConstants:
     """Cross-cog UI presentation constants."""

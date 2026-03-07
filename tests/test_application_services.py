@@ -44,13 +44,12 @@ class TestQueueApplicationServiceEnqueue:
         return MagicMock()
 
     @pytest.fixture
-    def service(self, mock_session_repo, mock_queue_domain_service):
+    def service(self, mock_session_repo):
         """Create service with mock dependencies."""
         from discord_music_player.application.services.queue_service import QueueApplicationService
 
         return QueueApplicationService(
             session_repository=mock_session_repo,
-            queue_domain_service=mock_queue_domain_service,
         )
 
     @pytest.fixture
@@ -162,13 +161,12 @@ class TestQueueApplicationServiceEnqueueNext:
         return MagicMock()
 
     @pytest.fixture
-    def service(self, mock_session_repo, mock_queue_domain_service):
+    def service(self, mock_session_repo):
         """Create service with mock dependencies."""
         from discord_music_player.application.services.queue_service import QueueApplicationService
 
         return QueueApplicationService(
             session_repository=mock_session_repo,
-            queue_domain_service=mock_queue_domain_service,
         )
 
     @pytest.fixture
@@ -217,13 +215,12 @@ class TestQueueApplicationServiceOperations:
         return MagicMock()
 
     @pytest.fixture
-    def service(self, mock_session_repo, mock_queue_domain_service):
+    def service(self, mock_session_repo):
         """Create service with mock dependencies."""
         from discord_music_player.application.services.queue_service import QueueApplicationService
 
         return QueueApplicationService(
             session_repository=mock_session_repo,
-            queue_domain_service=mock_queue_domain_service,
         )
 
     @pytest.fixture
@@ -343,13 +340,12 @@ class TestQueueApplicationServiceGetQueue:
         return MagicMock()
 
     @pytest.fixture
-    def service(self, mock_session_repo, mock_queue_domain_service):
+    def service(self, mock_session_repo):
         """Create service with mock dependencies."""
         from discord_music_player.application.services.queue_service import QueueApplicationService
 
         return QueueApplicationService(
             session_repository=mock_session_repo,
-            queue_domain_service=mock_queue_domain_service,
         )
 
     @pytest.fixture
@@ -418,13 +414,12 @@ class TestQueueApplicationServiceToggleLoop:
         return MagicMock()
 
     @pytest.fixture
-    def service(self, mock_session_repo, mock_queue_domain_service):
+    def service(self, mock_session_repo):
         """Create service with mock dependencies."""
         from discord_music_player.application.services.queue_service import QueueApplicationService
 
         return QueueApplicationService(
             session_repository=mock_session_repo,
-            queue_domain_service=mock_queue_domain_service,
         )
 
     @pytest.mark.asyncio
@@ -482,7 +477,6 @@ class TestPlaybackApplicationServiceStartPlayback:
         mock_session_repo,
         mock_voice_adapter,
         mock_audio_resolver,
-        mock_playback_domain_service,
         mock_history_repo,
     ):
         """Create service with mock dependencies."""
@@ -495,7 +489,6 @@ class TestPlaybackApplicationServiceStartPlayback:
             history_repository=mock_history_repo,
             voice_adapter=mock_voice_adapter,
             audio_resolver=mock_audio_resolver,
-            playback_domain_service=mock_playback_domain_service,
         )
 
     @pytest.fixture
@@ -588,7 +581,6 @@ class TestPlaybackApplicationServiceStopPlayback:
         mock_session_repo,
         mock_voice_adapter,
         mock_audio_resolver,
-        mock_playback_domain_service,
         mock_history_repo,
     ):
         """Create service with mock dependencies."""
@@ -601,7 +593,6 @@ class TestPlaybackApplicationServiceStopPlayback:
             history_repository=mock_history_repo,
             voice_adapter=mock_voice_adapter,
             audio_resolver=mock_audio_resolver,
-            playback_domain_service=mock_playback_domain_service,
         )
 
     @pytest.mark.asyncio
@@ -658,7 +649,6 @@ class TestPlaybackApplicationServicePauseResume:
         mock_session_repo,
         mock_voice_adapter,
         mock_audio_resolver,
-        mock_playback_domain_service,
         mock_history_repo,
     ):
         """Create service with mock dependencies."""
@@ -671,7 +661,6 @@ class TestPlaybackApplicationServicePauseResume:
             history_repository=mock_history_repo,
             voice_adapter=mock_voice_adapter,
             audio_resolver=mock_audio_resolver,
-            playback_domain_service=mock_playback_domain_service,
         )
 
     @pytest.fixture
@@ -764,7 +753,6 @@ class TestPlaybackApplicationServiceSkipTrack:
         mock_session_repo,
         mock_voice_adapter,
         mock_audio_resolver,
-        mock_playback_domain_service,
         mock_history_repo,
     ):
         """Create service with mock dependencies."""
@@ -777,7 +765,6 @@ class TestPlaybackApplicationServiceSkipTrack:
             history_repository=mock_history_repo,
             voice_adapter=mock_voice_adapter,
             audio_resolver=mock_audio_resolver,
-            playback_domain_service=mock_playback_domain_service,
         )
 
     @pytest.fixture
@@ -875,7 +862,6 @@ class TestPlaybackApplicationServiceCleanup:
         mock_session_repo,
         mock_voice_adapter,
         mock_audio_resolver,
-        mock_playback_domain_service,
         mock_history_repo,
     ):
         """Create service with mock dependencies."""
@@ -888,7 +874,6 @@ class TestPlaybackApplicationServiceCleanup:
             history_repository=mock_history_repo,
             voice_adapter=mock_voice_adapter,
             audio_resolver=mock_audio_resolver,
-            playback_domain_service=mock_playback_domain_service,
         )
 
     @pytest.mark.asyncio
@@ -945,7 +930,6 @@ class TestPlaybackApplicationServiceOnVoiceTrackEnd:
         mock_session_repo,
         mock_voice_adapter,
         mock_audio_resolver,
-        mock_playback_domain_service,
         mock_history_repo,
     ):
         """Create service with mock dependencies."""
@@ -958,7 +942,6 @@ class TestPlaybackApplicationServiceOnVoiceTrackEnd:
             history_repository=mock_history_repo,
             voice_adapter=mock_voice_adapter,
             audio_resolver=mock_audio_resolver,
-            playback_domain_service=mock_playback_domain_service,
         )
 
     @pytest.fixture
@@ -1054,7 +1037,6 @@ class TestPlaybackApplicationServiceSetCallback:
         mock_session_repo,
         mock_voice_adapter,
         mock_audio_resolver,
-        mock_playback_domain_service,
         mock_history_repo,
     ):
         """Create service with mock dependencies."""
@@ -1067,7 +1049,6 @@ class TestPlaybackApplicationServiceSetCallback:
             history_repository=mock_history_repo,
             voice_adapter=mock_voice_adapter,
             audio_resolver=mock_audio_resolver,
-            playback_domain_service=mock_playback_domain_service,
         )
 
     def test_set_track_finished_callback(self, service):
@@ -1110,7 +1091,6 @@ class TestPlaybackApplicationServiceHandleTrackFinished:
         mock_session_repo,
         mock_voice_adapter,
         mock_audio_resolver,
-        mock_playback_domain_service,
         mock_history_repo,
     ):
         """Create service with mock dependencies."""
@@ -1123,7 +1103,6 @@ class TestPlaybackApplicationServiceHandleTrackFinished:
             history_repository=mock_history_repo,
             voice_adapter=mock_voice_adapter,
             audio_resolver=mock_audio_resolver,
-            playback_domain_service=mock_playback_domain_service,
         )
 
     @pytest.fixture
@@ -1256,7 +1235,6 @@ class TestPlaybackApplicationServiceEnsureStreamUrl:
         mock_session_repo,
         mock_voice_adapter,
         mock_audio_resolver,
-        mock_playback_domain_service,
         mock_history_repo,
     ):
         """Create service with mock dependencies."""
@@ -1269,7 +1247,6 @@ class TestPlaybackApplicationServiceEnsureStreamUrl:
             history_repository=mock_history_repo,
             voice_adapter=mock_voice_adapter,
             audio_resolver=mock_audio_resolver,
-            playback_domain_service=mock_playback_domain_service,
         )
 
     @pytest.fixture
@@ -1385,7 +1362,6 @@ class TestPlaybackApplicationServiceStartVoicePlayback:
         mock_session_repo,
         mock_voice_adapter,
         mock_audio_resolver,
-        mock_playback_domain_service,
         mock_history_repo,
     ):
         """Create service with mock dependencies."""
@@ -1398,7 +1374,6 @@ class TestPlaybackApplicationServiceStartVoicePlayback:
             history_repository=mock_history_repo,
             voice_adapter=mock_voice_adapter,
             audio_resolver=mock_audio_resolver,
-            playback_domain_service=mock_playback_domain_service,
         )
 
     @pytest.fixture
@@ -1484,7 +1459,6 @@ class TestPlaybackApplicationServicePauseResumeErrors:
         mock_session_repo,
         mock_voice_adapter,
         mock_audio_resolver,
-        mock_playback_domain_service,
         mock_history_repo,
     ):
         """Create service with mock dependencies."""
@@ -1497,7 +1471,6 @@ class TestPlaybackApplicationServicePauseResumeErrors:
             history_repository=mock_history_repo,
             voice_adapter=mock_voice_adapter,
             audio_resolver=mock_audio_resolver,
-            playback_domain_service=mock_playback_domain_service,
         )
 
     @pytest.fixture
@@ -1570,7 +1543,6 @@ class TestPlaybackApplicationServiceStopErrors:
         mock_session_repo,
         mock_voice_adapter,
         mock_audio_resolver,
-        mock_playback_domain_service,
         mock_history_repo,
     ):
         """Create service with mock dependencies."""
@@ -1583,7 +1555,6 @@ class TestPlaybackApplicationServiceStopErrors:
             history_repository=mock_history_repo,
             voice_adapter=mock_voice_adapter,
             audio_resolver=mock_audio_resolver,
-            playback_domain_service=mock_playback_domain_service,
         )
 
     @pytest.mark.asyncio
@@ -1689,13 +1660,12 @@ class TestQueueApplicationServiceMoveEdgeCases:
         return MagicMock()
 
     @pytest.fixture
-    def service(self, mock_session_repo, mock_queue_domain_service):
+    def service(self, mock_session_repo):
         """Create service with mock dependencies."""
         from discord_music_player.application.services.queue_service import QueueApplicationService
 
         return QueueApplicationService(
             session_repository=mock_session_repo,
-            queue_domain_service=mock_queue_domain_service,
         )
 
     @pytest.fixture
@@ -1739,13 +1709,12 @@ class TestQueueApplicationServiceRemoveEdgeCases:
         return MagicMock()
 
     @pytest.fixture
-    def service(self, mock_session_repo, mock_queue_domain_service):
+    def service(self, mock_session_repo):
         """Create service with mock dependencies."""
         from discord_music_player.application.services.queue_service import QueueApplicationService
 
         return QueueApplicationService(
             session_repository=mock_session_repo,
-            queue_domain_service=mock_queue_domain_service,
         )
 
     @pytest.fixture
@@ -1787,13 +1756,12 @@ class TestQueueApplicationServiceShuffleNoSession:
         return MagicMock()
 
     @pytest.fixture
-    def service(self, mock_session_repo, mock_queue_domain_service):
+    def service(self, mock_session_repo):
         """Create service with mock dependencies."""
         from discord_music_player.application.services.queue_service import QueueApplicationService
 
         return QueueApplicationService(
             session_repository=mock_session_repo,
-            queue_domain_service=mock_queue_domain_service,
         )
 
     @pytest.mark.asyncio

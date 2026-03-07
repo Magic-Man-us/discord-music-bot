@@ -11,6 +11,7 @@ class BaseInteractiveView(discord.ui.View):
     def __init__(self, *, timeout: float | None = 180.0) -> None:
         super().__init__(timeout=timeout)
         self._message: discord.Message | None = None
+        self._resolved: bool = False
 
     def set_message(self, message: discord.Message) -> None:
         self._message = message
@@ -19,3 +20,17 @@ class BaseInteractiveView(discord.ui.View):
         for item in self.children:
             if isinstance(item, discord.ui.Button):
                 item.disabled = True
+
+    def _disable_all_items(self) -> None:
+        for item in self.children:
+            if isinstance(item, (discord.ui.Button, discord.ui.Select)):
+                item.disabled = True
+
+    def _finish_view(self) -> bool:
+        """Mark the view as resolved. Returns False if already resolved (race lost)."""
+        if self._resolved:
+            return False
+        self._resolved = True
+        self.stop()
+        self._disable_buttons()
+        return True

@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import TYPE_CHECKING
-
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from discord_music_player.domain.music.value_objects import LoopMode
+from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.domain.shared.constants import UIConstants
 from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
@@ -22,16 +21,10 @@ from discord_music_player.infrastructure.discord.services.message_state_manager 
 )
 from discord_music_player.utils.reply import format_duration, truncate
 
-if TYPE_CHECKING:
-    from ....config.container import Container
-
 logger = logging.getLogger(__name__)
 
 
-class QueueCog(commands.Cog):
-    def __init__(self, bot: commands.Bot, container: Container) -> None:
-        self.bot = bot
-        self.container = container
+class QueueCog(BaseCog):
 
     @app_commands.command(name="queue", description="Show the current queue.")
     @app_commands.describe(page="Page number")
@@ -169,7 +162,7 @@ class QueueCog(commands.Cog):
                 guild_id=interaction.guild.id,
                 track=track,
                 user_id=user.id,
-                user_name=getattr(user, "display_name", user.name),
+                user_name=user.display_name,
             )
             if result.success:
                 enqueued_count += 1

@@ -13,6 +13,7 @@ from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.shared.constants import UIConstants
 from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
 from discord_music_player.domain.shared.types import DiscordSnowflake
+from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     get_member,
@@ -26,16 +27,12 @@ from discord_music_player.utils.reply import (
 )
 
 if TYPE_CHECKING:
-    from ....config.container import Container
     from ....domain.music.value_objects import StartSeconds
 
 logger = logging.getLogger(__name__)
 
 
-class PlaybackCog(commands.Cog):
-    def __init__(self, bot: commands.Bot, container: Container) -> None:
-        self.bot = bot
-        self.container = container
+class PlaybackCog(BaseCog):
 
     async def cog_load(self) -> None:
         self.container.playback_service.set_track_finished_callback(self._on_track_finished)
@@ -134,6 +131,12 @@ class PlaybackCog(commands.Cog):
                 )
                 return
 
+        # Detect playlist URLs and show selection UI
+        resolver = self.container.audio_resolver
+        if resolver.is_url(query) and resolver.is_playlist(query):
+            await self._handle_playlist(interaction, query)
+            return
+
         await self._play_track(interaction, query, start_seconds=start_seconds)
 
     async def _play_track(
@@ -185,14 +188,14 @@ class PlaybackCog(commands.Cog):
                         guild_id=interaction.guild.id,
                         track=track,
                         requester_id=user.id,
-                        requester_name=getattr(user, "display_name", user.name),
+                        requester_name=user.display_name,
                         container=self.container,
                     )
 
                     channel = self.bot.get_channel(interaction.channel_id)
                     if channel and hasattr(channel, "send"):
                         vote_msg = await channel.send(
-                            f"\u23f1\ufe0f **{getattr(user, 'display_name', user.name)}** wants to queue a long track ({format_duration(track.duration_seconds)}): **{truncate(track.title, 60)}**\nVote to accept or reject:",
+                            f"\u23f1\ufe0f **{user.display_name}** wants to queue a long track ({format_duration(track.duration_seconds)}): **{truncate(track.title, 60)}**\nVote to accept or reject:",
                             view=view,
                         )
                         view.set_message(vote_msg)
@@ -208,7 +211,7 @@ class PlaybackCog(commands.Cog):
                 guild_id=interaction.guild.id,
                 track=track,
                 user_id=user.id,
-                user_name=getattr(user, "display_name", user.name),
+                user_name=user.display_name,
             )
 
             if not result.success:
@@ -271,11 +274,46 @@ class PlaybackCog(commands.Cog):
                         message_id=sent.id,
                     )
 
+                # Update the "Next Up" field on the Now Playing embed
+                session = await self.container.session_repository.get(interaction.guild.id)
+                upcoming = session.peek() if session else None
+                await msm.update_next_up(interaction.guild.id, upcoming)
+
         except Exception as e:
             logger.exception("Error in play command")
             await interaction.followup.send(
                 DiscordUIMessages.ERROR_OCCURRED.format(error=e), ephemeral=True
             )
+
+    # ─────────────────────────────────────────────────────────────────
+    # Playlist
+    # ─────────────────────────────────────────────────────────────────
+
+    async def _handle_playlist(
+        self, interaction: discord.Interaction, url: str
+    ) -> None:
+        """Extract playlist entries and show selection UI."""
+        resolver = self.container.audio_resolver
+        entries = await resolver.preview_playlist(url)
+
+        if not entries:
+            await interaction.followup.send(
+                DiscordUIMessages.PLAYLIST_EMPTY, ephemeral=True
+            )
+            return
+
+        from ..views.playlist_view import PlaylistView, build_playlist_embed
+
+        embed = build_playlist_embed(entries)
+        view = PlaylistView(
+            entries=entries,
+            interaction=interaction,
+            container=self.container,
+        )
+        msg = await interaction.followup.send(
+            embed=embed, view=view, wait=True
+        )
+        view.set_message(msg)
 
     # ─────────────────────────────────────────────────────────────────
     # Callbacks
@@ -419,11 +457,11 @@ class PlaybackCog(commands.Cog):
         playback_service = self.container.playback_service
 
         self.container.radio_service.disable_radio(interaction.guild.id)
+        was_connected = voice_adapter.is_connected(interaction.guild.id)
         await playback_service.cleanup_guild(interaction.guild.id)
         self.container.message_state_manager.reset(interaction.guild.id)
-        disconnected = await voice_adapter.disconnect(interaction.guild.id)
 
-        if disconnected:
+        if was_connected:
             await interaction.response.send_message(
                 DiscordUIMessages.ACTION_DISCONNECTED, ephemeral=True
             )

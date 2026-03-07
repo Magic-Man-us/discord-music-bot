@@ -12,7 +12,6 @@ from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, QueuePositionI
 from .queue_models import EnqueueResult, QueueSnapshot
 
 if TYPE_CHECKING:
-    from ...domain.music.queue_service import QueueDomainService
     from ...domain.music.repository import SessionRepository
 
 logger = logging.getLogger(__name__)
@@ -25,10 +24,8 @@ class QueueApplicationService:
         self,
         *,
         session_repository: SessionRepository,
-        queue_domain_service: QueueDomainService,
     ) -> None:
         self._session_repo = session_repository
-        self._queue_service = queue_domain_service
 
     async def enqueue(
         self,

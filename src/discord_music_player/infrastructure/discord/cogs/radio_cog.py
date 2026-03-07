@@ -4,28 +4,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
-
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from discord_music_player.domain.shared.enums import RadioAction
 from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
+from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
 )
 
-if TYPE_CHECKING:
-    from ....config.container import Container
-
 logger = logging.getLogger(__name__)
 
 
-class RadioCog(commands.Cog):
-    def __init__(self, bot: commands.Bot, container: Container) -> None:
-        self.bot = bot
-        self.container = container
+class RadioCog(BaseCog):
 
     @app_commands.command(
         name="radio",
@@ -101,14 +94,14 @@ class RadioCog(commands.Cog):
             result = await radio_service.toggle_radio(
                 guild_id=interaction.guild.id,
                 user_id=user.id,
-                user_name=getattr(user, "display_name", user.name),
+                user_name=user.display_name,
             )
         else:
             # No query - normal toggle behavior
             result = await radio_service.toggle_radio(
                 guild_id=interaction.guild.id,
                 user_id=user.id,
-                user_name=getattr(user, "display_name", user.name),
+                user_name=user.display_name,
             )
 
         # If disabling radio or error, send ephemeral message

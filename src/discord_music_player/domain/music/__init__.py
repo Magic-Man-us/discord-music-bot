@@ -5,7 +5,6 @@ Domain logic for track playback, queue management, and session handling.
 """
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
-from discord_music_player.domain.music.queue_service import QueueDomainService
 from discord_music_player.domain.music.repository import SessionRepository
 from discord_music_player.domain.music.value_objects import PlaybackState, QueuePosition, TrackId
 
@@ -19,6 +18,4 @@ __all__ = [
     "PlaybackState",
     # Repository
     "SessionRepository",
-    # Services
-    "QueueDomainService",
 ]

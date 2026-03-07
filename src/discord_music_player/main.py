@@ -3,18 +3,20 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import logging.config
+import os
 import sys
 from pathlib import Path
 
-
 _LOGGING_CONFIG_PATH = Path(__file__).resolve().parents[2] / "logging_config.json"
+_PID_FILE = Path(__file__).resolve().parents[2] / "bot.pid"
 
 
 def setup_logging(log_level: str = "INFO") -> None:
-    resolved_level = getattr(logging, log_level.upper(), logging.INFO)
+    resolved_level = logging.getLevelNamesMapping().get(log_level.upper(), logging.INFO)
 
     try:
         with open(_LOGGING_CONFIG_PATH) as f:
@@ -33,6 +35,23 @@ def setup_logging(log_level: str = "INFO") -> None:
     logging.getLogger().setLevel(resolved_level)
 
 
+def _acquire_pid_lock(logger: logging.Logger) -> int | None:
+    """Acquire an exclusive lock via bot.pid. Returns the fd or None on failure."""
+    try:
+        fd = _PID_FILE.open("w")
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fd.write(str(os.getpid()))
+        fd.flush()
+        return fd  # type: ignore[return-value]  # keep fd alive to hold lock
+    except OSError:
+        try:
+            existing_pid = _PID_FILE.read_text().strip()
+        except OSError:
+            existing_pid = "unknown"
+        logger.error("Another bot instance is already running (PID %s). Exiting.", existing_pid)
+        return None
+
+
 def main() -> int:
     from discord_music_player.config.settings import get_settings
 
@@ -40,6 +59,10 @@ def main() -> int:
     setup_logging(settings.log_level)
 
     logger = logging.getLogger(__name__)
+
+    lock = _acquire_pid_lock(logger)
+    if lock is None:
+        return 1
 
     token_value = settings.discord.token.get_secret_value()
     if not token_value:

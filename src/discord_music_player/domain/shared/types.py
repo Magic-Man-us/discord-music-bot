@@ -115,11 +115,6 @@ UtcDatetimeField = Annotated[datetime, BeforeValidator(_ensure_utc)]
 
 
 # ── Pydantic-compatible ID aliases ──────────────────────────────────
-# These mirror the standalone value objects (GuildId, UserId, ChannelId)
-# but work directly as Pydantic field types without wrapping.
-
-GuildIdField = DiscordSnowflake
-"""Alias — guild ID used as a plain Pydantic field."""
 
 UserIdField = DiscordSnowflake
 """Alias — user ID used as a plain Pydantic field."""

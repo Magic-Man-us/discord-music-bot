@@ -132,48 +132,6 @@ class PlaybackState(StrEnum):
         return self != PlaybackState.STOPPED
 
 
-class TrackFinishReason(StrEnum):
-    """Reasons a track can finish playing."""
-
-    COMPLETED = "completed"
-    SKIPPED = "skipped"
-    STOPPED = "stopped"
-    ERROR = "error"
-
-
-class SkipReason(StrEnum):
-    """Reasons a track can be skipped."""
-
-    USER_REQUEST = "user_request"
-    VOTE = "vote"
-    AUTO_SKIP = "auto_skip"
-
-
-class StopReason(StrEnum):
-    """Reasons playback can be stopped."""
-
-    USER_REQUEST = "user_request"
-    NO_MORE_TRACKS = "no_more_tracks"
-    ERROR = "error"
-    DISCONNECT = "disconnect"
-
-
-class SessionDestroyReason(StrEnum):
-    """Reasons a session can be destroyed."""
-
-    CLEANUP = "cleanup"
-    DISCONNECT = "disconnect"
-    INACTIVITY = "inactivity"
-
-
-class VoiceLeaveReason(StrEnum):
-    """Reasons the bot can leave a voice channel."""
-
-    DISCONNECT = "disconnect"
-    MOVED = "moved"
-    KICKED = "kicked"
-
-
 class LoopMode(StrEnum):
     """Loop mode settings for queue playback."""
 

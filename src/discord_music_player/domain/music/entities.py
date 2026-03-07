@@ -31,6 +31,16 @@ from discord_music_player.domain.shared.types import (
 )
 
 
+class PlaylistEntry(BaseModel):
+    """Lightweight preview of a single playlist item (no stream URL needed)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    title: TrackTitleStr
+    url: HttpUrlStr
+    duration_seconds: DurationSeconds | None = None
+
+
 class Track(BaseModel):
     """Immutable value object representing a playable track."""
 

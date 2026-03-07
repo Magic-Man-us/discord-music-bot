@@ -42,6 +42,7 @@ class MusicBot(commands.Bot):
         self.settings = settings
         self._shutdown_event = asyncio.Event()
         container.set_bot(self)
+        self._sessions_resumed = False
 
     async def setup_hook(self) -> None:
         logger.info("Setting up bot...")
@@ -53,7 +54,6 @@ class MusicBot(commands.Bot):
             logger.exception("Failed to initialize container: %s", e)
             raise
 
-        await self._resume_sessions()
         await self._load_cogs()
         self.tree.on_error = self._on_app_command_error
 
@@ -250,11 +250,11 @@ class MusicBot(commands.Bot):
         self, interaction: discord.Interaction, error: Exception
     ) -> None:
         """Global slash-command error handler; sends ephemeral messages to avoid channel spam."""
-        original = getattr(error, "original", error)
+        original = error.original if isinstance(error, discord.app_commands.CommandInvokeError) else error
 
         logger.error(
             "Slash command error in '%s': %s",
-            getattr(interaction.command, "name", "<unknown>"),
+            interaction.command.name if interaction.command else "<unknown>",
             original,
         )
 
@@ -296,6 +296,10 @@ class MusicBot(commands.Bot):
 
         activity = discord.Activity(type=discord.ActivityType.listening, name="/play")
         await self.change_presence(activity=activity)
+
+        if not self._sessions_resumed:
+            self._sessions_resumed = True
+            await self._resume_sessions()
 
     async def close(self) -> None:
         logger.info("Shutting down bot...")

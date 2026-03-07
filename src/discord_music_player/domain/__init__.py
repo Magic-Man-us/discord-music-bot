@@ -9,12 +9,8 @@ Contains pure business logic organized by bounded contexts:
 - recommendations/: AI recommendation domain logic
 """
 
-from discord_music_player.domain.shared import ChannelId, GuildId, UserId
 from discord_music_player.domain.shared.exceptions import DomainError
 
 __all__ = [
-    "GuildId",
-    "UserId",
-    "ChannelId",
     "DomainError",
 ]

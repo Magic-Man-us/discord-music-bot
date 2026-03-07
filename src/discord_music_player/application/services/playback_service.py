@@ -13,7 +13,6 @@ from ...domain.shared.events import QueueExhausted, TrackStartedPlaying, get_eve
 from ...domain.shared.types import DiscordSnowflake
 
 if TYPE_CHECKING:
-    from ...domain.music.playback_service import PlaybackDomainService
     from ...domain.music.repository import SessionRepository, TrackHistoryRepository
     from ...domain.music.value_objects import StartSeconds
     from ..interfaces.audio_resolver import AudioResolver
@@ -32,13 +31,11 @@ class PlaybackApplicationService:
         history_repository: TrackHistoryRepository,
         voice_adapter: VoiceAdapter,
         audio_resolver: AudioResolver,
-        playback_domain_service: PlaybackDomainService,
     ) -> None:
         self._session_repo = session_repository
         self._history_repo = history_repository
         self._voice_adapter = voice_adapter
         self._audio_resolver = audio_resolver
-        self._playback_service = playback_domain_service
 
         self._on_track_finished_callback: Callable[[DiscordSnowflake, Track], Any] | None = None
 
@@ -115,13 +112,14 @@ class PlaybackApplicationService:
                 remove_from_queue=not had_current,
             )
 
+            track_title = track.title
             track = await self._ensure_stream_url(session, track, guild_id)
             if track is None:
                 # Resolution failed — _ensure_stream_url already cleared current_track.
                 # Loop back to try the next track in the queue.
                 logger.warning(
                     "Stream resolve failed for '%s' in guild %s, skipping to next (%d/%d)",
-                    track if track else "unknown",
+                    track_title,
                     guild_id,
                     attempt + 1,
                     self._MAX_RESOLVE_RETRIES,
@@ -161,6 +159,7 @@ class PlaybackApplicationService:
             track = track.with_resolved(resolved)
             session.set_current_track(track)
             return track
+
         except Exception:
             logger.exception("Failed to resolve stream URL")
             session.set_current_track(None)
@@ -292,7 +291,11 @@ class PlaybackApplicationService:
         except Exception:
             self._ignore_next_voice_track_end.discard(guild_id)
             logger.exception("Error stopping voice during skip")
-            return None
+            # Still advance the queue so the session doesn't get stuck
+            session.advance_to_next_track()
+            session.state = PlaybackState.IDLE
+            await self._session_repo.save(session)
+            return skipped_track
 
         next_track = session.advance_to_next_track()
         if next_track:

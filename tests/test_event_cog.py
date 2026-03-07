@@ -269,11 +269,6 @@ class TestHelperMethods:
         result = EventCog._is_bot_or_none(user)
         assert result is False
 
-    def test_is_bot_or_none_handles_missing_bot_attribute(self):
-        """Should handle users without bot attribute."""
-        user = MagicMock(spec=[])
-        result = EventCog._is_bot_or_none(user)
-        assert result is False
 
 
 # =============================================================================

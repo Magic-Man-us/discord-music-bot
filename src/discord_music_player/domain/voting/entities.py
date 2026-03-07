@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.shared.datetime_utils import utcnow
+from discord_music_player.domain.shared.mixins import ExpirableMixin
 from discord_music_player.domain.shared.types import DiscordSnowflake, PositiveInt
 from discord_music_player.domain.voting.value_objects import VoteType
 
@@ -31,7 +32,7 @@ class Vote(BaseModel):
         return self.user_id == other.user_id and self.vote_type == other.vote_type
 
 
-class VoteSession(BaseModel):
+class VoteSession(ExpirableMixin, BaseModel):
     """Mutable aggregate tracking votes for an action on a specific track in a guild.
 
     ``_voters`` is a private attribute (not serialized) that tracks which
@@ -77,12 +78,6 @@ class VoteSession(BaseModel):
     @property
     def is_threshold_met(self) -> bool:
         return self.vote_count >= self.threshold
-
-    @property
-    def is_expired(self) -> bool:
-        if self.expires_at is None:
-            return False
-        return utcnow() > self.expires_at
 
     @property
     def voters(self) -> frozenset[int]:

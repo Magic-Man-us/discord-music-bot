@@ -11,6 +11,7 @@ from discord.ext import commands
 
 from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
 from discord_music_player.domain.voting.value_objects import VoteResult
+from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     can_force_skip,
     ensure_user_in_voice_and_warm,
@@ -19,15 +20,11 @@ from discord_music_player.infrastructure.discord.guards.voice_guards import (
 
 if TYPE_CHECKING:
     from ....application.commands.vote_skip import VoteSkipResult
-    from ....config.container import Container
 
 logger = logging.getLogger(__name__)
 
 
-class SkipCog(commands.Cog):
-    def __init__(self, bot: commands.Bot, container: Container) -> None:
-        self.bot = bot
-        self.container = container
+class SkipCog(BaseCog):
 
     @app_commands.command(name="skip", description="Vote to skip the current track.")
     @app_commands.describe(force="Force skip (admin only)")

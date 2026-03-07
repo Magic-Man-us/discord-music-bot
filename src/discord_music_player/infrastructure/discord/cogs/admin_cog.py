@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
-
 import discord
 from discord.ext import commands
 
@@ -15,9 +13,7 @@ from discord_music_player.domain.shared.messages import (
     DiscordUIMessages,
     ErrorMessages,
 )
-
-if TYPE_CHECKING:
-    from ....config.container import Container
+from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +34,7 @@ def _is_bot_owner(ctx: commands.Context) -> bool:
     return False
 
 
-def require_owner():
+def require_owner() -> commands.Check[commands.Context]:
     """Restrict to bot owners only. For sensitive operations like shutdown, db access, reloads."""
 
     async def predicate(ctx: commands.Context) -> bool:
@@ -49,7 +45,7 @@ def require_owner():
     return commands.check(predicate)
 
 
-def require_owner_or_admin():
+def require_owner_or_admin() -> commands.Check[commands.Context]:
     """Allow bot owners and guild admins. For lighter operations like sync, status, cache viewing."""
 
     async def predicate(ctx: commands.Context) -> bool:
@@ -70,10 +66,7 @@ def require_owner_or_admin():
     return commands.check(predicate)
 
 
-class AdminCog(commands.Cog):
-    def __init__(self, bot: commands.Bot, container: Container) -> None:
-        self.bot = bot
-        self.container = container
+class AdminCog(BaseCog):
 
     async def _reply(
         self,
@@ -102,7 +95,7 @@ class AdminCog(commands.Cog):
             await self._reply(ctx, DiscordUIMessages.ERROR_INVALID_ARGUMENT)
             return
 
-        original = getattr(error, "original", error)
+        original = error.original if isinstance(error, commands.CommandInvokeError) else error
         logger.exception("Admin command failed", exc_info=original)
         await self._reply(ctx, DiscordUIMessages.ERROR_COMMAND_FAILED_SEE_LOGS)
 

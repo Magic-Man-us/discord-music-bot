@@ -4,23 +4,17 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from discord.ext.commands import Bot
 
-    from ..application.commands.clear_queue import ClearQueueHandler
-    from ..application.commands.play_track import PlayTrackHandler
-    from ..application.commands.skip_track import SkipTrackHandler
-    from ..application.commands.stop_playback import StopPlaybackHandler
     from ..application.commands.vote_skip import VoteSkipHandler
     from ..application.interfaces.ai_client import AIClient
     from ..application.interfaces.audio_resolver import AudioResolver
     from ..application.interfaces.voice_adapter import VoiceAdapter
-    from ..application.queries.get_current import GetCurrentTrackHandler
-    from ..application.queries.get_queue import GetQueueHandler
     from ..application.services.playback_service import PlaybackApplicationService
     from ..application.services.queue_service import QueueApplicationService
     from ..application.services.radio_auto_refill import RadioAutoRefill
@@ -28,12 +22,9 @@ if TYPE_CHECKING:
     from ..application.services.requester_leave_autoskip import (
         AutoSkipOnRequesterLeave,
     )
-    from ..domain.music.playback_service import PlaybackDomainService
-    from ..domain.music.queue_service import QueueDomainService
     from ..domain.music.repository import SessionRepository, TrackHistoryRepository
     from ..domain.recommendations.repository import RecommendationCacheRepository
     from ..domain.voting.repository import VoteSessionRepository
-    from ..domain.voting.services import VotingDomainService
     from ..infrastructure.ai.genre_classifier import AIGenreClassifier
     from ..infrastructure.charts.chart_generator import ChartGenerator
     from ..infrastructure.discord.services.message_state_manager import MessageStateManager
@@ -57,7 +48,6 @@ class Container:
 
     settings: Settings
     _bot: Bot | None = None
-    _instances: dict[str, Any] = field(default_factory=dict)
 
     # Persistence layer
     _database: Database | None = None
@@ -77,10 +67,6 @@ class Container:
     _ai_client: AIClient | None = None
     _shuffle_ai_client: AIClient | None = None
 
-    # Domain services
-    _queue_domain_service: QueueDomainService | None = None
-    _playback_domain_service: PlaybackDomainService | None = None
-    _voting_domain_service: VotingDomainService | None = None
 
     # Application services
     _playback_service: PlaybackApplicationService | None = None
@@ -96,15 +82,7 @@ class Container:
     _radio_auto_refill: RadioAutoRefill | None = None
 
     # Command handlers
-    _play_track_handler: PlayTrackHandler | None = None
-    _skip_track_handler: SkipTrackHandler | None = None
-    _stop_playback_handler: StopPlaybackHandler | None = None
-    _clear_queue_handler: ClearQueueHandler | None = None
     _vote_skip_handler: VoteSkipHandler | None = None
-
-    # Query handlers
-    _get_queue_handler: GetQueueHandler | None = None
-    _get_current_handler: GetCurrentTrackHandler | None = None
 
     # Background jobs
     _cleanup_job: CleanupJob | None = None
@@ -237,33 +215,7 @@ class Container:
             self._shuffle_ai_client = AIRecommendationClient(shuffle_settings)
         return self._shuffle_ai_client
 
-    # === Domain Services ===
 
-    @property
-    def queue_domain_service(self) -> QueueDomainService:
-        if self._queue_domain_service is None:
-            from ..domain.music.queue_service import QueueDomainService
-
-            self._queue_domain_service = QueueDomainService()
-        return self._queue_domain_service
-
-    @property
-    def playback_domain_service(self) -> PlaybackDomainService:
-        if self._playback_domain_service is None:
-            from ..domain.music.playback_service import PlaybackDomainService
-
-            self._playback_domain_service = PlaybackDomainService()
-        return self._playback_domain_service
-
-    @property
-    def voting_domain_service(self) -> VotingDomainService:
-        if self._voting_domain_service is None:
-            from ..domain.voting.services import VotingDomainService
-
-            self._voting_domain_service = VotingDomainService()
-        return self._voting_domain_service
-
-    # === Application Services ===
 
     @property
     def playback_service(self) -> PlaybackApplicationService:
@@ -277,7 +229,6 @@ class Container:
                 history_repository=self.history_repository,
                 voice_adapter=self.voice_adapter,
                 audio_resolver=self.audio_resolver,
-                playback_domain_service=self.playback_domain_service,
             )
         return self._playback_service
 
@@ -288,55 +239,10 @@ class Container:
 
             self._queue_service = QueueApplicationService(
                 session_repository=self.session_repository,
-                queue_domain_service=self.queue_domain_service,
             )
         return self._queue_service
 
     # === Command Handlers ===
-
-    @property
-    def play_track_handler(self) -> PlayTrackHandler:
-        if self._play_track_handler is None:
-            from ..application.commands.play_track import PlayTrackHandler
-
-            self._play_track_handler = PlayTrackHandler(
-                session_repository=self.session_repository,
-                audio_resolver=self.audio_resolver,
-                voice_adapter=self.voice_adapter,
-            )
-        return self._play_track_handler
-
-    @property
-    def skip_track_handler(self) -> SkipTrackHandler:
-        if self._skip_track_handler is None:
-            from ..application.commands.skip_track import SkipTrackHandler
-
-            self._skip_track_handler = SkipTrackHandler(
-                session_repository=self.session_repository,
-                voice_adapter=self.voice_adapter,
-            )
-        return self._skip_track_handler
-
-    @property
-    def stop_playback_handler(self) -> StopPlaybackHandler:
-        if self._stop_playback_handler is None:
-            from ..application.commands.stop_playback import StopPlaybackHandler
-
-            self._stop_playback_handler = StopPlaybackHandler(
-                session_repository=self.session_repository,
-                voice_adapter=self.voice_adapter,
-            )
-        return self._stop_playback_handler
-
-    @property
-    def clear_queue_handler(self) -> ClearQueueHandler:
-        if self._clear_queue_handler is None:
-            from ..application.commands.clear_queue import ClearQueueHandler
-
-            self._clear_queue_handler = ClearQueueHandler(
-                session_repository=self.session_repository,
-            )
-        return self._clear_queue_handler
 
     @property
     def vote_skip_handler(self) -> VoteSkipHandler:
@@ -414,28 +320,6 @@ class Container:
             )
         return self._radio_auto_refill
 
-    # === Query Handlers ===
-
-    @property
-    def get_queue_handler(self) -> GetQueueHandler:
-        if self._get_queue_handler is None:
-            from ..application.queries.get_queue import GetQueueHandler
-
-            self._get_queue_handler = GetQueueHandler(
-                session_repository=self.session_repository,
-            )
-        return self._get_queue_handler
-
-    @property
-    def get_current_handler(self) -> GetCurrentTrackHandler:
-        if self._get_current_handler is None:
-            from ..application.queries.get_current import GetCurrentTrackHandler
-
-            self._get_current_handler = GetCurrentTrackHandler(
-                session_repository=self.session_repository,
-            )
-        return self._get_current_handler
-
     # === Background Jobs ===
 
     @property
@@ -475,7 +359,6 @@ class Container:
         if self._database is not None:
             await self._database.close()
 
-        self._instances.clear()
 
 
 def create_container(settings: Settings) -> Container:

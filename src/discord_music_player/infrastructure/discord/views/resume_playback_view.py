@@ -39,20 +39,27 @@ class ResumePlaybackView(BaseInteractiveView):
     async def resume_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[ResumePlaybackView]
     ) -> None:
+        msg = DiscordUIMessages.RESUME_PLAYBACK_RESUMED.format(track_title=self._track_title)
+        if not self._finish_view():
+            return
         await self._playback_service.start_playback(self._guild_id)
-        await self._finish(
-            interaction,
-            DiscordUIMessages.RESUME_PLAYBACK_RESUMED.format(track_title=self._track_title),
-        )
+        await interaction.response.edit_message(content=msg, view=self)
 
     @discord.ui.button(label="⏭️ Skip", style=discord.ButtonStyle.red)
     async def skip_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[ResumePlaybackView]
     ) -> None:
+        if not self._finish_view():
+            return
         await self._playback_service.stop_playback(self._guild_id)
-        await self._finish(interaction, DiscordUIMessages.RESUME_PLAYBACK_CLEARED)
+        await interaction.response.edit_message(
+            content=DiscordUIMessages.RESUME_PLAYBACK_CLEARED, view=self
+        )
 
     async def on_timeout(self) -> None:
+        if self._resolved:
+            return
+        self._resolved = True
         await self._playback_service.stop_playback(self._guild_id)
         self._disable_buttons()
         if self._message is not None:
@@ -62,8 +69,3 @@ class ResumePlaybackView(BaseInteractiveView):
                 )
             except discord.HTTPException:
                 logger.debug("Failed to edit resume playback message on timeout")
-
-    async def _finish(self, interaction: discord.Interaction, message: str) -> None:
-        self.stop()
-        self._disable_buttons()
-        await interaction.response.edit_message(content=message, view=self)

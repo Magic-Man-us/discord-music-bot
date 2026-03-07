@@ -133,6 +133,7 @@ class TestMainFunction:
         with (
             patch("discord_music_player.config.settings.get_settings", return_value=mock_settings),
             patch("discord_music_player.main.setup_logging"),
+            patch("discord_music_player.main._acquire_pid_lock", return_value=MagicMock()),
             patch("discord_music_player.config.container.create_container"),
             patch(
                 "discord_music_player.infrastructure.discord.bot.create_bot", return_value=mock_bot
@@ -159,6 +160,7 @@ class TestMainFunction:
         with (
             patch("discord_music_player.config.settings.get_settings", return_value=mock_settings),
             patch("discord_music_player.main.setup_logging"),
+            patch("discord_music_player.main._acquire_pid_lock", return_value=MagicMock()),
             patch("discord_music_player.config.container.create_container"),
             patch(
                 "discord_music_player.infrastructure.discord.bot.create_bot", return_value=mock_bot
@@ -184,6 +186,7 @@ class TestMainFunction:
         with (
             patch("discord_music_player.config.settings.get_settings", return_value=mock_settings),
             patch("discord_music_player.main.setup_logging"),
+            patch("discord_music_player.main._acquire_pid_lock", return_value=MagicMock()),
             patch("discord_music_player.config.container.create_container"),
             patch(
                 "discord_music_player.infrastructure.discord.bot.create_bot", return_value=mock_bot
@@ -208,6 +211,7 @@ class TestMainFunction:
         with (
             patch("discord_music_player.config.settings.get_settings", return_value=mock_settings),
             patch("discord_music_player.main.setup_logging"),
+            patch("discord_music_player.main._acquire_pid_lock", return_value=MagicMock()),
             patch(
                 "discord_music_player.config.container.create_container"
             ) as mock_create_container,
@@ -235,6 +239,7 @@ class TestMainFunction:
         with (
             patch("discord_music_player.config.settings.get_settings", return_value=mock_settings),
             patch("discord_music_player.main.setup_logging"),
+            patch("discord_music_player.main._acquire_pid_lock", return_value=MagicMock()),
             patch(
                 "discord_music_player.config.container.create_container",
                 return_value=mock_container,
@@ -262,6 +267,7 @@ class TestMainFunction:
         with (
             patch("discord_music_player.config.settings.get_settings", return_value=mock_settings),
             patch("discord_music_player.main.setup_logging"),
+            patch("discord_music_player.main._acquire_pid_lock", return_value=MagicMock()),
             patch("discord_music_player.config.container.create_container"),
             patch(
                 "discord_music_player.infrastructure.discord.bot.create_bot", return_value=mock_bot
@@ -311,6 +317,10 @@ class TestIntegrationScenarios:
                 "discord_music_player.main.setup_logging", side_effect=track_call("setup_logging")
             ),
             patch(
+                "discord_music_player.main._acquire_pid_lock",
+                side_effect=track_call("acquire_pid_lock"),
+            ),
+            patch(
                 "discord_music_player.config.container.create_container",
                 side_effect=track_call("create_container"),
             ),
@@ -325,6 +335,7 @@ class TestIntegrationScenarios:
         assert call_order == [
             "get_settings",
             "setup_logging",
+            "acquire_pid_lock",
             "create_container",
             "create_bot",
         ]

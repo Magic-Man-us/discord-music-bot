@@ -197,11 +197,6 @@ class Settings(BaseSettings):
     cleanup: CleanupSettings = Field(default_factory=CleanupSettings)
     radio: RadioSettings = Field(default_factory=RadioSettings)
 
-    @classmethod
-    def from_env(cls) -> Settings:
-        return cls()
-
-
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()

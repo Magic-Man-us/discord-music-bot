@@ -92,6 +92,7 @@ class LongTrackVoteView(BaseInteractiveView):
 
     async def _accept_track(self) -> None:
         """Accept the track into the queue."""
+        self._resolved = True
         self.stop()
         self._disable_buttons()
 
@@ -117,6 +118,7 @@ class LongTrackVoteView(BaseInteractiveView):
 
     async def _reject_track(self) -> None:
         """Reject the track."""
+        self._resolved = True
         self.stop()
         self._disable_buttons()
 
@@ -128,6 +130,9 @@ class LongTrackVoteView(BaseInteractiveView):
 
     async def on_timeout(self) -> None:
         """Auto-reject on timeout."""
+        if self._resolved:
+            return
+        self._resolved = True
         self._disable_buttons()
         if self._message:
             try:

@@ -12,7 +12,6 @@ from pydantic import BaseModel, ConfigDict, computed_field
 from discord_music_player.domain.shared.datetime_utils import utcnow
 from discord_music_player.domain.shared.types import NonNegativeInt
 
-
 if TYPE_CHECKING:
     from ...config.settings import CleanupSettings
     from ...domain.music.repository import SessionRepository, TrackHistoryRepository

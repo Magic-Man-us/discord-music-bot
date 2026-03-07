@@ -39,17 +39,28 @@ class RequesterLeftView(BaseInteractiveView):
     async def yes_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[RequesterLeftView]
     ) -> None:
+        if not self._finish_view():
+            return
         await self._playback_service.resume_playback(self._guild_id)
-        await self._finish(interaction, DiscordUIMessages.REQUESTER_LEFT_RESUMED)
+        await interaction.response.edit_message(
+            content=DiscordUIMessages.REQUESTER_LEFT_RESUMED, view=self
+        )
 
     @discord.ui.button(label="No, skip", style=discord.ButtonStyle.red)
     async def no_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[RequesterLeftView]
     ) -> None:
+        if not self._finish_view():
+            return
         await self._playback_service.skip_track(self._guild_id)
-        await self._finish(interaction, DiscordUIMessages.REQUESTER_LEFT_SKIPPED)
+        await interaction.response.edit_message(
+            content=DiscordUIMessages.REQUESTER_LEFT_SKIPPED, view=self
+        )
 
     async def on_timeout(self) -> None:
+        if self._resolved:
+            return
+        self._resolved = True
         await self._playback_service.skip_track(self._guild_id)
         self._disable_buttons()
         if self._message is not None:
@@ -59,8 +70,3 @@ class RequesterLeftView(BaseInteractiveView):
                 )
             except discord.HTTPException:
                 logger.debug("Failed to edit requester-left message on timeout")
-
-    async def _finish(self, interaction: discord.Interaction, message: str) -> None:
-        self.stop()
-        self._disable_buttons()
-        await interaction.response.edit_message(content=message, view=self)

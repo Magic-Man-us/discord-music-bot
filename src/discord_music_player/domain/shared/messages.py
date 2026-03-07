@@ -139,6 +139,16 @@ class DiscordUIMessages:
         "\U0001f4fb Radio disabled. No AI recommendations were in the queue."
     )
 
+    # Playlist Messages
+    PLAYLIST_DETECTED = "Found **{count}** tracks in playlist. Select which to add:"
+    PLAYLIST_EMPTY = "That playlist appears to be empty."
+    PLAYLIST_ADDING = "Adding **{count}** track(s) to the queue..."
+    PLAYLIST_ADDED = "Added **{added}** of **{total}** tracks to the queue."
+    PLAYLIST_ALREADY_PROCESSING = "Already processing, please wait."
+    PLAYLIST_CANCELLED = "Playlist import cancelled."
+    PLAYLIST_TIMEOUT = "Playlist selection timed out."
+    EMBED_PLAYLIST_PREVIEW = "Playlist Preview"
+
     # Up Next
     UP_NEXT_NONE = "No Track Queued"
 
