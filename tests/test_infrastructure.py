@@ -464,7 +464,7 @@ class TestDiscordVoiceAdapter:
     def mock_track(self):
         """Create a mock Track entity."""
         from discord_music_player.domain.music.entities import Track
-        from discord_music_player.domain.music.value_objects import TrackId
+        from discord_music_player.domain.music.wrappers import TrackId
 
         return Track(
             id=TrackId(value="test123"),
@@ -653,7 +653,7 @@ class TestDiscordVoiceAdapter:
     async def test_play_no_stream_url(self, adapter, mock_bot, mock_voice_client):
         """Test play fails when track has no stream URL."""
         from discord_music_player.domain.music.entities import Track
-        from discord_music_player.domain.music.value_objects import TrackId
+        from discord_music_player.domain.music.wrappers import TrackId
 
         track = Track(
             id=TrackId(value="test123"),

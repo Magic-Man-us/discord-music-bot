@@ -8,10 +8,10 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from discord_music_player.domain.music.value_objects import LoopMode
+from discord_music_player.domain.music.entities import Track
+from discord_music_player.domain.music.enums import LoopMode
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.domain.shared.constants import UIConstants
-from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     ensure_voice,
@@ -41,7 +41,7 @@ class QueueCog(BaseCog):
 
         if queue_info.total_tracks == 0:
             await interaction.response.send_message(
-                DiscordUIMessages.STATE_QUEUE_EMPTY, ephemeral=True
+                "Queue is empty.", ephemeral=True
             )
             return
 
@@ -51,9 +51,7 @@ class QueueCog(BaseCog):
         start_idx = (page - 1) * per_page
 
         embed = discord.Embed(
-            title=DiscordUIMessages.EMBED_QUEUE.format(
-                total_tracks=queue_info.total_tracks, page=page, total_pages=total_pages
-            ),
+            title=f"📋 Queue ({queue_info.total_tracks} tracks) — Page {page}/{total_pages}",
             color=discord.Color.blurple(),
         )
 
@@ -101,11 +99,11 @@ class QueueCog(BaseCog):
 
         if shuffled:
             await interaction.response.send_message(
-                DiscordUIMessages.ACTION_SHUFFLED, ephemeral=True
+                "🔀 Shuffled the queue.", ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                DiscordUIMessages.STATE_NOT_ENOUGH_TRACKS_TO_SHUFFLE, ephemeral=True
+                "Not enough tracks to shuffle.", ephemeral=True
             )
 
     @app_commands.command(
@@ -119,64 +117,64 @@ class QueueCog(BaseCog):
             return
 
         assert interaction.guild is not None
-
         await interaction.response.defer(ephemeral=True)
 
-        history_repo = self.container.history_repository
-        queue_service = self.container.queue_service
-        playback_service = self.container.playback_service
-        user = interaction.user
-
-        # Fetch recent history
-        history_tracks = await history_repo.get_recent(interaction.guild.id, limit=limit)
-        if not history_tracks:
-            await interaction.followup.send(
-                DiscordUIMessages.STATE_NO_TRACKS_PLAYED_YET, ephemeral=True
-            )
-            return
-
-        # Dedupe by track_id using a set
-        seen_ids: set[str] = set()
-        unique_tracks = []
-        for track in history_tracks:
-            if track.id.value not in seen_ids:
-                seen_ids.add(track.id.value)
-                unique_tracks.append(track)
-
+        unique_tracks = await self._fetch_unique_history(interaction.guild.id, limit)
         if not unique_tracks:
             await interaction.followup.send(
-                DiscordUIMessages.STATE_NO_TRACKS_PLAYED_YET, ephemeral=True
+                "No tracks have been played yet in this server.", ephemeral=True
             )
             return
 
-        # Shuffle the unique tracks
         import random
 
         random.shuffle(unique_tracks)
 
-        # Enqueue all tracks
-        enqueued_count = 0
+        enqueued_count, should_start = await self._enqueue_batch(
+            interaction.guild.id, unique_tracks, interaction.user,
+        )
+
+        if should_start:
+            await self.container.playback_service.start_playback(interaction.guild.id)
+
+        await interaction.followup.send(
+            f"🔀 Shuffled and queued **{enqueued_count}** tracks from history.",
+            ephemeral=True,
+        )
+
+    async def _fetch_unique_history(self, guild_id: int, limit: int) -> list[Track]:
+        """Fetch recent tracks and deduplicate by track ID."""
+        tracks = await self.container.history_repository.get_recent(guild_id, limit=limit)
+        seen: set[str] = set()
+        unique: list[Track] = []
+        for track in tracks:
+            if track.id.value not in seen:
+                seen.add(track.id.value)
+                unique.append(track)
+        return unique
+
+    async def _enqueue_batch(
+        self,
+        guild_id: int,
+        tracks: list[Track],
+        user: discord.User | discord.Member,
+    ) -> tuple[int, bool]:
+        """Enqueue a list of tracks. Returns ``(count, should_start)``."""
+        queue_service = self.container.queue_service
+        count = 0
         should_start = False
-        for track in unique_tracks:
+        for track in tracks:
             result = await queue_service.enqueue(
-                guild_id=interaction.guild.id,
+                guild_id=guild_id,
                 track=track,
                 user_id=user.id,
                 user_name=user.display_name,
             )
             if result.success:
-                enqueued_count += 1
+                count += 1
                 if result.should_start:
                     should_start = True
-
-        # Start playback if needed
-        if should_start:
-            await playback_service.start_playback(interaction.guild.id)
-
-        await interaction.followup.send(
-            DiscordUIMessages.SHUFFLE_HISTORY_QUEUED.format(count=enqueued_count),
-            ephemeral=True,
-        )
+        return count, should_start
 
     @app_commands.command(name="loop", description="Toggle loop mode.")
     async def loop(self, interaction: discord.Interaction) -> None:
@@ -201,7 +199,7 @@ class QueueCog(BaseCog):
                 emoji = "\u27a1\ufe0f"
 
         await interaction.response.send_message(
-            DiscordUIMessages.ACTION_LOOP_MODE_CHANGED.format(emoji=emoji, mode=mode.value),
+            f"{emoji} Loop mode: **{mode.value}**",
             ephemeral=True,
         )
 
@@ -217,7 +215,7 @@ class QueueCog(BaseCog):
 
         if position < 1:
             await interaction.response.send_message(
-                DiscordUIMessages.ERROR_POSITION_MUST_BE_POSITIVE, ephemeral=True
+                "Position must be 1 or greater.", ephemeral=True
             )
             return
 
@@ -226,12 +224,12 @@ class QueueCog(BaseCog):
 
         if track:
             await interaction.response.send_message(
-                DiscordUIMessages.ACTION_TRACK_REMOVED.format(track_title=track.title),
+                f"🗑️ Removed: **{track.title}**",
                 ephemeral=True,
             )
         else:
             await interaction.response.send_message(
-                DiscordUIMessages.ERROR_NO_TRACK_AT_POSITION.format(position=position),
+                f"No track at position {position}.",
                 ephemeral=True,
             )
 
@@ -250,17 +248,17 @@ class QueueCog(BaseCog):
         if count > 0:
             self.container.message_state_manager.reset(interaction.guild.id)
             await interaction.response.send_message(
-                DiscordUIMessages.ACTION_QUEUE_CLEARED.format(count=count), ephemeral=True
+                f"🗑️ Cleared {count} tracks from the queue.", ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                DiscordUIMessages.STATE_QUEUE_ALREADY_EMPTY, ephemeral=True
+                "Queue is already empty.", ephemeral=True
             )
 
 
 async def setup(bot: commands.Bot) -> None:
     container = getattr(bot, "container", None)
     if container is None:
-        raise RuntimeError(ErrorMessages.CONTAINER_NOT_FOUND)
+        raise RuntimeError("Container not found on bot instance")
 
     await bot.add_cog(QueueCog(bot, container))

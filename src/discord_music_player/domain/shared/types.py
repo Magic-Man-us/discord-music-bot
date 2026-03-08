@@ -13,9 +13,39 @@ so models can simply annotate their fields::
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Generic, TypeVar
 
-from pydantic import BeforeValidator, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+
+T = TypeVar("T")
+
+
+# ── Generic single-field wrapper ───────────────────────────────────
+
+class ValueWrapper(BaseModel, Generic[T]):
+    """Generic base for single-field frozen value objects.
+
+    Construct with ``TrackId(value="abc")``.  Provides hashing, equality,
+    and str/int conversions.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    value: T  # type: ignore[misc]
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+    def __int__(self) -> int:
+        return int(self.value)  # type: ignore[arg-type]
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, type(self)):
+            return self.value == other.value
+        return NotImplemented
 
 # ── Numeric constraints ─────────────────────────────────────────────
 

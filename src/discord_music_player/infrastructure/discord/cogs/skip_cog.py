@@ -9,8 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
-from discord_music_player.domain.voting.value_objects import VoteResult
+from discord_music_player.domain.voting.enums import VoteResult
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     can_force_skip,
@@ -39,7 +38,7 @@ class SkipCog(BaseCog):
         user = interaction.user
         if not isinstance(user, discord.Member):
             await send_ephemeral(
-                interaction, DiscordUIMessages.STATE_VERIFY_PERMISSIONS_FAILED
+                interaction, "Could not verify your permissions."
             )
             return
 
@@ -53,7 +52,7 @@ class SkipCog(BaseCog):
     ) -> None:
         if not can_force_skip(user, self.container.settings.discord.owner_ids):
             await interaction.response.send_message(
-                DiscordUIMessages.ERROR_FORCE_SKIP_REQUIRES_ADMIN, ephemeral=True
+                "Force skip requires administrator permission.", ephemeral=True
             )
             return
 
@@ -62,11 +61,11 @@ class SkipCog(BaseCog):
 
         if track:
             await interaction.response.send_message(
-                DiscordUIMessages.ACTION_SKIP_FORCE.format(track_title=track.title), ephemeral=True
+                f"⏭️ Force skipped: **{track.title}**", ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                DiscordUIMessages.STATE_NOTHING_PLAYING, ephemeral=True
+                "Nothing is playing.", ephemeral=True
             )
 
     async def _handle_vote_skip(
@@ -101,17 +100,13 @@ class SkipCog(BaseCog):
 
         match result.result:
             case VoteResult.THRESHOLD_MET:
-                msg = DiscordUIMessages.ACTION_SKIP_THRESHOLD_MET.format(
-                    votes_current=result.votes_current,
-                    votes_needed=result.votes_needed,
-                    track_title=track_title,
-                )
+                msg = f"⏭️ Skip threshold met ({result.votes_current}/{result.votes_needed}). Skipped: **{track_title}**"
             case VoteResult.REQUESTER_SKIP:
-                msg = DiscordUIMessages.ACTION_SKIP_REQUESTER.format(track_title=track_title)
+                msg = f"⏭️ Requester skipped: **{track_title}**"
             case VoteResult.AUTO_SKIP:
-                msg = DiscordUIMessages.ACTION_SKIP_AUTO.format(track_title=track_title)
+                msg = f"⏭️ Auto-skipped (small audience): **{track_title}**"
             case _:
-                msg = DiscordUIMessages.ACTION_SKIP_GENERIC.format(track_title=track_title)
+                msg = f"⏭️ Skipped: **{track_title}**"
 
         await interaction.response.send_message(msg, ephemeral=True)
 
@@ -120,19 +115,15 @@ class SkipCog(BaseCog):
     ) -> None:
         match result.result:
             case VoteResult.NO_PLAYING:
-                msg = DiscordUIMessages.STATE_NOTHING_PLAYING
+                msg = "Nothing is playing."
             case VoteResult.NOT_IN_CHANNEL:
-                msg = DiscordUIMessages.VOTE_NOT_IN_CHANNEL
+                msg = "Join my voice channel to vote skip."
             case VoteResult.ALREADY_VOTED:
-                msg = DiscordUIMessages.VOTE_ALREADY_VOTED.format(
-                    votes_current=result.votes_current, votes_needed=result.votes_needed
-                )
+                msg = f"You already voted. Votes: {result.votes_current}/{result.votes_needed}"
             case VoteResult.VOTE_RECORDED:
-                msg = DiscordUIMessages.VOTE_RECORDED.format(
-                    votes_current=result.votes_current, votes_needed=result.votes_needed
-                )
+                msg = f"Vote recorded ({result.votes_current}/{result.votes_needed})."
             case _:
-                msg = DiscordUIMessages.VOTE_SKIP_PROCESSED
+                msg = "Skip request processed."
 
         await interaction.response.send_message(msg, ephemeral=True)
 
@@ -140,6 +131,6 @@ class SkipCog(BaseCog):
 async def setup(bot: commands.Bot) -> None:
     container = getattr(bot, "container", None)
     if container is None:
-        raise RuntimeError(ErrorMessages.CONTAINER_NOT_FOUND)
+        raise RuntimeError("Container not found on bot instance")
 
     await bot.add_cog(SkipCog(bot, container))

@@ -21,7 +21,7 @@ import pytest
 
 from discord_music_player.config.settings import AudioSettings
 from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.music.value_objects import TrackId
+from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.infrastructure.audio.ytdlp_resolver import (
     CACHE_MAX_SIZE,
     CACHE_TTL,

@@ -6,10 +6,13 @@ rows.  They exist so raw ``dict`` never leaks into repository code.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.music.value_objects import TrackId
+from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
 from discord_music_player.domain.shared.types import (
     DiscordSnowflake,
@@ -46,53 +49,104 @@ class TrackRow(BaseModel):
     def to_track(self, *, id_from_url: bool = False) -> Track:
         """Convert to a domain ``Track``.
 
+        Field coercions (``track_id`` str → ``TrackId``, ``requested_at``
+        ISO string → ``datetime``) are handled by ``Track``'s own
+        ``field_validator``s.
+
         Args:
             id_from_url: When ``True``, derive the ``TrackId`` from
                 ``webpage_url`` (queue_tracks pattern).  When ``False``,
                 use the stored ``track_id`` directly (track_history pattern).
         """
-        track_id = TrackId.from_url(self.webpage_url) if id_from_url else TrackId(self.track_id)
+        data = self.model_dump()
+        track_id_str = data.pop("track_id")
+        data["id"] = TrackId.from_url(self.webpage_url) if id_from_url else track_id_str
+        return Track.model_validate(data)
 
-        requested_at = UtcDateTime.from_iso(self.requested_at).dt if self.requested_at else None
 
-        return Track.model_validate(
+class QueueTrackRow(BaseModel):
+    """INSERT-ready representation of a track in the ``queue_tracks`` table.
+
+    Constructed from a domain ``Track`` via :meth:`from_track`.
+    Serialized to a named-parameter dict via ``model_dump()``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    guild_id: DiscordSnowflake
+    track_id: NonEmptyStr
+    title: NonEmptyStr
+    webpage_url: HttpUrlStr
+    stream_url: HttpUrlStr | None = None
+    duration_seconds: DurationSeconds | None = None
+    thumbnail_url: HttpUrlStr | None = None
+    artist: NonEmptyStr | None = None
+    uploader: NonEmptyStr | None = None
+    like_count: NonNegativeInt | None = None
+    view_count: NonNegativeInt | None = None
+    requested_by_id: DiscordSnowflake | None = None
+    requested_by_name: NonEmptyStr | None = None
+    requested_at: str | None = None
+    position: int
+    is_current: bool
+
+    @field_validator("track_id", mode="before")
+    @classmethod
+    def _flatten_track_id(cls, v: Any) -> str:
+        """Accept a TrackId value object or its dict dump and extract the string."""
+        if isinstance(v, TrackId):
+            return v.value
+        if isinstance(v, dict):
+            return v.get("value", v)
+        return v
+
+    @field_validator("requested_at", mode="before")
+    @classmethod
+    def _datetime_to_iso(cls, v: Any) -> str | None:
+        """Accept a datetime and convert to ISO string for SQLite storage."""
+        if v is None:
+            return None
+        if isinstance(v, datetime):
+            return UtcDateTime(v).iso
+        return v
+
+    @classmethod
+    def from_track(
+        cls,
+        track: Track,
+        *,
+        guild_id: DiscordSnowflake,
+        position: int,
+        is_current: bool,
+    ) -> QueueTrackRow:
+        """Build from a domain Track plus queue metadata.
+
+        The ``id`` → ``track_id`` rename and ``datetime`` → ISO conversion
+        are handled by field validators automatically.
+        """
+        return cls.model_validate(
             {
-                "id": track_id,
-                "title": self.title,
-                "webpage_url": self.webpage_url,
-                "stream_url": self.stream_url,
-                "duration_seconds": self.duration_seconds,
-                "thumbnail_url": self.thumbnail_url,
-                "artist": self.artist,
-                "uploader": self.uploader,
-                "like_count": self.like_count,
-                "view_count": self.view_count,
-                "requested_by_id": self.requested_by_id,
-                "requested_by_name": self.requested_by_name,
-                "requested_at": requested_at,
+                **track.model_dump(exclude={"is_from_recommendation"}),
+                "track_id": track.id,
+                "guild_id": guild_id,
+                "position": position,
+                "is_current": is_current,
             }
         )
 
 
-def track_to_queue_params(
-    track: Track, guild_id: int, position: int, *, is_current: bool
-) -> tuple[object, ...]:
-    """Serialize a domain Track into a tuple for ``queue_tracks`` INSERT."""
-    return (
-        guild_id,
-        track.id.value,
-        track.title,
-        track.webpage_url,
-        track.stream_url,
-        track.duration_seconds,
-        track.thumbnail_url,
-        track.artist,
-        track.uploader,
-        track.like_count,
-        track.view_count,
-        track.requested_by_id,
-        track.requested_by_name,
-        UtcDateTime(track.requested_at).iso if track.requested_at else None,
-        position,
-        is_current,
+# ── SQL for QueueTrackRow inserts ─────────────────────────────────────
+
+QUEUE_TRACKS_INSERT_SQL: str = """
+    INSERT INTO queue_tracks (
+        guild_id, track_id, title, webpage_url, stream_url,
+        duration_seconds, thumbnail_url, artist, uploader,
+        like_count, view_count, requested_by_id, requested_by_name,
+        requested_at, position, is_current
+    ) VALUES (
+        :guild_id, :track_id, :title, :webpage_url, :stream_url,
+        :duration_seconds, :thumbnail_url, :artist, :uploader,
+        :like_count, :view_count, :requested_by_id, :requested_by_name,
+        :requested_at, :position, :is_current
     )
+"""

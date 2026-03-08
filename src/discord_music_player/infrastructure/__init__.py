@@ -8,8 +8,8 @@ This layer contains implementations for:
 - Logging configuration
 """
 
-from discord_music_player.infrastructure.discord.bot import create_bot
 from discord_music_player.infrastructure.discord.adapters.voice_adapter import DiscordVoiceAdapter
+from discord_music_player.infrastructure.discord.bot import create_bot
 from discord_music_player.infrastructure.persistence.database import Database
 
 __all__ = [

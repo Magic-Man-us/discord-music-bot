@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.music.value_objects import TrackId
+from discord_music_player.domain.music.wrappers import TrackId
 
 
 class TestHistoryRepositoryEdgeCases:
@@ -19,7 +19,7 @@ class TestHistoryRepositoryEdgeCases:
     def sample_track(self):
         """Create a sample track."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Test Song",
             webpage_url="https://youtube.com/watch?v=test",
             stream_url="https://stream.example.com/audio",
@@ -53,7 +53,7 @@ class TestHistoryRepositoryEdgeCases:
         # Record 10 plays
         for i in range(10):
             track = sample_track.model_copy(
-                update={"id": TrackId(f"track{i}"), "title": f"Song {i}"}
+                update={"id": TrackId(value=f"track{i}"), "title": f"Song {i}"}
             )
             await history_repository.record_play(guild_id, track)
 
@@ -64,7 +64,7 @@ class TestHistoryRepositoryEdgeCases:
 
     async def test_get_play_count_returns_zero_for_new_track(self, history_repository):
         """Should return 0 for tracks that haven't been played."""
-        count = await history_repository.get_play_count(guild_id=123, track_id=TrackId("never_played"))
+        count = await history_repository.get_play_count(guild_id=123, track_id=TrackId(value="never_played"))
 
         assert count == 0
 
@@ -93,17 +93,17 @@ class TestHistoryRepositoryEdgeCases:
 
         # Create tracks with different play counts
         track1 = Track(
-            id=TrackId("track1"),
+            id=TrackId(value="track1"),
             title="Popular Song",
             webpage_url="https://youtube.com/1",
         )
         track2 = Track(
-            id=TrackId("track2"),
+            id=TrackId(value="track2"),
             title="Less Popular Song",
             webpage_url="https://youtube.com/2",
         )
         track3 = Track(
-            id=TrackId("track3"),
+            id=TrackId(value="track3"),
             title="Least Popular Song",
             webpage_url="https://youtube.com/3",
         )
@@ -180,7 +180,7 @@ class TestHistoryRepositoryEdgeCases:
 
         # Record recent play
         recent_track = sample_track.model_copy(
-            update={"id": TrackId("recent"), "title": "Recent Song"}
+            update={"id": TrackId(value="recent"), "title": "Recent Song"}
         )
         await history_repository.record_play(guild_id, recent_track)
 
@@ -215,7 +215,7 @@ class TestHistoryRepositoryEdgeCases:
         # Create 10 different tracks
         for i in range(10):
             track = Track(
-                id=TrackId(f"track{i}"),
+                id=TrackId(value=f"track{i}"),
                 title=f"Song {i}",
                 webpage_url=f"https://youtube.com/{i}",
             )

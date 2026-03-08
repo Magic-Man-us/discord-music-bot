@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -37,7 +38,7 @@ class CleanupJob:
         self._vote_repo = vote_repository
         self._settings = settings
         self._running = False
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
 
     def start(self) -> None:
         if self._running:
@@ -75,32 +76,24 @@ class CleanupJob:
             except asyncio.CancelledError:
                 break
 
-    async def run_cleanup(self) -> CleanupStats:
-        stats = CleanupStats()
+    async def _run_one(self, label: str, stats: CleanupStats, field: str, coro: Awaitable[int]) -> None:
+        """Execute a single cleanup operation, logging failures without propagating."""
+        try:
+            setattr(stats, field, await coro)
+        except Exception as e:
+            logger.error("Failed to cleanup %s: %r", label, e)
 
+    async def run_cleanup(self) -> CleanupStats:
         logger.debug("Running cleanup cycle")
 
         stale_cutoff = utcnow() - timedelta(hours=self._settings.stale_session_hours)
-        try:
-            stats.sessions_cleaned = await self._session_repo.cleanup_stale(stale_cutoff)
-        except Exception as e:
-            logger.error("Failed to cleanup sessions: %r", e)
-
         history_cutoff = utcnow() - timedelta(days=self._settings.history_retention_days)
-        try:
-            stats.history_cleaned = await self._history_repo.cleanup_old(history_cutoff)
-        except Exception as e:
-            logger.error("Failed to cleanup history: %r", e)
 
-        try:
-            stats.cache_cleaned = await self._cache_repo.cleanup_expired()
-        except Exception as e:
-            logger.error("Failed to cleanup cache: %r", e)
-
-        try:
-            stats.votes_cleaned = await self._vote_repo.cleanup_expired()
-        except Exception as e:
-            logger.error("Failed to cleanup vote sessions: %r", e)
+        stats = CleanupStats()
+        await self._run_one("sessions", stats, "sessions_cleaned", self._session_repo.cleanup_stale(stale_cutoff))
+        await self._run_one("history", stats, "history_cleaned", self._history_repo.cleanup_old(history_cutoff))
+        await self._run_one("cache", stats, "cache_cleaned", self._cache_repo.cleanup_expired())
+        await self._run_one("vote sessions", stats, "votes_cleaned", self._vote_repo.cleanup_expired())
 
         if stats.total_cleaned > 0:
             logger.info(

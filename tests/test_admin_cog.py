@@ -21,7 +21,6 @@ import discord
 import pytest
 from discord.ext import commands
 
-from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
 from discord_music_player.infrastructure.discord.cogs.admin_cog import (
     AdminCog,
     require_owner,
@@ -342,7 +341,7 @@ class TestAdminCogInitialization:
 
         mock_bot.container = None
 
-        with pytest.raises(RuntimeError, match=ErrorMessages.CONTAINER_NOT_FOUND):
+        with pytest.raises(RuntimeError, match="Container not found on bot instance"):
             await setup(mock_bot)
 
 
@@ -384,7 +383,7 @@ class TestHelperMethods:
         """Should send default success message when no content."""
         await admin_cog._reply(mock_ctx)
 
-        mock_ctx.send.assert_called_once_with(DiscordUIMessages.SUCCESS_GENERIC)
+        mock_ctx.send.assert_called_once_with("Done.")
 
 
 # =============================================================================
@@ -402,7 +401,7 @@ class TestErrorHandler:
 
         await admin_cog.cog_command_error(mock_ctx, error)
 
-        mock_ctx.send.assert_called_once_with(DiscordUIMessages.ERROR_REQUIRES_OWNER_OR_ADMIN)
+        mock_ctx.send.assert_called_once_with("❌ Requires owner or admin permissions.")
 
     @pytest.mark.asyncio
     async def test_handles_missing_required_argument(self, admin_cog, mock_ctx):
@@ -423,7 +422,7 @@ class TestErrorHandler:
 
         await admin_cog.cog_command_error(mock_ctx, error)
 
-        mock_ctx.send.assert_called_once_with(DiscordUIMessages.ERROR_INVALID_ARGUMENT)
+        mock_ctx.send.assert_called_once_with("❌ Invalid argument.")
 
     @pytest.mark.asyncio
     async def test_handles_generic_exception(self, admin_cog, mock_ctx):
@@ -432,7 +431,7 @@ class TestErrorHandler:
 
         await admin_cog.cog_command_error(mock_ctx, error)
 
-        mock_ctx.send.assert_called_once_with(DiscordUIMessages.ERROR_COMMAND_FAILED_SEE_LOGS)
+        mock_ctx.send.assert_called_once_with("❌ Command failed. See logs.")
 
     @pytest.mark.asyncio
     async def test_handles_original_exception(self, admin_cog, mock_ctx):

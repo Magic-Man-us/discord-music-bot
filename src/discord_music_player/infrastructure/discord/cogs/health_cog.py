@@ -15,10 +15,6 @@ from discord.ext import commands, tasks
 from discord_music_player.domain.shared.constants import HealthConstants, UIConstants
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
 from discord_music_player.domain.shared.enums import BotStatus
-from discord_music_player.domain.shared.messages import (
-    DiscordUIMessages,
-    ErrorMessages,
-)
 from discord_music_player.domain.shared.types import BYTES_PER_MB
 
 if TYPE_CHECKING:
@@ -253,7 +249,7 @@ class HealthCog(commands.Cog):
         lat_ms = self._latency_ms()
         emoji = self._latency_emoji(lat_ms)
         await ctx.send(
-            DiscordUIMessages.SUCCESS_PONG.format(emoji=emoji, latency_ms=f"{lat_ms:.1f}"),
+            f"{emoji} Pong: {lat_ms:.1f} ms",
             ephemeral=True,
         )
 
@@ -273,7 +269,7 @@ class HealthCog(commands.Cog):
         lat_ms = float(payload["latency_ms"])
         color = self._embed_color_for_latency(lat_ms)
 
-        embed = discord.Embed(title=DiscordUIMessages.EMBED_BOT_HEALTH, color=color)
+        embed = discord.Embed(title="🏥 Bot Health", color=color)
         embed.timestamp = datetime.now(UTC)
 
         self._add_connection_fields(embed, payload, lat_ms)
@@ -283,7 +279,7 @@ class HealthCog(commands.Cog):
         if show_admin_info:
             self._add_admin_fields(embed, payload)
 
-        embed.set_footer(text=DiscordUIMessages.EMBED_HEALTH_FOOTER)
+        embed.set_footer(text="Use /ping for quick latency check")
         return embed
 
     def _add_connection_fields(
@@ -336,6 +332,6 @@ class HealthCog(commands.Cog):
 async def setup(bot: commands.Bot) -> None:
     container = getattr(bot, "container", None)
     if container is None:
-        raise RuntimeError(ErrorMessages.CONTAINER_NOT_FOUND)
+        raise RuntimeError("Container not found on bot instance")
 
     await bot.add_cog(HealthCog(bot, container))

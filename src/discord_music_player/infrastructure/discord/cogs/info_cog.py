@@ -11,10 +11,6 @@ from discord import app_commands
 from discord.ext import commands
 
 from discord_music_player.domain.shared.constants import DiscordEmbedLimits, UIConstants
-from discord_music_player.domain.shared.messages import (
-    DiscordUIMessages,
-    ErrorMessages,
-)
 
 if TYPE_CHECKING:
     from ....config.container import Container
@@ -74,9 +70,7 @@ class InfoCog(commands.Cog):
         member = user if isinstance(user, discord.Member) else None
 
         embed = discord.Embed(
-            title=DiscordUIMessages.EMBED_USER_INFO.format(
-                display_name=user.display_name
-            ),
+            title=f"User Info: {user.display_name}",
             color=discord.Color.blurple(),
         )
         embed.set_thumbnail(url=user.display_avatar.url)
@@ -143,7 +137,7 @@ class InfoCog(commands.Cog):
         message: discord.Message,
     ) -> None:
         embed = discord.Embed(
-            title=DiscordUIMessages.EMBED_MESSAGE_INFO, color=discord.Color.teal()
+            title="Message Info", color=discord.Color.teal()
         )
         embed.timestamp = datetime.now(UTC)
 
@@ -182,7 +176,7 @@ class InfoCog(commands.Cog):
     @commands.guild_only()
     async def serverinfo(self, ctx: commands.Context) -> None:
         if ctx.guild is None:
-            await ctx.send(DiscordUIMessages.STATE_SERVER_ONLY, ephemeral=True)
+            await ctx.send("This command can only be used in a server.", ephemeral=True)
             return
 
         embed = self._build_serverinfo_embed(ctx.guild)
@@ -190,7 +184,7 @@ class InfoCog(commands.Cog):
 
     def _build_serverinfo_embed(self, guild: discord.Guild) -> discord.Embed:
         embed = discord.Embed(
-            title=DiscordUIMessages.EMBED_SERVER_INFO.format(guild_name=guild.name),
+            title=f"Server Info: {guild.name}",
             color=discord.Color.green(),
         )
         embed.timestamp = datetime.now(UTC)
@@ -261,9 +255,7 @@ class InfoCog(commands.Cog):
         target = user or ctx.author
 
         embed = discord.Embed(
-            title=DiscordUIMessages.EMBED_AVATAR.format(
-                display_name=target.display_name
-            ),
+            title=f"Avatar: {target.display_name}",
             color=discord.Color.blurple(),
         )
         embed.set_image(url=target.display_avatar.url)
@@ -283,6 +275,6 @@ class InfoCog(commands.Cog):
 async def setup(bot: commands.Bot) -> None:
     container = getattr(bot, "container", None)
     if container is None:
-        raise RuntimeError(ErrorMessages.CONTAINER_NOT_FOUND)
+        raise RuntimeError("Container not found on bot instance")
 
     await bot.add_cog(InfoCog(bot, container))

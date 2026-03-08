@@ -348,13 +348,14 @@ class TestResumeSessions:
     ):
         """Should reset sessions when guild is not found."""
         from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
-        from discord_music_player.domain.music.value_objects import PlaybackState, TrackId
+        from discord_music_player.domain.music.enums import PlaybackState
+        from discord_music_player.domain.music.wrappers import TrackId
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
         # Create session with current track
         session = GuildPlaybackSession(guild_id=123456)
         session.current_track = Track(
-            id=TrackId("test"),
+            id=TrackId(value="test"),
             title="Test Track",
             webpage_url="https://youtube.com/watch?v=test",
         )
@@ -375,7 +376,7 @@ class TestResumeSessions:
     async def test_resume_sessions_skips_idle_sessions(self, mock_container, mock_settings):
         """Should skip sessions that are already idle with no tracks."""
         from discord_music_player.domain.music.entities import GuildPlaybackSession
-        from discord_music_player.domain.music.value_objects import PlaybackState
+        from discord_music_player.domain.music.enums import PlaybackState
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
         session = GuildPlaybackSession(guild_id=123456)

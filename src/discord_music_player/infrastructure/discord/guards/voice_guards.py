@@ -11,8 +11,6 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from discord_music_player.domain.shared.messages import DiscordUIMessages
-
 if TYPE_CHECKING:
     from ....application.interfaces.voice_adapter import VoiceAdapter
     from ....infrastructure.discord.services.voice_warmup import VoiceWarmupTracker
@@ -29,12 +27,12 @@ async def send_ephemeral(interaction: discord.Interaction, message: str) -> None
 async def get_member(interaction: discord.Interaction) -> discord.Member | None:
     """Validate that the interaction comes from a guild member. Returns None with error on failure."""
     if not interaction.guild:
-        await send_ephemeral(interaction, DiscordUIMessages.STATE_SERVER_ONLY)
+        await send_ephemeral(interaction, "This command can only be used in a server.")
         return None
 
     user = interaction.user
     if not isinstance(user, discord.Member):
-        await send_ephemeral(interaction, DiscordUIMessages.STATE_VERIFY_VOICE_FAILED)
+        await send_ephemeral(interaction, "Could not verify your voice state.")
         return None
 
     return user
@@ -58,7 +56,7 @@ async def ensure_voice_warmup(
 
     await send_ephemeral(
         interaction,
-        DiscordUIMessages.STATE_VOICE_WARMUP_REQUIRED.format(remaining=remaining),
+        f"You must be in the voice channel for {remaining}s before you can use commands.",
     )
     return False
 
@@ -73,7 +71,7 @@ async def ensure_user_in_voice_and_warm(
         return False
 
     if not member.voice or not member.voice.channel:
-        await send_ephemeral(interaction, DiscordUIMessages.STATE_NEED_TO_BE_IN_VOICE)
+        await send_ephemeral(interaction, "You need to be in a voice channel first.")
         return False
 
     return await ensure_voice_warmup(interaction, member, voice_warmup_tracker)
@@ -92,7 +90,7 @@ async def ensure_voice(
     assert interaction.guild is not None
 
     if not member.voice or not member.voice.channel:
-        await send_ephemeral(interaction, DiscordUIMessages.STATE_NEED_TO_BE_IN_VOICE)
+        await send_ephemeral(interaction, "You need to be in a voice channel first.")
         return False
 
     if not await ensure_voice_warmup(interaction, member, voice_warmup_tracker):
@@ -103,7 +101,7 @@ async def ensure_voice(
     if not voice_adapter.is_connected(interaction.guild.id):
         success = await voice_adapter.ensure_connected(interaction.guild.id, channel_id)
         if not success:
-            await send_ephemeral(interaction, DiscordUIMessages.ERROR_COULD_NOT_JOIN_VOICE)
+            await send_ephemeral(interaction, "I couldn't join your voice channel.")
             return False
 
     return True
@@ -120,13 +118,13 @@ async def check_user_in_voice(
     user = interaction.user
     if not isinstance(user, discord.Member):
         await interaction.response.send_message(
-            DiscordUIMessages.STATE_VERIFY_VOICE_FAILED, ephemeral=True
+            "Could not verify your voice state.", ephemeral=True
         )
         return False
 
     if not user.voice or not user.voice.channel:
         await interaction.response.send_message(
-            DiscordUIMessages.STATE_NEED_TO_BE_IN_VOICE, ephemeral=True
+            "You need to be in a voice channel first.", ephemeral=True
         )
         return False
 
@@ -134,7 +132,7 @@ async def check_user_in_voice(
     if guild and guild.voice_client and guild.voice_client.channel:
         if user.voice.channel.id != guild.voice_client.channel.id:
             await interaction.response.send_message(
-                DiscordUIMessages.STATE_MUST_BE_IN_VOICE, ephemeral=True
+                "You must be in a voice channel to use this command!", ephemeral=True
             )
             return False
 

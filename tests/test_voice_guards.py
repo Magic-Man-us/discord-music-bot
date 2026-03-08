@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from discord_music_player.domain.shared.messages import DiscordUIMessages
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     check_user_in_voice,
 )
@@ -67,7 +66,7 @@ async def test_user_not_member_rejects():
     assert result is False
     interaction.response.send_message.assert_awaited_once()
     msg = interaction.response.send_message.call_args[0][0]
-    assert msg == DiscordUIMessages.STATE_VERIFY_VOICE_FAILED
+    assert msg == "Could not verify your voice state."
 
 
 @pytest.mark.asyncio
@@ -78,7 +77,7 @@ async def test_user_not_in_voice_rejects():
 
     assert result is False
     msg = interaction.response.send_message.call_args[0][0]
-    assert msg == DiscordUIMessages.STATE_NEED_TO_BE_IN_VOICE
+    assert msg == "You need to be in a voice channel first."
 
 
 @pytest.mark.asyncio
@@ -89,7 +88,7 @@ async def test_user_in_different_channel_rejects():
 
     assert result is False
     msg = interaction.response.send_message.call_args[0][0]
-    assert msg == DiscordUIMessages.STATE_MUST_BE_IN_VOICE
+    assert msg == "You must be in a voice channel to use this command!"
 
 
 @pytest.mark.asyncio

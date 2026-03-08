@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
-
-logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from discord.ext.commands import Bot
@@ -29,11 +26,11 @@ if TYPE_CHECKING:
     from ..infrastructure.charts.chart_generator import ChartGenerator
     from ..infrastructure.discord.services.message_state_manager import MessageStateManager
     from ..infrastructure.discord.services.voice_warmup import VoiceWarmupTracker
+    from ..infrastructure.persistence.cleanup import CleanupJob
     from ..infrastructure.persistence.database import Database
     from ..infrastructure.persistence.repositories.genre_repository import (
         SQLiteGenreCacheRepository,
     )
-    from ..infrastructure.persistence.cleanup import CleanupJob
     from .settings import Settings
 
 
@@ -42,8 +39,10 @@ class Container:
     """Lazy-initializing service locator for all application components.
 
     Uses stdlib ``dataclass`` intentionally — this is not a data boundary.
-    It is a mutable service registry with lazy property accessors, so
-    Pydantic's validation/serialization overhead is unnecessary.
+    All type annotations live under ``TYPE_CHECKING`` to avoid eagerly
+    importing the entire application graph.  Pydantic dataclasses cannot
+    work here because ``rebuild_dataclass`` requires every annotated type
+    to be resolvable at rebuild time, defeating the lazy-import pattern.
     """
 
     settings: Settings
@@ -51,7 +50,7 @@ class Container:
 
     # Persistence layer
     _database: Database | None = None
-    _session_repo: SessionRepository | None = None
+    _session_repository: SessionRepository | None = None
     _history_repository: TrackHistoryRepository | None = None
     _vote_repository: VoteSessionRepository | None = None
     _cache_repository: RecommendationCacheRepository | None = None
@@ -66,7 +65,6 @@ class Container:
     _voice_adapter: VoiceAdapter | None = None
     _ai_client: AIClient | None = None
     _shuffle_ai_client: AIClient | None = None
-
 
     # Application services
     _playback_service: PlaybackApplicationService | None = None
@@ -110,13 +108,13 @@ class Container:
 
     @property
     def session_repository(self) -> SessionRepository:
-        if self._session_repo is None:
+        if self._session_repository is None:
             from ..infrastructure.persistence.repositories.session_repository import (
                 SQLiteSessionRepository,
             )
 
-            self._session_repo = SQLiteSessionRepository(self.database)
-        return self._session_repo
+            self._session_repository = SQLiteSessionRepository(self.database)
+        return self._session_repository
 
     @property
     def history_repository(self) -> TrackHistoryRepository:
@@ -214,8 +212,6 @@ class Container:
             )
             self._shuffle_ai_client = AIRecommendationClient(shuffle_settings)
         return self._shuffle_ai_client
-
-
 
     @property
     def playback_service(self) -> PlaybackApplicationService:
@@ -344,22 +340,16 @@ class Container:
         self.radio_auto_refill.start()
 
     async def shutdown(self) -> None:
-        try:
-            if self._auto_skip_on_requester_leave is not None:
-                self._auto_skip_on_requester_leave.stop()
-        except Exception as exc:
-            logger.warning("Failed stopping auto-skip subscriber: %r", exc)
-
-        try:
-            if self._radio_auto_refill is not None:
-                self._radio_auto_refill.stop()
-        except Exception as exc:
-            logger.warning("Failed stopping radio auto-refill subscriber: %r", exc)
+        for subscriber in (self._auto_skip_on_requester_leave, self._radio_auto_refill):
+            if subscriber is not None:
+                try:
+                    subscriber.stop()
+                except Exception:
+                    pass
 
         if self._database is not None:
             await self._database.close()
 
 
-
 def create_container(settings: Settings) -> Container:
-    return Container(settings)
+    return Container(settings=settings)

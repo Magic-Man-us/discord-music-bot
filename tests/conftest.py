@@ -72,10 +72,10 @@ async def cache_repository(in_memory_database):
 def sample_track():
     """Create a sample track for testing."""
     from discord_music_player.domain.music.entities import Track
-    from discord_music_player.domain.music.value_objects import TrackId
+    from discord_music_player.domain.music.wrappers import TrackId
 
     return Track(
-        id=TrackId("test-track-123"),
+        id=TrackId(value="test-track-123"),
         title="Test Track",
         webpage_url="https://youtube.com/watch?v=test123",
         stream_url="https://stream.url/test",

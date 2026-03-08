@@ -75,7 +75,7 @@ class MusicBot(commands.Bot):
     async def _resume_sessions(self) -> None:
         """Resume playback sessions that were active before bot restart."""
         try:
-            from ...domain.music.value_objects import PlaybackState
+            from ...domain.music.enums import PlaybackState
 
             session_repo = self.container.session_repository
             sessions = await session_repo.get_all_active()
@@ -212,7 +212,7 @@ class MusicBot(commands.Bot):
 
     async def _reset_session(self, session: Any, session_repo: Any) -> None:
         """Reset a session to IDLE state."""
-        from ...domain.music.value_objects import PlaybackState
+        from ...domain.music.enums import PlaybackState
 
         session.state = PlaybackState.IDLE
         session.current_track = None

@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from discord_music_player.domain.shared.messages import DiscordUIMessages
 
 
 # =============================================================================
@@ -231,7 +230,7 @@ class TestShuffleButton:
             await view.shuffle_button.callback(interaction)
 
             interaction.response.send_message.assert_awaited_once_with(
-                DiscordUIMessages.SHUFFLE_ALREADY_IN_PROGRESS, ephemeral=True
+                "Someone is already shuffling, please wait.", ephemeral=True
             )
         finally:
             lock.release()
@@ -253,7 +252,7 @@ class TestShuffleButton:
 
             interaction.response.defer.assert_awaited_once_with(ephemeral=True)
             interaction.followup.send.assert_awaited_once_with(
-                DiscordUIMessages.STATE_NOTHING_PLAYING, ephemeral=True
+                "Nothing is playing.", ephemeral=True
             )
         finally:
             NowPlayingView._guild_locks.pop(501, None)
@@ -275,7 +274,7 @@ class TestShuffleButton:
             await view.shuffle_button.callback(interaction)
 
             interaction.followup.send.assert_awaited_once_with(
-                DiscordUIMessages.STATE_NOTHING_PLAYING, ephemeral=True
+                "Nothing is playing.", ephemeral=True
             )
         finally:
             NowPlayingView._guild_locks.pop(502, None)
@@ -298,7 +297,7 @@ class TestShuffleButton:
             await view.shuffle_button.callback(interaction)
 
             interaction.followup.send.assert_awaited_once_with(
-                DiscordUIMessages.SHUFFLE_NO_RECOMMENDATION, ephemeral=True
+                "Could not generate a recommendation. Try again later.", ephemeral=True
             )
         finally:
             NowPlayingView._guild_locks.pop(503, None)
@@ -327,7 +326,7 @@ class TestShuffleButton:
             await view.shuffle_button.callback(interaction)
 
             interaction.followup.send.assert_awaited_once_with(
-                DiscordUIMessages.SHUFFLE_TRACK_NOT_FOUND.format(display_text="Artist - Song"),
+                "Could not find a playable track for: Artist - Song",
                 ephemeral=True,
             )
         finally:
@@ -460,7 +459,7 @@ class TestShuffleButton:
             await view.shuffle_button.callback(interaction)
 
             interaction.followup.send.assert_awaited_once_with(
-                DiscordUIMessages.SHUFFLE_ERROR, ephemeral=True
+                "An error occurred while shuffling. Please try again.", ephemeral=True
             )
             # Button should be re-enabled after error
             shuffle_btn = [

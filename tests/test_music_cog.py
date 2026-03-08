@@ -21,8 +21,9 @@ import discord
 import pytest
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
-from discord_music_player.domain.music.value_objects import LoopMode, PlaybackState, TrackId
-from discord_music_player.domain.voting.value_objects import VoteResult
+from discord_music_player.domain.music.enums import LoopMode, PlaybackState
+from discord_music_player.domain.music.wrappers import TrackId
+from discord_music_player.domain.voting.enums import VoteResult
 from discord_music_player.infrastructure.discord.cogs.playback_cog import PlaybackCog
 from discord_music_player.infrastructure.discord.cogs.queue_cog import QueueCog
 from discord_music_player.infrastructure.discord.cogs.skip_cog import SkipCog
@@ -212,7 +213,7 @@ def mock_interaction():
 def sample_track():
     """Create a sample track for testing."""
     return Track(
-        id=TrackId("test123"),
+        id=TrackId(value="test123"),
         title="Test Song",
         webpage_url="https://youtube.com/watch?v=test123",
         stream_url="https://stream.example.com/test.mp3",
@@ -272,7 +273,7 @@ class TestTrackedMessage:
 
     def test_from_track_creates_message(self, sample_track):
         """Should create tracked message from track."""
-        msg = TrackedMessage.from_track(sample_track, channel_id=123, message_id=456)
+        msg = TrackedMessage.for_track(sample_track, channel_id=123, message_id=456)
 
         assert msg.channel_id == 123
         assert msg.message_id == 456
@@ -292,7 +293,7 @@ class TestGuildMessageState:
     def test_pop_matching_queued_finds_and_removes(self, sample_track):
         """Should find and remove matching queued message."""
         state = GuildMessageState()
-        msg = TrackedMessage.from_track(sample_track, channel_id=1, message_id=2)
+        msg = TrackedMessage.for_track(sample_track, channel_id=1, message_id=2)
         state.queued.append(msg)
 
         found = state.pop_matching_queued(sample_track)
@@ -313,14 +314,14 @@ class TestGuildMessageState:
         state = GuildMessageState()
 
         other_track = Track(
-            id=TrackId("other"),
+            id=TrackId(value="other"),
             title="Other",
             webpage_url="https://youtube.com/watch?v=other",
             requested_by_id=999,
         )
 
-        msg1 = TrackedMessage.from_track(sample_track, channel_id=1, message_id=1)
-        msg2 = TrackedMessage.from_track(other_track, channel_id=1, message_id=2)
+        msg1 = TrackedMessage.for_track(sample_track, channel_id=1, message_id=1)
+        msg2 = TrackedMessage.for_track(other_track, channel_id=1, message_id=2)
 
         state.queued.append(msg1)
         state.queued.append(msg2)
@@ -529,7 +530,7 @@ class TestMessageStateManagerFormatting:
     def test_format_requester_with_name_only(self):
         """Should format requester with name when no ID."""
         track = Track(
-            id=TrackId("test"),
+            id=TrackId(value="test"),
             title="Test",
             webpage_url="https://example.com",
             requested_by_name="TestUser",
@@ -540,7 +541,7 @@ class TestMessageStateManagerFormatting:
     def test_format_requester_unknown(self):
         """Should return Unknown when no requester info."""
         track = Track(
-            id=TrackId("test"),
+            id=TrackId(value="test"),
             title="Test",
             webpage_url="https://example.com",
         )
@@ -576,7 +577,7 @@ class TestMessageStateManagerFormatting:
     def test_build_now_playing_embed_with_next_track(self, sample_track):
         """Should build embed with next track info."""
         next_track = Track(
-            id=TrackId("next"),
+            id=TrackId(value="next"),
             title="Next Song",
             webpage_url="https://example.com/next",
         )
@@ -587,7 +588,7 @@ class TestMessageStateManagerFormatting:
     def test_build_now_playing_embed_minimal_track(self):
         """Should build embed for track with minimal info."""
         track = Track(
-            id=TrackId("test"),
+            id=TrackId(value="test"),
             title="Minimal Track",
             webpage_url="https://example.com",
         )
@@ -1377,7 +1378,7 @@ class TestOnRequesterLeft:
         """Should send view to the now-playing channel when message state exists."""
         # Setup now-playing message state
         state = GuildMessageState()
-        state.now_playing = TrackedMessage.from_track(
+        state.now_playing = TrackedMessage.for_track(
             sample_track, channel_id=222, message_id=333
         )
         mock_container.message_state_manager.get_state.return_value = state
@@ -1459,7 +1460,7 @@ class TestOnRequesterLeft:
     ):
         """Should format content with user mention and truncated track title."""
         state = GuildMessageState()
-        state.now_playing = TrackedMessage.from_track(
+        state.now_playing = TrackedMessage.for_track(
             sample_track, channel_id=222, message_id=333
         )
         mock_container.message_state_manager.get_state.return_value = state

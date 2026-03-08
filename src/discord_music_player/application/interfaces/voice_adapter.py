@@ -10,7 +10,7 @@ from discord_music_player.domain.shared.types import ChannelIdField, DiscordSnow
 
 if TYPE_CHECKING:
     from ...domain.music.entities import Track
-    from ...domain.music.value_objects import StartSeconds
+    from ...domain.music.wrappers import StartSeconds
 
 
 class VoiceAdapter(ABC):

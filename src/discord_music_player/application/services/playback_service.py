@@ -8,13 +8,13 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from ...domain.music.entities import GuildPlaybackSession, Track
-from ...domain.music.value_objects import PlaybackState
+from ...domain.music.enums import PlaybackState
 from ...domain.shared.events import QueueExhausted, TrackStartedPlaying, get_event_bus
 from ...domain.shared.types import DiscordSnowflake
 
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository, TrackHistoryRepository
-    from ...domain.music.value_objects import StartSeconds
+    from ...domain.music.wrappers import StartSeconds
     from ..interfaces.audio_resolver import AudioResolver
     from ..interfaces.voice_adapter import VoiceAdapter
 

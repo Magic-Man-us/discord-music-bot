@@ -9,8 +9,7 @@ import pytest_asyncio
 from discord.ext import commands
 
 from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.music.value_objects import TrackId
-from discord_music_player.domain.shared.messages import DiscordUIMessages
+from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.infrastructure.discord.cogs.analytics_cog import AnalyticsCog
 from discord_music_player.infrastructure.persistence.repositories.history_repository import GenreTrackInfo, UserStats
 
@@ -25,7 +24,7 @@ def make_track():
     """Factory for creating test tracks."""
     def _make(track_id="t1", title="Song A", artist="Artist A", duration=180, requester_id=100, requester_name="Alice"):
         return Track(
-            id=TrackId(track_id),
+            id=TrackId(value=track_id),
             title=title,
             webpage_url=f"https://youtube.com/watch?v={track_id}",
             duration_seconds=duration,
@@ -410,7 +409,7 @@ def mock_history_repo():
     repo.get_skip_rate = AsyncMock(return_value=0.15)
 
     sample_track = Track(
-        id=TrackId("t1"),
+        id=TrackId(value="t1"),
         title="Rock Anthem",
         webpage_url="https://youtube.com/watch?v=t1",
         duration_seconds=200,
@@ -477,7 +476,7 @@ class TestStatsCogCommand:
         mock_interaction.response.defer.assert_called_once()
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
-        assert DiscordUIMessages.EMBED_SERVER_STATS in embed.title
+        assert "📊 Server Music Stats" in embed.title
 
         field_names = [f.name for f in embed.fields]
         assert "Total Plays" in field_names
@@ -493,7 +492,7 @@ class TestStatsCogCommand:
         await analytics_cog.stats.callback(analytics_cog, mock_interaction)
 
         args = mock_interaction.followup.send.call_args[0]
-        assert args[0] == DiscordUIMessages.ANALYTICS_NO_DATA
+        assert args[0] == "No music has been played yet in this server."
 
     @pytest.mark.asyncio
     async def test_stats_chart_failure_still_sends_embed(
@@ -564,7 +563,7 @@ class TestTopCogCommand:
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
-        assert DiscordUIMessages.EMBED_TOP_TRACKS in embed.title
+        assert "🏆 Top Tracks" in embed.title
         assert "Rock Anthem" in embed.description
 
     @pytest.mark.asyncio
@@ -577,7 +576,7 @@ class TestTopCogCommand:
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
-        assert DiscordUIMessages.EMBED_TOP_TRACKS in embed.title
+        assert "🏆 Top Tracks" in embed.title
 
     @pytest.mark.asyncio
     async def test_top_users(self, analytics_cog, mock_interaction):
@@ -589,7 +588,7 @@ class TestTopCogCommand:
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
-        assert DiscordUIMessages.EMBED_TOP_USERS in embed.title
+        assert "🏆 Top Listeners" in embed.title
         assert "Alice" in embed.description
 
     @pytest.mark.asyncio
@@ -602,7 +601,7 @@ class TestTopCogCommand:
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
-        assert DiscordUIMessages.EMBED_TOP_SKIPPED in embed.title
+        assert "⏭️ Most Skipped" in embed.title
         assert "Pop Hit" in embed.description
 
     @pytest.mark.asyncio
@@ -613,7 +612,7 @@ class TestTopCogCommand:
         await analytics_cog.top.callback(analytics_cog, mock_interaction, category=None)
 
         args = mock_interaction.followup.send.call_args[0]
-        assert args[0] == DiscordUIMessages.ANALYTICS_NO_DATA
+        assert args[0] == "No music has been played yet in this server."
 
     @pytest.mark.asyncio
     async def test_top_users_no_data(self, analytics_cog, mock_interaction, mock_history_repo):
@@ -625,7 +624,7 @@ class TestTopCogCommand:
         await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice)
 
         args = mock_interaction.followup.send.call_args[0]
-        assert args[0] == DiscordUIMessages.ANALYTICS_NO_DATA
+        assert args[0] == "No music has been played yet in this server."
 
     @pytest.mark.asyncio
     async def test_top_skipped_no_data(self, analytics_cog, mock_interaction, mock_history_repo):
@@ -637,7 +636,7 @@ class TestTopCogCommand:
         await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice)
 
         args = mock_interaction.followup.send.call_args[0]
-        assert args[0] == DiscordUIMessages.ANALYTICS_NO_DATA
+        assert args[0] == "No music has been played yet in this server."
 
     @pytest.mark.asyncio
     async def test_top_chart_failure_still_sends_embed(
@@ -662,7 +661,7 @@ class TestMystatsCogCommand:
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
-        assert DiscordUIMessages.EMBED_USER_STATS in embed.title
+        assert "🎵 Your Music Stats" in embed.title
 
         field_names = [f.name for f in embed.fields]
         assert "Total Plays" in field_names
@@ -685,7 +684,7 @@ class TestMystatsCogCommand:
         await analytics_cog.mystats.callback(analytics_cog, mock_interaction)
 
         args = mock_interaction.followup.send.call_args[0]
-        assert args[0] == DiscordUIMessages.ANALYTICS_NO_DATA
+        assert args[0] == "No music has been played yet in this server."
 
     @pytest.mark.asyncio
     async def test_mystats_includes_top_songs(self, analytics_cog, mock_interaction):
@@ -743,7 +742,7 @@ class TestActivityCogCommand:
         mock_interaction.response.defer.assert_called_once()
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
-        assert DiscordUIMessages.EMBED_ACTIVITY in embed.title
+        assert "📈 Listening Activity" in embed.title
         assert "total plays" in embed.description
 
     @pytest.mark.asyncio
@@ -790,7 +789,7 @@ class TestActivityCogCommand:
         await analytics_cog.activity.callback(analytics_cog, mock_interaction, period=None)
 
         args = mock_interaction.followup.send.call_args[0]
-        assert args[0] == DiscordUIMessages.ANALYTICS_NO_DATA
+        assert args[0] == "No music has been played yet in this server."
 
     @pytest.mark.asyncio
     async def test_activity_chart_failure_shows_fallback(

@@ -6,7 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ...domain.music.entities import Track
-from ...domain.music.value_objects import LoopMode
+from ...domain.music.enums import LoopMode
 from ...domain.shared.datetime_utils import utcnow
 from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, QueuePositionInt
 from .queue_models import EnqueueResult, QueueSnapshot

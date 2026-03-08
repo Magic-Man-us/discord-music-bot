@@ -10,9 +10,6 @@ from typing import TYPE_CHECKING, ClassVar
 import discord
 
 from discord_music_player.domain.recommendations.entities import RecommendationRequest
-from discord_music_player.domain.shared.messages import (
-    DiscordUIMessages,
-)
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     check_user_in_voice,
 )
@@ -93,7 +90,7 @@ class NowPlayingView(BaseInteractiveView):
 
         if lock.locked():
             await interaction.response.send_message(
-                DiscordUIMessages.SHUFFLE_ALREADY_IN_PROGRESS, ephemeral=True
+                "Someone is already shuffling, please wait.", ephemeral=True
             )
             return
 
@@ -111,7 +108,7 @@ class NowPlayingView(BaseInteractiveView):
                 session = await self.container.session_repository.get(self.guild_id)
                 if session is None or session.current_track is None:
                     await interaction.followup.send(
-                        DiscordUIMessages.STATE_NOTHING_PLAYING, ephemeral=True
+                        "Nothing is playing.", ephemeral=True
                     )
                     return
 
@@ -129,7 +126,7 @@ class NowPlayingView(BaseInteractiveView):
 
                 if not recommendations:
                     await interaction.followup.send(
-                        DiscordUIMessages.SHUFFLE_NO_RECOMMENDATION,
+                        "Could not generate a recommendation. Try again later.",
                         ephemeral=True,
                     )
                     return
@@ -140,9 +137,7 @@ class NowPlayingView(BaseInteractiveView):
                 track = await self.container.audio_resolver.resolve(rec.query)
                 if not track:
                     await interaction.followup.send(
-                        DiscordUIMessages.SHUFFLE_TRACK_NOT_FOUND.format(
-                            display_text=rec.display_text
-                        ),
+                        f"Could not find a playable track for: {rec.display_text}",
                         ephemeral=True,
                     )
                     return
@@ -167,9 +162,7 @@ class NowPlayingView(BaseInteractiveView):
 
                 # Send ephemeral confirmation
                 await interaction.followup.send(
-                    DiscordUIMessages.SHUFFLE_QUEUED_NEXT.format(
-                        track_title=truncate(resolved_track.title, 60)
-                    ),
+                    f"🔀 Queued next: **{truncate(resolved_track.title, 60)}**",
                     ephemeral=True,
                 )
 
@@ -188,7 +181,7 @@ class NowPlayingView(BaseInteractiveView):
             except Exception:
                 logger.exception("Error in shuffle button handler")
                 await interaction.followup.send(
-                    DiscordUIMessages.SHUFFLE_ERROR,
+                    "An error occurred while shuffling. Please try again.",
                     ephemeral=True,
                 )
             finally:

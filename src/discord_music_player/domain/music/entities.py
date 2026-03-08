@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import ClassVar
+from typing import Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from discord_music_player.domain.music.value_objects import (
-    LoopMode,
-    PlaybackState,
-    QueuePosition,
-    TrackId,
-)
-from discord_music_player.domain.shared.datetime_utils import utcnow
+from discord_music_player.domain.music.enums import LoopMode, PlaybackState
+from discord_music_player.domain.music.wrappers import QueuePosition, TrackId
+from discord_music_player.domain.shared.datetime_utils import UtcDateTime, utcnow
 from discord_music_player.domain.shared.constants import LimitConstants
 from discord_music_player.domain.shared.exceptions import (
     BusinessRuleViolationError,
@@ -66,6 +62,26 @@ class Track(BaseModel):
 
     # Playback metadata
     is_from_recommendation: bool = False
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _coerce_track_id(cls, v: Any) -> TrackId:
+        """Accept a raw string and wrap it as a TrackId."""
+        if isinstance(v, str):
+            return TrackId(value=v)
+        if isinstance(v, dict):
+            return TrackId.model_validate(v)
+        return v
+
+    @field_validator("requested_at", mode="before")
+    @classmethod
+    def _coerce_requested_at(cls, v: Any) -> datetime | None:
+        """Accept an ISO 8601 string and parse it to a UTC datetime."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return UtcDateTime.from_iso(v).dt
+        return v
 
     @property
     def duration_formatted(self) -> str:
@@ -176,7 +192,7 @@ class GuildPlaybackSession(BaseModel):
                 rule="MAX_QUEUE_SIZE", message=f"Queue is full (max {self.MAX_QUEUE_SIZE} tracks)"
             )
 
-        position = QueuePosition(len(self.queue))
+        position = QueuePosition(value=len(self.queue))
         self.queue.append(track)
         self.touch()
         return position
@@ -195,7 +211,7 @@ class GuildPlaybackSession(BaseModel):
 
         self.queue.insert(0, track)
         self.touch()
-        return QueuePosition(0)
+        return QueuePosition(value=0)
 
     def dequeue(self) -> Track | None:
         """Remove and return the next track from the queue."""

@@ -13,7 +13,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
-from discord_music_player.domain.music.value_objects import LoopMode, PlaybackState, TrackId
+from discord_music_player.domain.music.enums import LoopMode, PlaybackState
+from discord_music_player.domain.music.wrappers import TrackId
 
 
 @pytest.fixture
@@ -56,7 +57,7 @@ class TestQueueApplicationServiceEnqueue:
     def sample_track(self):
         """Sample track for testing."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Test Track",
             webpage_url="https://youtube.com/watch?v=test123",
             duration_seconds=180,
@@ -88,7 +89,7 @@ class TestQueueApplicationServiceEnqueue:
         # Fill queue to max
         for i in range(GuildPlaybackSession.MAX_QUEUE_SIZE):
             track = Track(
-                id=TrackId(f"track{i}"),
+                id=TrackId(value=f"track{i}"),
                 title=f"Track {i}",
                 webpage_url=f"https://youtube.com/watch?v=track{i}",
             )
@@ -130,7 +131,7 @@ class TestQueueApplicationServiceEnqueue:
         """Should not indicate start when already playing."""
         session = GuildPlaybackSession(guild_id=123456)
         session.current_track = Track(
-            id=TrackId("current"),
+            id=TrackId(value="current"),
             title="Current",
             webpage_url="https://youtube.com/watch?v=current",
         )
@@ -173,7 +174,7 @@ class TestQueueApplicationServiceEnqueueNext:
     def sample_track(self):
         """Sample track for testing."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Test Track",
             webpage_url="https://youtube.com/watch?v=test123",
         )
@@ -183,7 +184,7 @@ class TestQueueApplicationServiceEnqueueNext:
         """Should add track to front of queue."""
         session = GuildPlaybackSession(guild_id=123456)
         existing_track = Track(
-            id=TrackId("existing"),
+            id=TrackId(value="existing"),
             title="Existing",
             webpage_url="https://youtube.com/watch?v=existing",
         )
@@ -228,7 +229,7 @@ class TestQueueApplicationServiceOperations:
         """Sample tracks for testing."""
         return [
             Track(
-                id=TrackId(f"track{i}"),
+                id=TrackId(value=f"track{i}"),
                 title=f"Track {i}",
                 webpage_url=f"https://youtube.com/watch?v=track{i}",
                 duration_seconds=180 + i * 30,
@@ -353,7 +354,7 @@ class TestQueueApplicationServiceGetQueue:
         """Sample tracks with durations."""
         return [
             Track(
-                id=TrackId(f"track{i}"),
+                id=TrackId(value=f"track{i}"),
                 title=f"Track {i}",
                 webpage_url=f"https://youtube.com/watch?v=track{i}",
                 duration_seconds=180,
@@ -495,7 +496,7 @@ class TestPlaybackApplicationServiceStartPlayback:
     def sample_track(self):
         """Sample track with stream URL."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Test Track",
             webpage_url="https://youtube.com/watch?v=test123",
             stream_url="https://stream.example.com/audio",
@@ -667,7 +668,7 @@ class TestPlaybackApplicationServicePauseResume:
     def sample_track(self):
         """Sample track for testing."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Test Track",
             webpage_url="https://youtube.com/watch?v=test123",
         )
@@ -771,7 +772,7 @@ class TestPlaybackApplicationServiceSkipTrack:
     def sample_track(self):
         """Sample track for testing."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Test Track",
             webpage_url="https://youtube.com/watch?v=test123",
             stream_url="https://stream.example.com/audio",
@@ -948,7 +949,7 @@ class TestPlaybackApplicationServiceOnVoiceTrackEnd:
     def sample_track(self):
         """Sample track for testing."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Test Track",
             webpage_url="https://youtube.com/watch?v=test123",
             stream_url="https://stream.example.com/audio",
@@ -1109,7 +1110,7 @@ class TestPlaybackApplicationServiceHandleTrackFinished:
     def sample_track(self):
         """Sample track for testing."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Test Track",
             webpage_url="https://youtube.com/watch?v=test123",
             stream_url="https://stream.example.com/audio",
@@ -1132,7 +1133,7 @@ class TestPlaybackApplicationServiceHandleTrackFinished:
         """Should start playback of next track."""
         session = GuildPlaybackSession(guild_id=123456)
         next_track = Track(
-            id=TrackId("next"),
+            id=TrackId(value="next"),
             title="Next Track",
             webpage_url="https://youtube.com/watch?v=next",
             stream_url="https://stream.example.com/next",
@@ -1253,7 +1254,7 @@ class TestPlaybackApplicationServiceEnsureStreamUrl:
     def track_without_stream(self):
         """Track without stream URL."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Test Track",
             webpage_url="https://youtube.com/watch?v=test123",
             duration_seconds=180,
@@ -1263,7 +1264,7 @@ class TestPlaybackApplicationServiceEnsureStreamUrl:
     def track_with_stream(self):
         """Track with stream URL."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Test Track",
             webpage_url="https://youtube.com/watch?v=test123",
             stream_url="https://stream.example.com/audio",
@@ -1288,7 +1289,7 @@ class TestPlaybackApplicationServiceEnsureStreamUrl:
 
         # Resolved Track with stream URL and metadata
         resolved = Track(
-            id=TrackId("resolved123"),
+            id=TrackId(value="resolved123"),
             title="Resolved Title",
             webpage_url="https://youtube.com/watch?v=resolved123",
             stream_url="https://resolved.stream.com/audio",
@@ -1380,7 +1381,7 @@ class TestPlaybackApplicationServiceStartVoicePlayback:
     def sample_track(self):
         """Sample track for testing."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Test Track",
             webpage_url="https://youtube.com/watch?v=test123",
             stream_url="https://stream.example.com/audio",
@@ -1477,7 +1478,7 @@ class TestPlaybackApplicationServicePauseResumeErrors:
     def sample_track(self):
         """Sample track for testing."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Test Track",
             webpage_url="https://youtube.com/watch?v=test123",
         )
@@ -1583,12 +1584,12 @@ class TestQueueInfoProperties:
 
         tracks = [
             Track(
-                id=TrackId("track1"),
+                id=TrackId(value="track1"),
                 title="Track 1",
                 webpage_url="https://youtube.com/watch?v=track1",
             ),
             Track(
-                id=TrackId("track2"),
+                id=TrackId(value="track2"),
                 title="Track 2",
                 webpage_url="https://youtube.com/watch?v=track2",
             ),
@@ -1673,7 +1674,7 @@ class TestQueueApplicationServiceMoveEdgeCases:
         """Sample tracks for testing."""
         return [
             Track(
-                id=TrackId(f"track{i}"),
+                id=TrackId(value=f"track{i}"),
                 title=f"Track {i}",
                 webpage_url=f"https://youtube.com/watch?v=track{i}",
             )
@@ -1722,7 +1723,7 @@ class TestQueueApplicationServiceRemoveEdgeCases:
         """Sample tracks for testing."""
         return [
             Track(
-                id=TrackId(f"track{i}"),
+                id=TrackId(value=f"track{i}"),
                 title=f"Track {i}",
                 webpage_url=f"https://youtube.com/watch?v=track{i}",
             )

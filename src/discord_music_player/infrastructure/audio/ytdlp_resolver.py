@@ -15,7 +15,7 @@ from yt_dlp import YoutubeDL
 from discord_music_player.application.interfaces.audio_resolver import AudioResolver
 from discord_music_player.config.settings import AudioSettings
 from discord_music_player.domain.music.entities import PlaylistEntry, Track
-from discord_music_player.domain.music.value_objects import TrackId
+from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.shared.types import (
     HttpUrlStr,
     NonEmptyStr,
@@ -187,27 +187,31 @@ class YtDlpResolver(AudioResolver):
 
                 with _cache_lock:
                     _info_cache[url] = CacheEntry(info=result, cached_at=now)
-
-                    if len(_info_cache) > CACHE_MAX_SIZE:
-                        expired = [
-                            k
-                            for k, entry in _info_cache.items()
-                            if now - entry.cached_at >= CACHE_TTL
-                        ]
-                        if not expired and len(_info_cache) > CACHE_MAX_SIZE:
-                            # All entries are fresh — evict oldest
-                            oldest_key = min(_info_cache, key=lambda k: _info_cache[k].cached_at)
-                            _info_cache.pop(oldest_key, None)
-                        else:
-                            for k in expired:
-                                _info_cache.pop(k, None)
-                        if expired:
-                            logger.debug("Cleaned %d expired cache entries", len(expired))
+                    self._evict_cache(now)
 
                 return result
         except Exception:
             logger.exception("Failed to extract info from %s", url)
             return None
+
+    @staticmethod
+    def _evict_cache(now: float) -> None:
+        """Remove expired or oldest entries when the cache exceeds its size limit.
+
+        Must be called while holding ``_cache_lock``.
+        """
+        if len(_info_cache) <= CACHE_MAX_SIZE:
+            return
+
+        expired = [k for k, entry in _info_cache.items() if now - entry.cached_at >= CACHE_TTL]
+        if expired:
+            for k in expired:
+                _info_cache.pop(k, None)
+            logger.debug("Cleaned %d expired cache entries", len(expired))
+        else:
+            # All entries are fresh — evict oldest
+            oldest_key = min(_info_cache, key=lambda k: _info_cache[k].cached_at)
+            _info_cache.pop(oldest_key, None)
 
     @staticmethod
     def _parse_extract_result(data: Any) -> YtDlpExtractResult:

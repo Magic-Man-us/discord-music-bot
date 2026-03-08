@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from discord_music_player.domain.shared.messages import DiscordUIMessages
 
 # =============================================================================
 # ResumePlaybackView
@@ -38,7 +37,7 @@ class TestResumePlaybackView:
 
         ps.start_playback.assert_awaited_once_with(1)
         call_kwargs = interaction.response.edit_message.call_args[1]
-        assert DiscordUIMessages.RESUME_PLAYBACK_RESUMED.format(track_title="Test Song") in call_kwargs["content"]
+        assert "▶️ Resumed playback: **Test Song**" in call_kwargs["content"]
 
     @pytest.mark.asyncio
     async def test_skip_button_stops_playback(self):
@@ -49,7 +48,7 @@ class TestResumePlaybackView:
 
         ps.stop_playback.assert_awaited_once_with(1)
         call_kwargs = interaction.response.edit_message.call_args[1]
-        assert call_kwargs["content"] == DiscordUIMessages.RESUME_PLAYBACK_CLEARED
+        assert call_kwargs["content"] == "⏭️ Skipped. Playback cleared."
 
     @pytest.mark.asyncio
     async def test_on_timeout_stops_and_edits(self):
@@ -62,7 +61,7 @@ class TestResumePlaybackView:
         ps.stop_playback.assert_awaited_once_with(1)
         message.edit.assert_awaited_once()
         call_kwargs = message.edit.call_args[1]
-        assert call_kwargs["content"] == DiscordUIMessages.RESUME_PLAYBACK_TIMEOUT
+        assert call_kwargs["content"] == "⏭️ Playback cleared (no response)."
 
     @pytest.mark.asyncio
     async def test_buttons_disabled_after_resume(self):
@@ -359,13 +358,13 @@ class TestLongTrackVoteView:
 def _make_radio_tracks():
     """Create mock Track objects for RadioView tests."""
     from discord_music_player.domain.music.entities import Track
-    from discord_music_player.domain.music.value_objects import TrackId
+    from discord_music_player.domain.music.wrappers import TrackId
 
     tracks = []
     for i in range(3):
         tracks.append(
             Track(
-                id=TrackId(f"track{i}"),
+                id=TrackId(value=f"track{i}"),
                 title=f"Radio Track {i + 1}",
                 webpage_url=f"https://youtube.com/watch?v=track{i}",
                 stream_url="https://stream.example.com/audio.mp3",
@@ -390,12 +389,12 @@ class TestRadioView:
     @pytest.mark.asyncio
     async def test_reroll_button_success(self):
         from discord_music_player.domain.music.entities import Track
-        from discord_music_player.domain.music.value_objects import TrackId
+        from discord_music_player.domain.music.wrappers import TrackId
 
         view, container, tracks = _make_radio_view()
 
         new_track = Track(
-            id=TrackId("new1"),
+            id=TrackId(value="new1"),
             title="New Recommendation",
             webpage_url="https://youtube.com/watch?v=new1",
             stream_url="https://stream.example.com/audio.mp3",

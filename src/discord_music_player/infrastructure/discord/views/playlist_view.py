@@ -11,7 +11,6 @@ from discord_music_player.domain.shared.constants import (
     DiscordEmbedLimits,
     PlaylistConstants,
 )
-from discord_music_player.domain.shared.messages import DiscordUIMessages
 from discord_music_player.infrastructure.discord.views.base_view import (
     BaseInteractiveView,
 )
@@ -27,8 +26,8 @@ logger = logging.getLogger(__name__)
 def build_playlist_embed(entries: list[PlaylistEntry]) -> discord.Embed:
     """Build an embed showing playlist tracks for selection."""
     embed = discord.Embed(
-        title=DiscordUIMessages.EMBED_PLAYLIST_PREVIEW,
-        description=DiscordUIMessages.PLAYLIST_DETECTED.format(count=len(entries)),
+        title="Playlist Preview",
+        description=f"Found **{len(entries)}** tracks in playlist. Select which to add:",
         color=discord.Color.blue(),
     )
 
@@ -69,71 +68,16 @@ def build_playlist_embed(entries: list[PlaylistEntry]) -> discord.Embed:
     return embed
 
 
-class TrackSelect(discord.ui.Select["PlaylistView"]):
-    """Multi-select dropdown for picking individual tracks."""
-
-    def __init__(self, entries: list[PlaylistEntry]) -> None:
-        options = [
-            discord.SelectOption(
-                label=truncate(entry.title, 95),
-                value=str(idx),
-                description=format_duration(entry.duration_seconds) if entry.duration_seconds else None,
-            )
-            for idx, entry in enumerate(entries[:PlaylistConstants.MAX_SELECT_OPTIONS])
-        ]
-        super().__init__(
-            placeholder="Pick tracks to add...",
-            min_values=1,
-            max_values=len(options),
-            options=options,
-            row=0,
+def _build_select_options(entries: list[PlaylistEntry]) -> list[discord.SelectOption]:
+    """Build select menu options from playlist entries."""
+    return [
+        discord.SelectOption(
+            label=truncate(entry.title, 95),
+            value=str(idx),
+            description=format_duration(entry.duration_seconds) if entry.duration_seconds else None,
         )
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        assert self.view is not None
-        view: PlaylistView = self.view
-        selected_indices = [int(v) for v in self.values]
-        await view._enqueue_tracks(interaction, selected_indices)
-
-
-class AddAllButton(discord.ui.Button["PlaylistView"]):
-    """Add all playlist tracks to the queue."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            label="Add All",
-            style=discord.ButtonStyle.success,
-            row=1,
-        )
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        assert self.view is not None
-        view: PlaylistView = self.view
-        all_indices = list(range(len(view._entries)))
-        await view._enqueue_tracks(interaction, all_indices)
-
-
-class CancelButton(discord.ui.Button["PlaylistView"]):
-    """Cancel playlist import."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            label="Cancel",
-            style=discord.ButtonStyle.danger,
-            row=1,
-        )
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        assert self.view is not None
-        view: PlaylistView = self.view
-        if not view._finish_view():
-            return
-        view._disable_all_items()
-        await interaction.response.edit_message(
-            content=DiscordUIMessages.PLAYLIST_CANCELLED,
-            embed=None,
-            view=view,
-        )
+        for idx, entry in enumerate(entries[:PlaylistConstants.MAX_SELECT_OPTIONS])
+    ]
 
 
 class PlaylistView(BaseInteractiveView):
@@ -152,17 +96,48 @@ class PlaylistView(BaseInteractiveView):
 
         # Only add select if entries fit (max 25 options)
         if len(self._entries) <= PlaylistConstants.MAX_SELECT_OPTIONS:
-            self.add_item(TrackSelect(self._entries))
+            options = _build_select_options(self._entries)
+            select = discord.ui.Select(
+                placeholder="Pick tracks to add...",
+                min_values=1,
+                max_values=len(options),
+                options=options,
+                row=0,
+            )
+            select.callback = self._on_select
+            self.add_item(select)
 
-        self.add_item(AddAllButton())
-        self.add_item(CancelButton())
+    @discord.ui.button(label="Add All", style=discord.ButtonStyle.success, row=1)
+    async def add_all_button(self, interaction: discord.Interaction, button: discord.ui.Button[PlaylistView]) -> None:
+        all_indices = list(range(len(self._entries)))
+        await self._enqueue_tracks(interaction, all_indices)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, row=1)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button[PlaylistView]) -> None:
+        if not self._finish_view():
+            return
+        self._disable_all_items()
+        await interaction.response.edit_message(
+            content="Playlist import cancelled.",
+            embed=None,
+            view=self,
+        )
+
+    async def _on_select(self, interaction: discord.Interaction) -> None:
+        """Handle track selection from the dropdown."""
+        # The select is dynamically added, so we find it by type
+        for item in self.children:
+            if isinstance(item, discord.ui.Select):
+                selected_indices = [int(v) for v in item.values]
+                await self._enqueue_tracks(interaction, selected_indices)
+                return
 
     async def _enqueue_tracks(
         self, interaction: discord.Interaction, indices: list[int]
     ) -> None:
         if not self._finish_view():
             await interaction.response.send_message(
-                DiscordUIMessages.PLAYLIST_ALREADY_PROCESSING, ephemeral=True
+                "Already processing, please wait.", ephemeral=True
             )
             return
 
@@ -170,7 +145,7 @@ class PlaylistView(BaseInteractiveView):
 
         selected = [self._entries[i] for i in indices if i < len(self._entries)]
         await interaction.response.edit_message(
-            content=DiscordUIMessages.PLAYLIST_ADDING.format(count=len(selected)),
+            content=f"Adding **{len(selected)}** track(s) to the queue...",
             embed=None,
             view=self,
         )
@@ -180,13 +155,30 @@ class PlaylistView(BaseInteractiveView):
             return
 
         user = interaction.user
+        added, should_start = await self._resolve_and_enqueue(guild, user, selected)
+
+        if should_start:
+            await self._ensure_voice_and_play(guild, user)
+
+        summary = f"Added **{added}** of **{len(selected)}** tracks to the queue."
+        try:
+            await interaction.edit_original_response(content=summary, embed=None, view=None)
+        except discord.HTTPException:
+            pass
+
+    async def _resolve_and_enqueue(
+        self,
+        guild: discord.Guild,
+        user: discord.User | discord.Member,
+        entries: list[PlaylistEntry],
+    ) -> tuple[int, bool]:
+        """Resolve and enqueue entries. Returns ``(added_count, should_start_playback)``."""
         resolver = self._container.audio_resolver
         queue_service = self._container.queue_service
-        playback_service = self._container.playback_service
 
         added = 0
-        should_start_playback = False
-        for entry in selected:
+        should_start = False
+        for entry in entries:
             try:
                 track = await resolver.resolve(entry.url)
                 if track is None:
@@ -200,32 +192,29 @@ class PlaylistView(BaseInteractiveView):
                 )
                 if result.success:
                     added += 1
-                    if result.should_start and not should_start_playback:
-                        should_start_playback = True
+                    if result.should_start:
+                        should_start = True
             except Exception:
                 logger.warning("Failed to enqueue playlist track: %s", entry.title)
-                continue
+        return added, should_start
 
-        if should_start_playback:
-            voice_adapter = self._container.voice_adapter
-            member = guild.get_member(user.id)
-            if isinstance(member, discord.Member) and member.voice and member.voice.channel:
-                if not voice_adapter.is_connected(guild.id):
-                    connected = await voice_adapter.ensure_connected(guild.id, member.voice.channel.id)
-                    if not connected:
-                        logger.warning("Failed to connect to voice for playlist playback in guild %s", guild.id)
-                        should_start_playback = False
-            else:
-                should_start_playback = False
+    async def _ensure_voice_and_play(
+        self, guild: discord.Guild, user: discord.User | discord.Member,
+    ) -> None:
+        """Connect to voice (if needed) and start playback."""
+        voice_adapter = self._container.voice_adapter
+        member = guild.get_member(user.id)
 
-            if should_start_playback:
-                await playback_service.start_playback(guild.id)
+        if not isinstance(member, discord.Member) or not member.voice or not member.voice.channel:
+            return
 
-        summary = DiscordUIMessages.PLAYLIST_ADDED.format(added=added, total=len(selected))
-        try:
-            await interaction.edit_original_response(content=summary, embed=None, view=None)
-        except discord.HTTPException:
-            pass
+        if not voice_adapter.is_connected(guild.id):
+            connected = await voice_adapter.ensure_connected(guild.id, member.voice.channel.id)
+            if not connected:
+                logger.warning("Failed to connect to voice for playlist playback in guild %s", guild.id)
+                return
+
+        await self._container.playback_service.start_playback(guild.id)
 
     async def on_timeout(self) -> None:
         if self._resolved:
@@ -235,7 +224,7 @@ class PlaylistView(BaseInteractiveView):
         if self._message is not None:
             try:
                 await self._message.edit(
-                    content=DiscordUIMessages.PLAYLIST_TIMEOUT,
+                    content="Playlist selection timed out.",
                     embed=None,
                     view=self,
                 )

@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from discord_music_player.domain.music.value_objects import TrackId
+from discord_music_player.domain.music.wrappers import TrackId
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -77,10 +77,10 @@ async def cache_repository(in_memory_database):
 def sample_track():
     """Create a sample track for testing."""
     from discord_music_player.domain.music.entities import Track
-    from discord_music_player.domain.music.value_objects import TrackId
+    from discord_music_player.domain.music.wrappers import TrackId
 
     return Track(
-        id=TrackId("test-track-123"),
+        id=TrackId(value="test-track-123"),
         title="Test Track",
         webpage_url="https://youtube.com/watch?v=test123",
         stream_url="https://stream.url/test",
@@ -306,14 +306,14 @@ class TestHistoryRepository:
     async def test_get_guild_history_respects_limit(self, history_repository, sample_track):
         """Test that history limit is respected."""
         from discord_music_player.domain.music.entities import Track
-        from discord_music_player.domain.music.value_objects import TrackId
+        from discord_music_player.domain.music.wrappers import TrackId
 
         guild_id = 456
 
         # Add multiple tracks
         for i in range(15):
             track = Track(
-                id=TrackId(f"track-{i}"),
+                id=TrackId(value=f"track-{i}"),
                 title=f"Track {i}",
                 webpage_url=f"https://url/{i}",
             )
@@ -327,14 +327,14 @@ class TestHistoryRepository:
     async def test_get_recent_track_titles(self, history_repository, sample_track):
         """Test getting recent track titles."""
         from discord_music_player.domain.music.entities import Track
-        from discord_music_player.domain.music.value_objects import TrackId
+        from discord_music_player.domain.music.wrappers import TrackId
 
         guild_id = 789
 
         # Add tracks
         for i in range(5):
             track = Track(
-                id=TrackId(f"track-{i}"),
+                id=TrackId(value=f"track-{i}"),
                 title=f"Recent Track {i}",
                 webpage_url=f"https://url/{i}",
             )
@@ -368,10 +368,10 @@ class TestVoteRepository:
     async def test_create_and_get_vote_session(self, vote_repository):
         """Test creating and retrieving a vote session."""
         from discord_music_player.domain.voting.entities import VoteSession
-        from discord_music_player.domain.voting.value_objects import VoteType
+        from discord_music_player.domain.voting.enums import VoteType
 
         guild_id = 123
-        track_id = TrackId("track-123")
+        track_id = TrackId(value="track-123")
 
         session = VoteSession(
             guild_id=guild_id,
@@ -390,17 +390,17 @@ class TestVoteRepository:
     @pytest.mark.asyncio
     async def test_get_nonexistent_vote_session(self, vote_repository):
         """Test getting a vote session that doesn't exist."""
-        result = await vote_repository.get_active(999, TrackId("nonexistent"))
+        result = await vote_repository.get_active(999, TrackId(value="nonexistent"))
         assert result is None
 
     @pytest.mark.asyncio
     async def test_delete_vote_session(self, vote_repository):
         """Test deleting a vote session."""
         from discord_music_player.domain.voting.entities import VoteSession
-        from discord_music_player.domain.voting.value_objects import VoteType
+        from discord_music_player.domain.voting.enums import VoteType
 
         guild_id = 456
-        track_id = TrackId("track-456")
+        track_id = TrackId(value="track-456")
 
         session = VoteSession(
             guild_id=guild_id,
@@ -502,7 +502,7 @@ class TestRepositoryIntegration:
     @pytest.mark.asyncio
     async def test_full_session_lifecycle(self, session_repository, sample_track):
         """Test complete session lifecycle."""
-        from discord_music_player.domain.music.value_objects import PlaybackState
+        from discord_music_player.domain.music.enums import PlaybackState
 
         guild_id = 999
 
@@ -533,7 +533,7 @@ class TestRepositoryIntegration:
     ):
         """Test history recording across multiple sessions."""
         from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
-        from discord_music_player.domain.music.value_objects import TrackId
+        from discord_music_player.domain.music.wrappers import TrackId
 
         # Create sessions for different guilds
         guilds = [111, 222, 333]
@@ -543,7 +543,7 @@ class TestRepositoryIntegration:
             await session_repository.save(session)
 
             track = Track(
-                id=TrackId(f"track-{guild_id}"),
+                id=TrackId(value=f"track-{guild_id}"),
                 title=f"Song for guild {guild_id}",
                 webpage_url=f"https://url/{guild_id}",
             )
@@ -579,7 +579,7 @@ class TestDomainEvents:
 
         event = TrackStartedPlaying(
             guild_id=123,
-            track_id=TrackId("test"),
+            track_id=TrackId(value="test"),
             track_title="Test Song",
             track_url="https://test.url",
         )
@@ -609,7 +609,7 @@ class TestDomainEvents:
 
         event = TrackFinishedPlaying(
             guild_id=123,
-            track_id=TrackId("test"),
+            track_id=TrackId(value="test"),
             track_title="Test",
         )
 

@@ -11,7 +11,6 @@ from discord.ext import commands
 
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.shared.constants import UIConstants
-from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
 from discord_music_player.domain.shared.types import DiscordSnowflake
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
@@ -27,7 +26,7 @@ from discord_music_player.utils.reply import (
 )
 
 if TYPE_CHECKING:
-    from ....domain.music.value_objects import StartSeconds
+    from ....domain.music.wrappers import StartSeconds
 
 logger = logging.getLogger(__name__)
 
@@ -58,14 +57,14 @@ class PlaybackCog(BaseCog):
         query: str,
         timestamp: str | None = None,
     ) -> None:
-        from ....domain.music.value_objects import StartSeconds
+        from ....domain.music.wrappers import StartSeconds
 
         raw_seconds: int | None = None
         if timestamp is not None:
             raw_seconds = parse_timestamp(timestamp)
             if raw_seconds is None:
                 await interaction.response.send_message(
-                    DiscordUIMessages.ERROR_INVALID_TIMESTAMP,
+                    "Invalid timestamp format. Use `1:30`, `1:30:00`, or seconds like `90`.",
                     ephemeral=True,
                 )
                 return
@@ -93,7 +92,7 @@ class PlaybackCog(BaseCog):
             return
 
         if not member.voice or not member.voice.channel:
-            await send_ephemeral(interaction, DiscordUIMessages.STATE_NEED_TO_BE_IN_VOICE)
+            await send_ephemeral(interaction, "You need to be in a voice channel first.")
             return
 
         if not interaction.guild:
@@ -112,7 +111,7 @@ class PlaybackCog(BaseCog):
                 execute_play=self._execute_play,
             )
             msg = await interaction.followup.send(
-                DiscordUIMessages.STATE_VOICE_WARMUP_REQUIRED.format(remaining=remaining),
+                f"You must be in the voice channel for {remaining}s before you can use commands.",
                 view=view,
                 ephemeral=True,
                 wait=True,
@@ -127,7 +126,7 @@ class PlaybackCog(BaseCog):
             success = await voice_adapter.ensure_connected(interaction.guild.id, channel_id)
             if not success:
                 await send_ephemeral(
-                    interaction, DiscordUIMessages.ERROR_COULD_NOT_JOIN_VOICE
+                    interaction, "I couldn't join your voice channel."
                 )
                 return
 
@@ -151,67 +150,22 @@ class PlaybackCog(BaseCog):
             return
 
         try:
-            queue_service = self.container.queue_service
-            playback_service = self.container.playback_service
-            msm = self.container.message_state_manager
-            resolver = self.container.audio_resolver
-
-            track = await resolver.resolve(query)
+            track = await self.container.audio_resolver.resolve(query)
             if not track:
                 await interaction.followup.send(
-                    DiscordUIMessages.ERROR_TRACK_NOT_FOUND.format(query=query), ephemeral=True
+                    f"Couldn't find a track for: {query}", ephemeral=True
                 )
                 return
 
-            user = interaction.user
+            # Long track → community vote instead of direct enqueue
+            if await self._start_long_track_vote(interaction, track):
+                return
 
-            # Check if track is longer than 6 minutes - trigger vote
-            from ....domain.shared.constants import LimitConstants
-
-            if (
-                track.duration_seconds
-                and track.duration_seconds > LimitConstants.LONG_TRACK_THRESHOLD_SECONDS
-            ):
-                listeners = await self.container.voice_adapter.get_listeners(
-                    interaction.guild.id
-                )
-                if len(listeners) > LimitConstants.LONG_TRACK_VOTE_BYPASS_LISTENERS:
-                    if not interaction.channel_id:
-                        await interaction.followup.send(
-                            DiscordUIMessages.ERROR_NO_CHANNEL_CONTEXT, ephemeral=True
-                        )
-                        return
-
-                    from ..views.long_track_vote_view import LongTrackVoteView
-
-                    view = LongTrackVoteView(
-                        guild_id=interaction.guild.id,
-                        track=track,
-                        requester_id=user.id,
-                        requester_name=user.display_name,
-                        container=self.container,
-                    )
-
-                    channel = self.bot.get_channel(interaction.channel_id)
-                    if channel and hasattr(channel, "send"):
-                        vote_msg = await channel.send(
-                            f"\u23f1\ufe0f **{user.display_name}** wants to queue a long track ({format_duration(track.duration_seconds)}): **{truncate(track.title, 60)}**\nVote to accept or reject:",
-                            view=view,
-                        )
-                        view.set_message(vote_msg)
-
-                        await interaction.followup.send(
-                            f"\u23f1\ufe0f Started vote for long track: **{truncate(track.title, 60)}**",
-                            ephemeral=True,
-                        )
-                    return
-
-            # Normal enqueue flow
-            result = await queue_service.enqueue(
+            result = await self.container.queue_service.enqueue(
                 guild_id=interaction.guild.id,
                 track=track,
-                user_id=user.id,
-                user_name=user.display_name,
+                user_id=interaction.user.id,
+                user_name=interaction.user.display_name,
             )
 
             if not result.success:
@@ -225,65 +179,123 @@ class PlaybackCog(BaseCog):
             )
             if result.should_start:
                 logger.info("Calling start_playback for guild %s", interaction.guild.id)
-                await playback_service.start_playback(
+                await self.container.playback_service.start_playback(
                     interaction.guild.id, start_seconds=start_seconds
                 )
 
             resolved_track = result.track or track
 
             if result.should_start:
-                # Check if there's a next track in the queue
-                session = await self.container.session_repository.get(interaction.guild.id)
-                upcoming = session.peek() if session else None
-
-                embed = msm.build_now_playing_embed(resolved_track, next_track=upcoming)
-
-                from ..views.now_playing_view import NowPlayingView
-
-                view = NowPlayingView(
-                    webpage_url=resolved_track.webpage_url,
-                    title=resolved_track.title,
-                    guild_id=interaction.guild.id,
-                    container=self.container,
-                )
-
-                sent = await interaction.followup.send(
-                    embed=embed,
-                    view=view,
-                    wait=True,
-                )
-                view.set_message(sent)
-                if interaction.channel_id is not None:
-                    msm.track_now_playing(
-                        guild_id=interaction.guild.id,
-                        track=resolved_track,
-                        channel_id=interaction.channel_id,
-                        message_id=sent.id,
-                    )
+                await self._send_now_playing(interaction, resolved_track)
             else:
-                content = msm.format_queued_line(resolved_track)
-                sent = await interaction.followup.send(
-                    content=content,
-                    wait=True,
-                )
-                if interaction.channel_id is not None:
-                    msm.track_queued(
-                        guild_id=interaction.guild.id,
-                        track=resolved_track,
-                        channel_id=interaction.channel_id,
-                        message_id=sent.id,
-                    )
-
-                # Update the "Next Up" field on the Now Playing embed
-                session = await self.container.session_repository.get(interaction.guild.id)
-                upcoming = session.peek() if session else None
-                await msm.update_next_up(interaction.guild.id, upcoming)
+                await self._send_queued(interaction, resolved_track)
 
         except Exception:
             logger.exception("Error in play command")
             await interaction.followup.send(
-                DiscordUIMessages.ERROR_COMMAND_FAILED_SEE_LOGS, ephemeral=True
+                "❌ Command failed. See logs.", ephemeral=True
             )
+
+    async def _start_long_track_vote(
+        self, interaction: discord.Interaction, track: Track,
+    ) -> bool:
+        """If the track exceeds the duration threshold and there are enough listeners,
+        start a community vote. Returns True if a vote was initiated (caller should return)."""
+        from ....domain.shared.constants import LimitConstants
+
+        assert interaction.guild is not None
+
+        if not track.duration_seconds or track.duration_seconds <= LimitConstants.LONG_TRACK_THRESHOLD_SECONDS:
+            return False
+
+        listeners = await self.container.voice_adapter.get_listeners(interaction.guild.id)
+        if len(listeners) <= LimitConstants.LONG_TRACK_VOTE_BYPASS_LISTENERS:
+            return False
+
+        if not interaction.channel_id:
+            await interaction.followup.send(
+                "Cannot start vote: no channel context.", ephemeral=True
+            )
+            return True
+
+        from ..views.long_track_vote_view import LongTrackVoteView
+
+        user = interaction.user
+        view = LongTrackVoteView(
+            guild_id=interaction.guild.id,
+            track=track,
+            requester_id=user.id,
+            requester_name=user.display_name,
+            container=self.container,
+        )
+
+        channel = self.bot.get_channel(interaction.channel_id)
+        if channel and hasattr(channel, "send"):
+            vote_msg = await channel.send(
+                f"\u23f1\ufe0f **{user.display_name}** wants to queue a long track ({format_duration(track.duration_seconds)}): **{truncate(track.title, UIConstants.TITLE_TRUNCATION)}**\nVote to accept or reject:",
+                view=view,
+            )
+            view.set_message(vote_msg)
+            await interaction.followup.send(
+                f"\u23f1\ufe0f Started vote for long track: **{truncate(track.title, UIConstants.TITLE_TRUNCATION)}**",
+                ephemeral=True,
+            )
+        return True
+
+    async def _send_now_playing(
+        self, interaction: discord.Interaction, track: Track,
+    ) -> None:
+        """Send the Now Playing embed with interactive view."""
+        assert interaction.guild is not None
+        msm = self.container.message_state_manager
+        guild_id = interaction.guild.id
+
+        session = await self.container.session_repository.get(guild_id)
+        upcoming = session.peek() if session else None
+
+        embed = msm.build_now_playing_embed(track, next_track=upcoming)
+
+        from ..views.now_playing_view import NowPlayingView
+
+        view = NowPlayingView(
+            webpage_url=track.webpage_url,
+            title=track.title,
+            guild_id=guild_id,
+            container=self.container,
+        )
+        sent = await interaction.followup.send(embed=embed, view=view, wait=True)
+        view.set_message(sent)
+
+        if interaction.channel_id is not None:
+            msm.track_now_playing(
+                guild_id=guild_id,
+                track=track,
+                channel_id=interaction.channel_id,
+                message_id=sent.id,
+            )
+
+    async def _send_queued(
+        self, interaction: discord.Interaction, track: Track,
+    ) -> None:
+        """Send the 'added to queue' message and update the Now Playing embed."""
+        assert interaction.guild is not None
+        msm = self.container.message_state_manager
+        guild_id = interaction.guild.id
+
+        content = msm.format_queued_line(track)
+        sent = await interaction.followup.send(content=content, wait=True)
+
+        if interaction.channel_id is not None:
+            msm.track_queued(
+                guild_id=guild_id,
+                track=track,
+                channel_id=interaction.channel_id,
+                message_id=sent.id,
+            )
+
+        session = await self.container.session_repository.get(guild_id)
+        upcoming = session.peek() if session else None
+        await msm.update_next_up(guild_id, upcoming)
 
     # ─────────────────────────────────────────────────────────────────
     # Playlist
@@ -298,7 +310,7 @@ class PlaybackCog(BaseCog):
 
         if not entries:
             await interaction.followup.send(
-                DiscordUIMessages.PLAYLIST_EMPTY, ephemeral=True
+                "That playlist appears to be empty.", ephemeral=True
             )
             return
 
@@ -348,10 +360,7 @@ class PlaybackCog(BaseCog):
             track_title=track.title,
             requester_name=requester_name,
         )
-        content = DiscordUIMessages.REQUESTER_LEFT_PROMPT.format(
-            requester_name=requester_name,
-            track_title=truncate(track.title, UIConstants.TITLE_TRUNCATION),
-        )
+        content = f"**{requester_name}** has left the voice channel. Do you want to continue playing **{truncate(track.title, UIConstants.TITLE_TRUNCATION)}**?"
         message = await channel.send(content, view=view)
         view.set_message(message)
 
@@ -393,11 +402,11 @@ class PlaybackCog(BaseCog):
         if stopped or cleared > 0:
             self.container.message_state_manager.reset(interaction.guild.id)
             await interaction.response.send_message(
-                DiscordUIMessages.ACTION_STOPPED, ephemeral=True
+                "⏹️ Stopped playback and cleared the queue.", ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                DiscordUIMessages.STATE_NOTHING_PLAYING, ephemeral=True
+                "Nothing is playing.", ephemeral=True
             )
 
     @app_commands.command(name="pause", description="Pause the current track.")
@@ -413,10 +422,10 @@ class PlaybackCog(BaseCog):
         paused = await playback_service.pause_playback(interaction.guild.id)
 
         if paused:
-            await interaction.response.send_message(DiscordUIMessages.ACTION_PAUSED, ephemeral=True)
+            await interaction.response.send_message("⏸️ Paused playback.", ephemeral=True)
         else:
             await interaction.response.send_message(
-                DiscordUIMessages.STATE_NOTHING_PLAYING_OR_PAUSED, ephemeral=True
+                "Nothing is playing or already paused.", ephemeral=True
             )
 
     @app_commands.command(name="resume", description="Resume paused playback.")
@@ -433,11 +442,11 @@ class PlaybackCog(BaseCog):
 
         if resumed:
             await interaction.response.send_message(
-                DiscordUIMessages.ACTION_RESUMED, ephemeral=True
+                "▶️ Resumed playback.", ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                DiscordUIMessages.STATE_NOTHING_PAUSED, ephemeral=True
+                "Nothing is paused.", ephemeral=True
             )
 
     # ─────────────────────────────────────────────────────────────────
@@ -463,17 +472,17 @@ class PlaybackCog(BaseCog):
 
         if was_connected:
             await interaction.response.send_message(
-                DiscordUIMessages.ACTION_DISCONNECTED, ephemeral=True
+                "👋 Disconnected from voice channel.", ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                DiscordUIMessages.STATE_NOT_CONNECTED_TO_VOICE, ephemeral=True
+                "Not connected to a voice channel.", ephemeral=True
             )
 
 
 async def setup(bot: commands.Bot) -> None:
     container = getattr(bot, "container", None)
     if container is None:
-        raise RuntimeError(ErrorMessages.CONTAINER_NOT_FOUND)
+        raise RuntimeError("Container not found on bot instance")
 
     await bot.add_cog(PlaybackCog(bot, container))

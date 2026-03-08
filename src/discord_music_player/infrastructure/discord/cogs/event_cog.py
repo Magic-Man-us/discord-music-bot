@@ -11,10 +11,6 @@ import discord
 from discord.ext import commands
 
 from discord_music_player.domain.shared.constants import ConfigKeys, UIConstants
-from discord_music_player.domain.shared.messages import (
-    DiscordUIMessages,
-    ErrorMessages,
-)
 
 if TYPE_CHECKING:
     from ....config.container import Container
@@ -86,7 +82,7 @@ class EventCog(commands.Cog):
         logger.info("Joined guild: %s (%s)", guild.name, guild.id)
         if guild.system_channel:
             try:
-                await guild.system_channel.send(DiscordUIMessages.SUCCESS_GUILD_WELCOME)
+                await guild.system_channel.send("Thanks for inviting me! Use `/help` for commands.")
             except discord.HTTPException:
                 pass
 
@@ -125,7 +121,7 @@ class EventCog(commands.Cog):
         if ch:
             try:
                 await ch.send(
-                    DiscordUIMessages.SUCCESS_MEMBER_WELCOME.format(member_mention=member.mention)
+                    f"Welcome {member.mention}!"
                 )
             except discord.HTTPException:
                 pass
@@ -205,73 +201,68 @@ class EventCog(commands.Cog):
         if member.bot:
             return
 
-        joined_channel = after.channel is not None and (
-            before.channel is None
-            or (before.channel is not None and before.channel.id != after.channel.id)
+        old_ch = before.channel
+        new_ch = after.channel
+        joined = new_ch is not None and (old_ch is None or old_ch.id != new_ch.id)
+        left = old_ch is not None and (new_ch is None or new_ch.id != old_ch.id)
+
+        if joined:
+            await self._handle_member_joined(member, new_ch)  # type: ignore[arg-type]
+
+        if left:
+            await self._handle_member_left(member, old_ch)  # type: ignore[arg-type]
+
+    async def _handle_member_joined(
+        self,
+        member: discord.Member,
+        channel: discord.abc.GuildChannel,
+    ) -> None:
+        """Track warmup, cancel empty-channel timer, and publish join event."""
+        guild = member.guild
+        self.container.voice_warmup_tracker.mark_joined(
+            guild_id=guild.id,
+            user_id=member.id,
         )
-        if joined_channel and after.channel is not None:
-            self.container.voice_warmup_tracker.mark_joined(
-                guild_id=member.guild.id,
+
+        bot_channel = self._get_bot_voice_channel(guild)
+        if bot_channel is not None and channel.id == bot_channel.id:
+            self._cancel_empty_channel_timer(guild.id)
+
+        from ....domain.shared.events import VoiceMemberJoinedVoiceChannel
+
+        await self._event_bus.publish(
+            VoiceMemberJoinedVoiceChannel(
+                guild_id=guild.id,
+                channel_id=channel.id,
                 user_id=member.id,
             )
-
-            # Cancel pending empty-channel disconnect if user joined the bot's channel
-            bot_channel = self._get_bot_voice_channel(member.guild)
-            if bot_channel is not None and after.channel.id == bot_channel.id:
-                self._cancel_empty_channel_timer(member.guild.id)
-
-            from ....domain.shared.events import VoiceMemberJoinedVoiceChannel
-
-            await self._event_bus.publish(
-                VoiceMemberJoinedVoiceChannel(
-                    guild_id=member.guild.id,
-                    channel_id=after.channel.id,
-                    user_id=member.id,
-                )
-            )
-
-        bot_channel = self._get_bot_voice_channel(member.guild)
-        left_channel = before.channel is not None and (
-            after.channel is None
-            or (after.channel is not None and after.channel.id != before.channel.id)
         )
-        if (
-            bot_channel is not None
-            and left_channel
-            and before.channel is not None
-            and before.channel.id == bot_channel.id
-        ):
+
+    async def _handle_member_left(
+        self,
+        member: discord.Member,
+        channel: discord.abc.GuildChannel,
+    ) -> None:
+        """Publish leave event and check for empty-channel disconnect."""
+        guild = member.guild
+        bot_channel = self._get_bot_voice_channel(guild)
+
+        if bot_channel is not None and channel.id == bot_channel.id:
             from ....domain.shared.events import VoiceMemberLeftVoiceChannel
 
             await self._event_bus.publish(
                 VoiceMemberLeftVoiceChannel(
-                    guild_id=member.guild.id,
-                    channel_id=before.channel.id,
+                    guild_id=guild.id,
+                    channel_id=channel.id,
                     user_id=member.id,
                 )
             )
 
-        if not self._should_check_empty_channel(member, before):
-            return
+            if not self._is_self(member) and not self._has_non_bot_members(bot_channel):
+                await self._schedule_empty_channel_disconnect(guild)
 
-        bot_channel = self._get_bot_voice_channel(member.guild)
-        if bot_channel is None or before.channel is None:
-            return
-
-        if before.channel.id != bot_channel.id:
-            return
-
-        if self._has_non_bot_members(bot_channel):
-            return
-
-        await self._schedule_empty_channel_disconnect(member.guild)
-
-    def _should_check_empty_channel(
-        self, member: discord.Member, before: discord.VoiceState
-    ) -> bool:
-        if member.id == self.bot.user.id:  # type: ignore
-            return False
-        return before.channel is not None
+    def _is_self(self, member: discord.Member) -> bool:
+        return member.id == self.bot.user.id  # type: ignore[union-attr]
 
     def _get_bot_voice_channel(
         self, guild: discord.Guild
@@ -421,7 +412,7 @@ class EventCog(commands.Cog):
             )
             try:
                 await ctx.reply(
-                    DiscordUIMessages.ERROR_COMMAND_COOLDOWN.format(time_str=time_str),
+                    f"⏳ Command on cooldown. Try again in {time_str}.",
                     mention_author=False,
                 )
             except discord.HTTPException:
@@ -429,13 +420,13 @@ class EventCog(commands.Cog):
             return
 
         if isinstance(error, commands.MissingPermissions):
-            await ctx.reply(DiscordUIMessages.ERROR_MISSING_PERMISSIONS, mention_author=False)
+            await ctx.reply("❌ You don't have permission to use this command.", mention_author=False)
             return
 
         if isinstance(error, commands.BotMissingPermissions):
             missing = ", ".join(error.missing_permissions)
             await ctx.reply(
-                DiscordUIMessages.ERROR_BOT_MISSING_PERMISSIONS.format(missing=missing),
+                f"❌ I need these permissions: {missing}",
                 mention_author=False,
             )
             return
@@ -454,6 +445,6 @@ class EventCog(commands.Cog):
 async def setup(bot: commands.Bot) -> None:
     container = getattr(bot, "container", None)
     if container is None:
-        raise RuntimeError(ErrorMessages.CONTAINER_NOT_FOUND)
+        raise RuntimeError("Container not found on bot instance")
 
     await bot.add_cog(EventCog(bot, container))

@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
-from discord_music_player.domain.music.value_objects import TrackId
+from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.shared.types import DiscordSnowflake, NonEmptyStr, PositiveInt
 
 if TYPE_CHECKING:

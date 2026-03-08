@@ -16,7 +16,7 @@ from discord_music_player.domain.shared.constants import AudioConstants
 
 if TYPE_CHECKING:
     from ....domain.music.entities import Track
-    from ....domain.music.value_objects import StartSeconds
+    from ....domain.music.wrappers import StartSeconds
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +52,6 @@ class DiscordVoiceAdapter(VoiceAdapter):
     def _get_guild(self, guild_id: int) -> discord.Guild | None:
         return self._bot.get_guild(guild_id)
 
-    # TODO(integ): Test real voice connect with a test bot in a test guild.
-    # Verify: successful connect, self-deaf, timeout, permission denied (Forbidden).
     async def connect(self, guild_id: int, channel_id: int) -> bool:
         guild = self._get_guild(guild_id)
         if not guild:
@@ -100,7 +98,6 @@ class DiscordVoiceAdapter(VoiceAdapter):
         except Exception as exc:
             logger.debug("Failed to self-deafen in guild %s: %r", guild.id, exc)
 
-    # TODO(integ): Test real disconnect after a live connect. Verify voice_client is cleaned up.
     async def disconnect(self, guild_id: int) -> bool:
         vc = self._get_voice_client(guild_id)
         if not vc:
@@ -116,8 +113,6 @@ class DiscordVoiceAdapter(VoiceAdapter):
             logger.exception("Failed to disconnect from voice")
             return False
 
-    # TODO(integ): Test ensure_connected across scenarios: not connected, already in
-    # same channel (no-op), in a different channel (should move). Use two voice channels.
     async def ensure_connected(self, guild_id: int, channel_id: int) -> bool:
         """Connect if not connected, move if in a different channel."""
         vc = self._get_voice_client(guild_id)
@@ -134,7 +129,6 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
         return await self.connect(guild_id, channel_id)
 
-    # TODO(integ): Test moving between two real voice channels in the test guild.
     async def move_to(self, guild_id: int, channel_id: int) -> bool:
         vc = self._get_voice_client(guild_id)
         if not vc:
@@ -162,9 +156,6 @@ class DiscordVoiceAdapter(VoiceAdapter):
             logger.exception("Failed to move to channel")
             return False
 
-    # TODO(integ): Test playing a short audio clip via FFmpeg on a live voice connection.
-    # Verify: is_playing() returns True, volume transformer is applied, after_callback fires
-    # when the clip ends, and _handle_track_end propagates correctly.
     async def play(
         self,
         guild_id: int,
@@ -224,7 +215,6 @@ class DiscordVoiceAdapter(VoiceAdapter):
             logger.error("Failed to start playback: %s", e)
             return False
 
-    # TODO(integ): Test stop while audio is playing. Verify is_playing() becomes False.
     async def stop(self, guild_id: int) -> bool:
         vc = self._get_voice_client(guild_id)
         if not vc:
@@ -238,8 +228,6 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
         return True
 
-    # TODO(integ): Test pause/resume cycle on a live voice connection.
-    # Verify: pause → is_paused() True, resume → is_playing() True.
     async def pause(self, guild_id: int) -> bool:
         vc = self._get_voice_client(guild_id)
         if not vc:
@@ -276,8 +264,6 @@ class DiscordVoiceAdapter(VoiceAdapter):
         vc = self._get_voice_client(guild_id)
         return vc is not None and vc.is_paused()
 
-    # TODO(integ): Test with real members in a test voice channel. Verify bots and
-    # server-deafened members are excluded from the returned list.
     async def get_listeners(self, guild_id: int) -> list[int]:
         """Return user IDs of non-bot, non-deafened members in the voice channel."""
         vc = self._get_voice_client(guild_id)
@@ -308,9 +294,6 @@ class DiscordVoiceAdapter(VoiceAdapter):
     ) -> None:
         self._on_track_end = callback
 
-    # TODO(integ): Test that the track-end callback fires via run_coroutine_threadsafe
-    # after a short clip finishes. This is the hardest piece to unit-test because it
-    # bridges FFmpeg's synchronous thread callback into the async event loop.
     async def _handle_track_end(self, guild_id: int) -> None:
         """Called from the FFmpeg thread via run_coroutine_threadsafe for thread-safe cleanup."""
         self._current_track.pop(guild_id, None)
@@ -327,8 +310,6 @@ class DiscordVoiceAdapter(VoiceAdapter):
     def get_current_track(self, guild_id: int) -> Track | None:
         return self._current_track.get(guild_id)
 
-    # TODO(integ): Test volume adjustment during live playback. Verify PCMVolumeTransformer
-    # source is updated and clamped to [0.0, 2.0].
     def set_volume(self, guild_id: int, volume: float) -> bool:
         vc = self._get_voice_client(guild_id)
         if not vc or not vc.source:
@@ -340,8 +321,6 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
         return False
 
-    # TODO(integ): Test the context manager lifecycle: connects on enter, disconnects on
-    # exit (including on exception). Verify no leaked voice connections.
     @asynccontextmanager
     async def voice_connection(self, guild_id: int, channel_id: int) -> AsyncIterator[bool]:
         """Context manager that connects on enter and disconnects on exit."""

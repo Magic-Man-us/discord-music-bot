@@ -11,12 +11,12 @@ from discord_music_player.application.services.radio_service import (
 )
 from discord_music_player.config.settings import RadioSettings
 from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.music.value_objects import TrackId
+from discord_music_player.domain.music.wrappers import TrackId
 
 
 def _make_track(title: str = "Test Song", track_id: str = "abc123") -> Track:
     return Track(
-        id=TrackId(track_id),
+        id=TrackId(value=track_id),
         title=title,
         webpage_url=f"https://youtube.com/watch?v={track_id}",
         stream_url="https://stream.example.com/audio.mp3",
@@ -473,7 +473,7 @@ class TestRadioAutoRefill:
 
         event = QueueExhausted(
             guild_id=1,
-            last_track_id=TrackId("abc"),
+            last_track_id=TrackId(value="abc"),
             last_track_title="Test Song",
         )
         await get_event_bus().publish(event)
@@ -510,7 +510,7 @@ class TestRadioAutoRefill:
         )
         subscriber.start()
 
-        event = QueueExhausted(guild_id=1, last_track_id=TrackId("abc"), last_track_title="Test")
+        event = QueueExhausted(guild_id=1, last_track_id=TrackId(value="abc"), last_track_title="Test")
         await get_event_bus().publish(event)
 
         radio_service.refill_queue.assert_not_awaited()

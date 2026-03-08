@@ -12,13 +12,15 @@ from discord.ext import commands
 
 from discord_music_player.domain.shared.constants import AnalyticsConstants, UIConstants
 from discord_music_player.domain.shared.enums import ActivityPeriod, LeaderboardCategory
-from discord_music_player.domain.shared.messages import DiscordUIMessages
 from discord_music_player.utils.reply import format_duration
 
 if TYPE_CHECKING:
     from ....config.container import Container
+    from ...persistence.repositories.history_repository import GenreTrackInfo
 
 logger = logging.getLogger(__name__)
+
+_LEADERBOARD_CHART_FILENAME: str = "leaderboard.png"
 
 
 class AnalyticsCog(commands.Cog):
@@ -37,7 +39,7 @@ class AnalyticsCog(commands.Cog):
 
         total = await history_repo.get_total_tracks(guild_id)
         if total == 0:
-            await interaction.followup.send(DiscordUIMessages.ANALYTICS_NO_DATA)
+            await interaction.followup.send("No music has been played yet in this server.")
             return
 
         unique = await history_repo.get_unique_tracks(guild_id)
@@ -47,7 +49,7 @@ class AnalyticsCog(commands.Cog):
         skip_rate = await history_repo.get_skip_rate(guild_id)
 
         embed = discord.Embed(
-            title=DiscordUIMessages.EMBED_SERVER_STATS,
+            title="📊 Server Music Stats",
             color=AnalyticsConstants.BLURPLE,
         )
         embed.add_field(name="Total Plays", value=str(total), inline=True)
@@ -82,6 +84,8 @@ class AnalyticsCog(commands.Cog):
 
         await interaction.followup.send(embed=embed, file=chart_file)
 
+    # ── Leaderboards ──────────────────────────────────────────────────
+
     @app_commands.command(name="top", description="Show leaderboards")
     @app_commands.describe(category="What to rank")
     @app_commands.choices(
@@ -101,57 +105,76 @@ class AnalyticsCog(commands.Cog):
         await interaction.response.defer()
 
         guild_id = interaction.guild.id
-        history_repo = self.container.history_repository
         cat = category.value if category else LeaderboardCategory.TRACKS
 
-        if cat == LeaderboardCategory.TRACKS:
-            data = await history_repo.get_most_played(guild_id, limit=AnalyticsConstants.DEFAULT_LEADERBOARD_LIMIT)
-            if not data:
-                await interaction.followup.send(DiscordUIMessages.ANALYTICS_NO_DATA)
-                return
+        result = await self._fetch_leaderboard(guild_id, cat)
+        if result is None:
+            await interaction.followup.send("No music has been played yet in this server.")
+            return
 
-            labels = [t.title[:AnalyticsConstants.CHART_LABEL_TRUNCATION] for t, _ in data]
-            values = [c for _, c in data]
-            title = DiscordUIMessages.EMBED_TOP_TRACKS
-            lines = [f"**{i+1}.** {t.title[:AnalyticsConstants.LEADERBOARD_LINE_TRUNCATION]} — {c} plays" for i, (t, c) in enumerate(data)]
-
-        elif cat == LeaderboardCategory.USERS:
-            raw = await history_repo.get_top_requesters(guild_id, limit=AnalyticsConstants.DEFAULT_LEADERBOARD_LIMIT)
-            if not raw:
-                await interaction.followup.send(DiscordUIMessages.ANALYTICS_NO_DATA)
-                return
-
-            labels = [name[:30] for _, name, _ in raw]
-            values = [c for _, _, c in raw]
-            title = DiscordUIMessages.EMBED_TOP_USERS
-            lines = [f"**{i+1}.** {name} — {c} plays" for i, (_, name, c) in enumerate(raw)]
-
-        else:  # skipped
-            raw_skipped = await history_repo.get_most_skipped(guild_id, limit=AnalyticsConstants.DEFAULT_LEADERBOARD_LIMIT)
-            if not raw_skipped:
-                await interaction.followup.send(DiscordUIMessages.ANALYTICS_NO_DATA)
-                return
-
-            labels = [t[:AnalyticsConstants.CHART_LABEL_TRUNCATION] for t, _ in raw_skipped]
-            values = [c for _, c in raw_skipped]
-            title = DiscordUIMessages.EMBED_TOP_SKIPPED
-            lines = [
-                f"**{i+1}.** {t[:AnalyticsConstants.LEADERBOARD_LINE_TRUNCATION]} — {c} skips" for i, (t, c) in enumerate(raw_skipped)
-            ]
-
-        embed = discord.Embed(title=title, description="\n".join(lines), color=AnalyticsConstants.BLURPLE)
+        title, labels, values, lines = result
+        embed = discord.Embed(
+            title=title, description="\n".join(lines), color=AnalyticsConstants.BLURPLE,
+        )
 
         chart_file = None
         try:
             chart_gen = self.container.chart_generator
             png = await chart_gen.async_horizontal_bar_chart(labels, values, title)
-            chart_file = chart_gen.to_discord_file(png, "leaderboard.png")
-            embed.set_image(url="attachment://leaderboard.png")
-            logger.debug("Generated %s chart for guild %s", "leaderboard", guild_id)
+            chart_file = chart_gen.to_discord_file(png, _LEADERBOARD_CHART_FILENAME)
+            embed.set_image(url=f"attachment://{_LEADERBOARD_CHART_FILENAME}")
+            logger.debug("Generated leaderboard chart for guild %s", guild_id)
         except Exception:
             logger.exception("Failed to generate leaderboard chart")
 
         await interaction.followup.send(embed=embed, file=chart_file)
+
+    async def _fetch_leaderboard(
+        self, guild_id: int, category: str,
+    ) -> tuple[str, list[str], list[int], list[str]] | None:
+        """Fetch leaderboard data and format for display.
+
+        Returns ``(title, chart_labels, chart_values, embed_lines)`` or None if empty.
+        """
+        history_repo = self.container.history_repository
+        limit = AnalyticsConstants.DEFAULT_LEADERBOARD_LIMIT
+        label_trunc = AnalyticsConstants.CHART_LABEL_TRUNCATION
+        line_trunc = AnalyticsConstants.LEADERBOARD_LINE_TRUNCATION
+
+        if category == LeaderboardCategory.TRACKS:
+            data = await history_repo.get_most_played(guild_id, limit=limit)
+            if not data:
+                return None
+            return (
+                "🏆 Top Tracks",
+                [t.title[:label_trunc] for t, _ in data],
+                [c for _, c in data],
+                [f"**{i+1}.** {t.title[:line_trunc]} — {c} plays" for i, (t, c) in enumerate(data)],
+            )
+
+        if category == LeaderboardCategory.USERS:
+            raw = await history_repo.get_top_requesters(guild_id, limit=limit)
+            if not raw:
+                return None
+            return (
+                "🏆 Top Listeners",
+                [name[:label_trunc] for _, name, _ in raw],
+                [c for _, _, c in raw],
+                [f"**{i+1}.** {name} — {c} plays" for i, (_, name, c) in enumerate(raw)],
+            )
+
+        # skipped
+        raw_skipped = await history_repo.get_most_skipped(guild_id, limit=limit)
+        if not raw_skipped:
+            return None
+        return (
+            "⏭️ Most Skipped",
+            [t[:label_trunc] for t, _ in raw_skipped],
+            [c for _, c in raw_skipped],
+            [f"**{i+1}.** {t[:line_trunc]} — {c} skips" for i, (t, c) in enumerate(raw_skipped)],
+        )
+
+    # ── Personal stats ────────────────────────────────────────────────
 
     @app_commands.command(name="mystats", description="Show your personal music stats")
     @app_commands.guild_only()
@@ -165,13 +188,13 @@ class AnalyticsCog(commands.Cog):
 
         user_stats = await history_repo.get_user_stats(guild_id, user_id)
         if user_stats.total_tracks == 0:
-            await interaction.followup.send(DiscordUIMessages.ANALYTICS_NO_DATA)
+            await interaction.followup.send("No music has been played yet in this server.")
             return
 
         top_tracks = await history_repo.get_user_top_tracks(guild_id, user_id, limit=5)
 
         embed = discord.Embed(
-            title=DiscordUIMessages.EMBED_USER_STATS,
+            title="🎵 Your Music Stats",
             color=AnalyticsConstants.BLURPLE,
         )
         embed.set_author(
@@ -208,58 +231,73 @@ class AnalyticsCog(commands.Cog):
 
         await interaction.followup.send(embed=embed, file=chart_file)
 
+    # ── Genre classification ──────────────────────────────────────────
+
     async def _get_user_genre_data(self, guild_id: int, user_id: int) -> dict[str, int] | None:
         """Get genre distribution for a user, classifying uncached tracks on demand."""
         history_repo = self.container.history_repository
         genre_repo = self.container.genre_repository
-        classifier = self.container.genre_classifier
 
-        # Get user's tracks with IDs
         rows = await history_repo.get_user_tracks_for_genre(guild_id, user_id)
         if not rows:
             return None
 
         track_ids = list({row.track_id for row in rows})
 
-        # Look up cached genres
         cached = await genre_repo.get_genres(track_ids)
         uncached_ids = [tid for tid in track_ids if tid not in cached]
 
-        # Classify uncached tracks
-        if uncached_ids and classifier.is_available():
-            id_to_desc: dict[str, str] = {}
-            for row in rows:
-                if row.track_id in uncached_ids and row.track_id not in id_to_desc:
-                    desc = row.title
-                    if row.artist:
-                        desc = f"{row.title} - {row.artist}"
-                    id_to_desc[row.track_id] = desc
+        if uncached_ids:
+            await self._classify_uncached(rows, uncached_ids, cached)
 
-            tracks_to_classify = [(tid, id_to_desc.get(tid)) for tid in uncached_ids]
-            new_genres = await classifier.classify_tracks(tracks_to_classify)
-            if new_genres:
-                await genre_repo.save_genres(new_genres)
-                cached.update(new_genres)
-        elif uncached_ids:
-            # AI not available, mark as Unknown
+        return self._aggregate_genre_counts(rows, cached)
+
+    async def _classify_uncached(
+        self,
+        rows: list[GenreTrackInfo],
+        uncached_ids: list[str],
+        cached: dict[str, str],
+    ) -> None:
+        """Classify uncached track IDs via AI, or mark as unknown if unavailable."""
+        classifier = self.container.genre_classifier
+        genre_repo = self.container.genre_repository
+
+        if not classifier.is_available():
             for tid in uncached_ids:
                 cached[tid] = UIConstants.UNKNOWN_FALLBACK
+            return
 
-        # Build per-track-id play count, then aggregate by genre
-        track_id_counts: Counter[str] = Counter()
+        uncached_set = set(uncached_ids)
+        id_to_desc: dict[str, str] = {}
         for row in rows:
-            track_id_counts[row.track_id] += 1
+            if row.track_id in uncached_set and row.track_id not in id_to_desc:
+                desc = f"{row.title} - {row.artist}" if row.artist else row.title
+                id_to_desc[row.track_id] = desc
+
+        tracks_to_classify = [(tid, id_to_desc.get(tid)) for tid in uncached_ids]
+        new_genres = await classifier.classify_tracks(tracks_to_classify)
+        if new_genres:
+            await genre_repo.save_genres(new_genres)
+            cached.update(new_genres)
+
+    @staticmethod
+    def _aggregate_genre_counts(
+        rows: list[GenreTrackInfo], cached: dict[str, str],
+    ) -> dict[str, int] | None:
+        """Count plays per genre from history rows and genre cache."""
+        track_id_counts: Counter[str] = Counter(row.track_id for row in rows)
 
         genre_counts: Counter[str] = Counter()
         for tid, count in track_id_counts.items():
             genre = cached.get(tid, UIConstants.UNKNOWN_FALLBACK)
             genre_counts[genre] += count
 
-        # Filter out small slices and sort
         if not genre_counts:
             return None
 
         return dict(genre_counts.most_common(AnalyticsConstants.GENRE_TOP_N))
+
+    # ── Activity charts ───────────────────────────────────────────────
 
     @app_commands.command(name="activity", description="Show listening activity over time")
     @app_commands.describe(period="Time period to analyze")
@@ -281,53 +319,18 @@ class AnalyticsCog(commands.Cog):
 
         guild_id = interaction.guild.id
         history_repo = self.container.history_repository
-        chart_gen = self.container.chart_generator
         p = period.value if period else ActivityPeriod.DAILY
 
         total = await history_repo.get_total_tracks(guild_id)
         if total == 0:
-            await interaction.followup.send(DiscordUIMessages.ANALYTICS_NO_DATA)
+            await interaction.followup.send("No music has been played yet in this server.")
             return
 
-        embed = discord.Embed(title=DiscordUIMessages.EMBED_ACTIVITY, color=AnalyticsConstants.BLURPLE)
+        embed = discord.Embed(title="📈 Listening Activity", color=AnalyticsConstants.BLURPLE)
         chart_file = None
 
         try:
-            if p == ActivityPeriod.DAILY:
-                data = await history_repo.get_activity_by_day(guild_id, days=AnalyticsConstants.ACTIVITY_DAYS_WINDOW)
-                if data:
-                    labels = [d for d, _ in data]
-                    values = [c for _, c in data]
-                    png = await chart_gen.async_line_chart(labels, values, "Daily Plays (Last 30 Days)")
-                    chart_file = chart_gen.to_discord_file(png, AnalyticsConstants.ACTIVITY_CHART_FILENAME)
-                    embed.set_image(url=f"attachment://{AnalyticsConstants.ACTIVITY_CHART_FILENAME}")
-                    embed.description = f"**{sum(values)}** total plays over **{len(data)}** active days"
-
-            elif p == ActivityPeriod.WEEKLY:
-                data = await history_repo.get_activity_by_weekday(guild_id)
-                if data:
-                    # Fill all 7 days
-                    day_map = dict(data)
-                    labels = list(AnalyticsConstants.WEEKDAY_NAMES)
-                    values = [day_map.get(i, 0) for i in range(7)]
-                    png = await chart_gen.async_bar_chart(labels, values, "Plays by Day of Week")
-                    chart_file = chart_gen.to_discord_file(png, AnalyticsConstants.ACTIVITY_CHART_FILENAME)
-                    embed.set_image(url=f"attachment://{AnalyticsConstants.ACTIVITY_CHART_FILENAME}")
-                    peak_day = AnalyticsConstants.WEEKDAY_NAMES[values.index(max(values))]
-                    embed.description = f"Most active day: **{peak_day}**"
-
-            else:  # hourly
-                data = await history_repo.get_activity_by_hour(guild_id)
-                if data:
-                    hour_map = dict(data)
-                    labels = [f"{h}:00" for h in range(24)]
-                    values = [hour_map.get(h, 0) for h in range(24)]
-                    png = await chart_gen.async_bar_chart(labels, values, "Plays by Hour of Day")
-                    chart_file = chart_gen.to_discord_file(png, AnalyticsConstants.ACTIVITY_CHART_FILENAME)
-                    embed.set_image(url=f"attachment://{AnalyticsConstants.ACTIVITY_CHART_FILENAME}")
-                    peak_hour = values.index(max(values))
-                    embed.description = f"Peak hour: **{peak_hour}:00**"
-
+            chart_file = await self._build_activity_chart(guild_id, p, embed)
             logger.debug("Generated %s chart for guild %s", p, guild_id)
         except Exception:
             logger.exception("Failed to generate activity chart")
@@ -336,6 +339,84 @@ class AnalyticsCog(commands.Cog):
             embed.description = "Not enough data for this period."
 
         await interaction.followup.send(embed=embed, file=chart_file)
+
+    async def _build_activity_chart(
+        self,
+        guild_id: int,
+        period: str,
+        embed: discord.Embed,
+    ) -> discord.File | None:
+        """Fetch activity data, generate chart, and set embed description.
+
+        Returns the chart File or None if there's no data for the period.
+        """
+        history_repo = self.container.history_repository
+        chart_gen = self.container.chart_generator
+        filename = AnalyticsConstants.ACTIVITY_CHART_FILENAME
+
+        if period == ActivityPeriod.DAILY:
+            return await self._build_daily_chart(guild_id, embed)
+
+        if period == ActivityPeriod.WEEKLY:
+            return await self._build_weekly_chart(guild_id, embed)
+
+        return await self._build_hourly_chart(guild_id, embed)
+
+    async def _build_daily_chart(
+        self, guild_id: int, embed: discord.Embed,
+    ) -> discord.File | None:
+        data = await self.container.history_repository.get_activity_by_day(
+            guild_id, days=AnalyticsConstants.ACTIVITY_DAYS_WINDOW,
+        )
+        if not data:
+            return None
+
+        labels = [d for d, _ in data]
+        values = [c for _, c in data]
+        chart_gen = self.container.chart_generator
+        png = await chart_gen.async_line_chart(labels, values, "Daily Plays (Last 30 Days)")
+        embed.description = f"**{sum(values)}** total plays over **{len(data)}** active days"
+        return self._attach_chart(embed, chart_gen, png)
+
+    async def _build_weekly_chart(
+        self, guild_id: int, embed: discord.Embed,
+    ) -> discord.File | None:
+        data = await self.container.history_repository.get_activity_by_weekday(guild_id)
+        if not data:
+            return None
+
+        day_map = dict(data)
+        labels = list(AnalyticsConstants.WEEKDAY_NAMES)
+        values = [day_map.get(i, 0) for i in range(7)]
+        chart_gen = self.container.chart_generator
+        png = await chart_gen.async_bar_chart(labels, values, "Plays by Day of Week")
+        peak_day = AnalyticsConstants.WEEKDAY_NAMES[values.index(max(values))]
+        embed.description = f"Most active day: **{peak_day}**"
+        return self._attach_chart(embed, chart_gen, png)
+
+    async def _build_hourly_chart(
+        self, guild_id: int, embed: discord.Embed,
+    ) -> discord.File | None:
+        data = await self.container.history_repository.get_activity_by_hour(guild_id)
+        if not data:
+            return None
+
+        hour_map = dict(data)
+        labels = [f"{h}:00" for h in range(24)]
+        values = [hour_map.get(h, 0) for h in range(24)]
+        chart_gen = self.container.chart_generator
+        png = await chart_gen.async_bar_chart(labels, values, "Plays by Hour of Day")
+        peak_hour = values.index(max(values))
+        embed.description = f"Peak hour: **{peak_hour}:00**"
+        return self._attach_chart(embed, chart_gen, png)
+
+    @staticmethod
+    def _attach_chart(embed: discord.Embed, chart_gen: object, png: bytes) -> discord.File:
+        """Attach a chart image to the embed and return the File."""
+        filename = AnalyticsConstants.ACTIVITY_CHART_FILENAME
+        chart_file = chart_gen.to_discord_file(png, filename)  # type: ignore[union-attr]
+        embed.set_image(url=f"attachment://{filename}")
+        return chart_file
 
 
 async def setup(bot: commands.Bot) -> None:

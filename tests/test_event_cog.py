@@ -24,7 +24,6 @@ import pytest
 from discord.ext import commands
 
 from discord_music_player.domain.shared.constants import ConfigKeys
-from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
 from discord_music_player.infrastructure.discord.cogs.event_cog import EventCog
 
 # =============================================================================
@@ -190,7 +189,7 @@ class TestEventCogInitialization:
         mock_bot.container = None
         mock_bot.add_cog = AsyncMock()
 
-        with pytest.raises(RuntimeError, match=ErrorMessages.CONTAINER_NOT_FOUND):
+        with pytest.raises(RuntimeError, match="Container not found on bot instance"):
             await setup(mock_bot)
 
 
@@ -348,7 +347,7 @@ class TestGuildEvents:
 
         await event_cog.on_guild_join(mock_guild)
 
-        mock_channel.send.assert_called_once_with(DiscordUIMessages.SUCCESS_GUILD_WELCOME)
+        mock_channel.send.assert_called_once_with("Thanks for inviting me! Use `/help` for commands.")
 
     @pytest.mark.asyncio
     async def test_on_guild_join_handles_no_system_channel(self, event_cog, mock_guild):
@@ -597,36 +596,17 @@ class TestVoiceStateUpdate:
         # Should have published leave event
         assert any(hasattr(call_args[0][0], "user_id") for call_args in mock_publish.call_args_list)
 
-    @pytest.mark.asyncio
-    async def test_should_check_empty_channel_ignores_bot_itself(
-        self, event_cog, mock_member, mock_voice_state
-    ):
-        """Should not check empty channel for bot's own changes."""
+    def test_is_self_returns_true_for_bot(self, event_cog, mock_member):
+        """Should identify bot's own member object."""
         mock_member.id = event_cog.bot.user.id
 
-        result = event_cog._should_check_empty_channel(mock_member, mock_voice_state)
+        assert event_cog._is_self(mock_member) is True
 
-        assert result is False
+    def test_is_self_returns_false_for_other(self, event_cog, mock_member):
+        """Should return False for non-bot members."""
+        mock_member.id = 99999
 
-    @pytest.mark.asyncio
-    async def test_should_check_empty_channel_requires_before_channel(self, event_cog, mock_member):
-        """Should require before channel to check."""
-        before = MagicMock(spec=discord.VoiceState)
-        before.channel = None
-
-        result = event_cog._should_check_empty_channel(mock_member, before)
-
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_should_check_empty_channel_returns_true(self, event_cog, mock_member):
-        """Should return True for valid member leaving."""
-        before = MagicMock(spec=discord.VoiceState)
-        before.channel = MagicMock()
-
-        result = event_cog._should_check_empty_channel(mock_member, before)
-
-        assert result is True
+        assert event_cog._is_self(mock_member) is False
 
     def test_get_bot_voice_channel_returns_channel(self, event_cog, mock_guild, mock_voice_channel):
         """Should return bot's voice channel."""

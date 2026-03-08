@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from discord_music_player.domain.shared.messages import DiscordUIMessages
 from discord_music_player.infrastructure.discord.guards.voice_guards import check_user_in_voice
 from discord_music_player.infrastructure.discord.views.base_view import BaseInteractiveView
 
@@ -43,7 +42,7 @@ class RequesterLeftView(BaseInteractiveView):
             return
         await self._playback_service.resume_playback(self._guild_id)
         await interaction.response.edit_message(
-            content=DiscordUIMessages.REQUESTER_LEFT_RESUMED, view=self
+            content="▶️ Playback resumed.", view=self
         )
 
     @discord.ui.button(label="No, skip", style=discord.ButtonStyle.red)
@@ -54,7 +53,7 @@ class RequesterLeftView(BaseInteractiveView):
             return
         await self._playback_service.skip_track(self._guild_id)
         await interaction.response.edit_message(
-            content=DiscordUIMessages.REQUESTER_LEFT_SKIPPED, view=self
+            content="⏭️ Track skipped.", view=self
         )
 
     async def on_timeout(self) -> None:
@@ -66,7 +65,7 @@ class RequesterLeftView(BaseInteractiveView):
         if self._message is not None:
             try:
                 await self._message.edit(
-                    content=DiscordUIMessages.REQUESTER_LEFT_TIMEOUT, view=self
+                    content="⏭️ Track skipped (no response).", view=self
                 )
             except discord.HTTPException:
                 logger.debug("Failed to edit requester-left message on timeout")

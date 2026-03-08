@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from discord_music_player.domain.shared.messages import DiscordUIMessages
 from discord_music_player.infrastructure.discord.guards.voice_guards import check_user_in_voice
 from discord_music_player.infrastructure.discord.views.base_view import BaseInteractiveView
 
@@ -39,7 +38,7 @@ class ResumePlaybackView(BaseInteractiveView):
     async def resume_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[ResumePlaybackView]
     ) -> None:
-        msg = DiscordUIMessages.RESUME_PLAYBACK_RESUMED.format(track_title=self._track_title)
+        msg = f"▶️ Resumed playback: **{self._track_title}**"
         if not self._finish_view():
             return
         await self._playback_service.start_playback(self._guild_id)
@@ -53,7 +52,7 @@ class ResumePlaybackView(BaseInteractiveView):
             return
         await self._playback_service.stop_playback(self._guild_id)
         await interaction.response.edit_message(
-            content=DiscordUIMessages.RESUME_PLAYBACK_CLEARED, view=self
+            content="⏭️ Skipped. Playback cleared.", view=self
         )
 
     async def on_timeout(self) -> None:
@@ -65,7 +64,7 @@ class ResumePlaybackView(BaseInteractiveView):
         if self._message is not None:
             try:
                 await self._message.edit(
-                    content=DiscordUIMessages.RESUME_PLAYBACK_TIMEOUT, view=self
+                    content="⏭️ Playback cleared (no response).", view=self
                 )
             except discord.HTTPException:
                 logger.debug("Failed to edit resume playback message on timeout")

@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
-from discord_music_player.domain.music.value_objects import TrackId
+from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.voting.entities import VoteSession
-from discord_music_player.domain.voting.value_objects import VoteResult, VoteType
+from discord_music_player.domain.voting.enums import VoteResult, VoteType
 
 
 class TestVoteSkipCommand:
@@ -106,7 +106,7 @@ class TestVoteSkipHandler:
     def sample_track(self):
         """Sample track for testing."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Test Track",
             webpage_url="https://youtube.com/watch?v=test123",
             requested_by_id=111,
@@ -239,7 +239,7 @@ class TestVoteSkipHandler:
         # Create vote session
         vote_session = VoteSession(
             guild_id=123456,
-            track_id=TrackId("test123"),
+            track_id=TrackId(value="test123"),
             vote_type=VoteType.SKIP,
             threshold=3,
         )
@@ -270,7 +270,7 @@ class TestVoteSkipHandler:
 
         vote_session = VoteSession(
             guild_id=123456,
-            track_id=TrackId("test123"),
+            track_id=TrackId(value="test123"),
             vote_type=VoteType.SKIP,
             threshold=2,
             initial_voters={111},

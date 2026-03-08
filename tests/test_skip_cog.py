@@ -7,8 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from discord_music_player.domain.shared.messages import DiscordUIMessages
-from discord_music_player.domain.voting.value_objects import VoteResult
+from discord_music_player.domain.voting.enums import VoteResult
 from discord_music_player.infrastructure.discord.cogs.skip_cog import SkipCog
 
 
@@ -146,7 +145,7 @@ async def test_send_skip_failure_no_playing(cog, interaction):
     await cog._send_skip_failure(interaction, result)
 
     msg = interaction.response.send_message.call_args[0][0]
-    assert msg == DiscordUIMessages.STATE_NOTHING_PLAYING
+    assert msg == "Nothing is playing."
 
 
 @pytest.mark.asyncio
@@ -156,7 +155,7 @@ async def test_send_skip_failure_not_in_channel(cog, interaction):
     await cog._send_skip_failure(interaction, result)
 
     msg = interaction.response.send_message.call_args[0][0]
-    assert msg == DiscordUIMessages.VOTE_NOT_IN_CHANNEL
+    assert msg == "Join my voice channel to vote skip."
 
 
 @pytest.mark.asyncio
@@ -186,7 +185,7 @@ async def test_send_skip_failure_default(cog, interaction):
     await cog._send_skip_failure(interaction, result)
 
     msg = interaction.response.send_message.call_args[0][0]
-    assert msg == DiscordUIMessages.VOTE_SKIP_PROCESSED
+    assert msg == "Skip request processed."
 
 
 # =============================================================================

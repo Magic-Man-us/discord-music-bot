@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from discord_music_player.domain.music.value_objects import TrackId
+from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
 from discord_music_player.domain.voting.entities import VoteSession
 from discord_music_player.domain.voting.repository import VoteSessionRepository
-from discord_music_player.domain.voting.value_objects import VoteType
+from discord_music_player.domain.voting.enums import VoteType
 
 if TYPE_CHECKING:
     from ..database import Database
@@ -54,7 +54,7 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
 
         session = VoteSession(
             guild_id=guild_id,
-            track_id=TrackId(row["track_id"]),
+            track_id=TrackId(value=row["track_id"]),
             vote_type=VoteType(row["vote_type"]),
             threshold=row["threshold"],
             started_at=UtcDateTime.from_iso(row["started_at"]).dt,

@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
 from discord_music_player.domain.music.repository import SessionRepository
-from discord_music_player.domain.music.value_objects import LoopMode, PlaybackState
+from discord_music_player.domain.music.enums import LoopMode, PlaybackState
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
-from discord_music_player.infrastructure.persistence.models import TrackRow, track_to_queue_params
+from discord_music_player.infrastructure.persistence.models import QUEUE_TRACKS_INSERT_SQL, QueueTrackRow, TrackRow
 
 if TYPE_CHECKING:
     from ..database import Database
@@ -87,30 +87,16 @@ class SQLiteSessionRepository(SessionRepository):
             )
 
             if session.current_track:
-                await conn.execute(
-                    """
-                    INSERT INTO queue_tracks (
-                        guild_id, track_id, title, webpage_url, stream_url,
-                        duration_seconds, thumbnail_url, artist, uploader,
-                        like_count, view_count, requested_by_id, requested_by_name,
-                        requested_at, position, is_current
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    track_to_queue_params(session.current_track, session.guild_id, -1, is_current=True),
+                row = QueueTrackRow.from_track(
+                    session.current_track, guild_id=session.guild_id, position=-1, is_current=True,
                 )
+                await conn.execute(QUEUE_TRACKS_INSERT_SQL, row.model_dump())
 
             for position, track in enumerate(session.queue):
-                await conn.execute(
-                    """
-                    INSERT INTO queue_tracks (
-                        guild_id, track_id, title, webpage_url, stream_url,
-                        duration_seconds, thumbnail_url, artist, uploader,
-                        like_count, view_count, requested_by_id, requested_by_name,
-                        requested_at, position, is_current
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    track_to_queue_params(track, session.guild_id, position, is_current=False),
+                row = QueueTrackRow.from_track(
+                    track, guild_id=session.guild_id, position=position, is_current=False,
                 )
+                await conn.execute(QUEUE_TRACKS_INSERT_SQL, row.model_dump())
 
         logger.debug("Saved session for guild %s", session.guild_id)
 

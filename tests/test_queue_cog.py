@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from discord_music_player.domain.shared.messages import DiscordUIMessages
 from discord_music_player.infrastructure.discord.cogs.queue_cog import QueueCog
 
 
@@ -118,7 +117,7 @@ async def test_shuffle_history_no_history(cog, interaction, mock_container):
     await cog.shuffle_history.callback(cog, interaction, limit=100)
 
     msg = interaction.followup.send.call_args[0][0]
-    assert msg == DiscordUIMessages.STATE_NO_TRACKS_PLAYED_YET
+    assert msg == "No tracks have been played yet in this server."
 
 
 @pytest.mark.asyncio

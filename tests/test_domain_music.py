@@ -9,12 +9,8 @@ Tests for:
 import pytest
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
-from discord_music_player.domain.music.value_objects import (
-    LoopMode,
-    PlaybackState,
-    QueuePosition,
-    TrackId,
-)
+from discord_music_player.domain.music.enums import LoopMode, PlaybackState
+from discord_music_player.domain.music.wrappers import QueuePosition, TrackId
 from discord_music_player.domain.shared.exceptions import (
     BusinessRuleViolationError,
     InvalidOperationError,
@@ -30,25 +26,25 @@ class TestTrackId:
 
     def test_create_valid_track_id(self):
         """Should create TrackId with valid value."""
-        track_id = TrackId("dQw4w9WgXcQ")
+        track_id = TrackId(value="dQw4w9WgXcQ")
         assert track_id.value == "dQw4w9WgXcQ"
         assert str(track_id) == "dQw4w9WgXcQ"
 
     def test_create_empty_raises_error(self):
         """Should raise ValueError for empty track ID."""
         with pytest.raises(ValueError):
-            TrackId("")
+            TrackId(value="")
 
     def test_create_whitespace_raises_error(self):
         """Should raise ValueError for whitespace-only track ID."""
         with pytest.raises(ValueError):
-            TrackId("   ")
+            TrackId(value="   ")
 
     def test_track_id_hashable(self):
         """Should be usable in sets and as dict keys."""
-        id1 = TrackId("abc123")
-        id2 = TrackId("abc123")
-        id3 = TrackId("xyz789")
+        id1 = TrackId(value="abc123")
+        id2 = TrackId(value="abc123")
+        id3 = TrackId(value="xyz789")
 
         # Same value should have same hash
         assert hash(id1) == hash(id2)
@@ -100,36 +96,36 @@ class TestQueuePosition:
 
     def test_create_valid_position(self):
         """Should create QueuePosition with valid value."""
-        pos = QueuePosition(5)
+        pos = QueuePosition(value=5)
         assert pos.value == 5
         assert str(pos) == "5"
         assert int(pos) == 5
 
     def test_create_zero_position(self):
         """Should allow position 0 (front of queue)."""
-        pos = QueuePosition(0)
+        pos = QueuePosition(value=0)
         assert pos.value == 0
 
     def test_negative_position_raises_error(self):
         """Should raise ValueError for negative position."""
         with pytest.raises(ValueError):
-            QueuePosition(-1)
+            QueuePosition(value=-1)
 
     def test_next_position(self):
         """Should return next position."""
-        pos = QueuePosition(3)
+        pos = QueuePosition(value=3)
         next_pos = pos.next()
         assert next_pos.value == 4
 
     def test_previous_position(self):
         """Should return previous position."""
-        pos = QueuePosition(3)
+        pos = QueuePosition(value=3)
         prev_pos = pos.previous()
         assert prev_pos.value == 2
 
     def test_previous_from_zero_stays_zero(self):
         """Should not go below 0 when getting previous."""
-        pos = QueuePosition(0)
+        pos = QueuePosition(value=0)
         prev_pos = pos.previous()
         assert prev_pos.value == 0
 
@@ -221,7 +217,7 @@ class TestTrack:
     def valid_track_data(self):
         """Fixture providing valid track data."""
         return {
-            "id": TrackId("abc123"),
+            "id": TrackId(value="abc123"),
             "title": "Test Song",
             "webpage_url": "https://youtube.com/watch?v=abc123",
         }
@@ -336,7 +332,7 @@ class TestGuildPlaybackSession:
     def sample_track(self):
         """Fixture providing a sample track."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Test Track",
             webpage_url="https://youtube.com/watch?v=test123",
             duration_seconds=180,
@@ -346,7 +342,7 @@ class TestGuildPlaybackSession:
     def another_track(self):
         """Fixture providing another sample track."""
         return Track(
-            id=TrackId("another456"),
+            id=TrackId(value="another456"),
             title="Another Track",
             webpage_url="https://youtube.com/watch?v=another456",
             duration_seconds=240,
@@ -414,7 +410,7 @@ class TestGuildPlaybackSession:
         # Fill queue to max
         for i in range(GuildPlaybackSession.MAX_QUEUE_SIZE):
             track = Track(
-                id=TrackId(f"track{i}"),
+                id=TrackId(value=f"track{i}"),
                 title=f"Track {i}",
                 webpage_url=f"https://youtube.com/watch?v=track{i}",
             )
@@ -445,7 +441,7 @@ class TestGuildPlaybackSession:
         # Fill queue to max
         for i in range(GuildPlaybackSession.MAX_QUEUE_SIZE):
             track = Track(
-                id=TrackId(f"track{i}"),
+                id=TrackId(value=f"track{i}"),
                 title=f"Track {i}",
                 webpage_url=f"https://youtube.com/watch?v=track{i}",
             )
@@ -636,7 +632,7 @@ class TestGuildPlaybackSession:
         tracks = []
         for i in range(3):
             track = Track(
-                id=TrackId(f"track{i}"),
+                id=TrackId(value=f"track{i}"),
                 title=f"Track {i}",
                 webpage_url=f"https://youtube.com/watch?v=track{i}",
             )
@@ -663,7 +659,7 @@ class TestGuildPlaybackSession:
         # Add many tracks
         for i in range(20):
             track = Track(
-                id=TrackId(f"track{i}"),
+                id=TrackId(value=f"track{i}"),
                 title=f"Track {i}",
                 webpage_url=f"https://youtube.com/watch?v=track{i}",
             )

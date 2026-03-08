@@ -9,10 +9,6 @@ from discord.ext import commands
 
 from discord_music_player.domain.shared.constants import DiscordEmbedLimits, UIConstants
 from discord_music_player.domain.shared.enums import SyncScope
-from discord_music_player.domain.shared.messages import (
-    DiscordUIMessages,
-    ErrorMessages,
-)
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 
 logger = logging.getLogger(__name__)
@@ -78,26 +74,26 @@ class AdminCog(BaseCog):
         if embed:
             await ctx.send(content or "", embed=embed)
         else:
-            await ctx.send(content or DiscordUIMessages.SUCCESS_GENERIC)
+            await ctx.send(content or "Done.")
 
     async def cog_command_error(self, ctx: commands.Context, error: Exception) -> None:
         if isinstance(error, commands.CheckFailure):
-            await self._reply(ctx, DiscordUIMessages.ERROR_REQUIRES_OWNER_OR_ADMIN)
+            await self._reply(ctx, "❌ Requires owner or admin permissions.")
             return
 
         if isinstance(error, commands.MissingRequiredArgument):
             await self._reply(
-                ctx, DiscordUIMessages.ERROR_MISSING_ARGUMENT.format(param_name=error.param.name)
+                ctx, f"❌ Missing argument: {error.param.name}"
             )
             return
 
         if isinstance(error, commands.BadArgument):
-            await self._reply(ctx, DiscordUIMessages.ERROR_INVALID_ARGUMENT)
+            await self._reply(ctx, "❌ Invalid argument.")
             return
 
         original = error.original if isinstance(error, commands.CommandInvokeError) else error
         logger.exception("Admin command failed", exc_info=original)
-        await self._reply(ctx, DiscordUIMessages.ERROR_COMMAND_FAILED_SEE_LOGS)
+        await self._reply(ctx, "❌ Command failed. See logs.")
 
     # ─────────────────────────────────────────────────────────────────
     # Slash Command Sync
@@ -112,20 +108,20 @@ class AdminCog(BaseCog):
             if scope_lower == SyncScope.GLOBAL:
                 synced = await self.bot.tree.sync()
                 await self._reply(
-                    ctx, DiscordUIMessages.SUCCESS_SYNCED_GLOBAL.format(count=len(synced))
+                    ctx, f"✅ Synced {len(synced)} slash commands globally."
                 )
             else:
                 if not ctx.guild:
-                    await self._reply(ctx, DiscordUIMessages.ERROR_RUN_IN_SERVER_OR_SYNC_GLOBAL)
+                    await self._reply(ctx, "❌ Run in a server or use `!sync global`.")
                     return
 
                 synced = await self.bot.tree.sync(guild=ctx.guild)
                 await self._reply(
-                    ctx, DiscordUIMessages.SUCCESS_SYNCED_GUILD.format(count=len(synced))
+                    ctx, f"✅ Synced {len(synced)} slash commands to this server."
                 )
         except Exception:
             logger.exception("Failed to sync commands")
-            await self._reply(ctx, DiscordUIMessages.ERROR_SYNC_FAILED_SEE_LOGS)
+            await self._reply(ctx, "❌ Failed to sync. See logs.")
 
     @commands.command(name="slash_status", description="Show slash command status.")
     @require_owner_or_admin()
@@ -146,7 +142,7 @@ class AdminCog(BaseCog):
                 return result[:limit] + "…" if len(result) > limit else result
 
             embed = discord.Embed(
-                title=DiscordUIMessages.EMBED_SLASH_COMMAND_STATUS, color=discord.Color.blurple()
+                title="📋 Slash Command Status", color=discord.Color.blurple()
             )
             embed.add_field(name="Global (Live)", value=str(len(global_cmds)), inline=True)
             if ctx.guild:
@@ -156,12 +152,12 @@ class AdminCog(BaseCog):
             if ctx.guild:
                 embed.add_field(name="Guild Names", value=format_names(guild_cmds), inline=False)
 
-            embed.set_footer(text=DiscordUIMessages.EMBED_SLASH_STATUS_FOOTER)
+            embed.set_footer(text="Global sync can take up to 1 hour. Guild sync is immediate.")
 
             await self._reply(ctx, embed=embed)
         except Exception:
             logger.exception("Failed to fetch slash status")
-            await self._reply(ctx, DiscordUIMessages.ERROR_FETCH_STATUS_FAILED)
+            await self._reply(ctx, "❌ Failed to fetch status. See logs.")
 
     # ─────────────────────────────────────────────────────────────────
     # Cog Management
@@ -179,22 +175,22 @@ class AdminCog(BaseCog):
 
         try:
             await self.bot.reload_extension(mod)
-            await self._reply(ctx, DiscordUIMessages.SUCCESS_RELOADED_EXTENSION.format(module=mod))
+            await self._reply(ctx, f"✅ Reloaded `{mod}`")
         except commands.ExtensionNotLoaded:
             old_mod = f"cog.{extension}"
             try:
                 await self.bot.reload_extension(old_mod)
                 await self._reply(
-                    ctx, DiscordUIMessages.SUCCESS_RELOADED_EXTENSION.format(module=old_mod)
+                    ctx, f"✅ Reloaded `{old_mod}`"
                 )
             except Exception:
                 logger.exception("Failed to reload %s", extension)
                 await self._reply(
-                    ctx, DiscordUIMessages.ERROR_RELOAD_FAILED.format(extension=extension)
+                    ctx, f"❌ Failed to reload `{extension}`"
                 )
         except Exception:
             logger.exception("Failed to reload %s", mod)
-            await self._reply(ctx, DiscordUIMessages.ERROR_RELOAD_FAILED.format(extension=mod))
+            await self._reply(ctx, f"❌ Failed to reload `{mod}`")
 
     @commands.command(name="reload_all", description="Reload all cogs.")
     @require_owner()
@@ -202,7 +198,7 @@ class AdminCog(BaseCog):
         extensions = list(self.bot.extensions.keys())
 
         if not extensions:
-            await self._reply(ctx, DiscordUIMessages.ERROR_NO_EXTENSIONS_LOADED)
+            await self._reply(ctx, "❌ No extensions loaded.")
             return
 
         ok, failed = 0, 0
@@ -215,7 +211,7 @@ class AdminCog(BaseCog):
                 logger.exception("Failed to reload %s", mod)
 
         await self._reply(
-            ctx, DiscordUIMessages.SUCCESS_RELOADED_EXTENSIONS.format(ok=ok, failed=failed)
+            ctx, f"✅ Reloaded {ok} extensions, {failed} failed."
         )
 
     # ─────────────────────────────────────────────────────────────────
@@ -230,7 +226,7 @@ class AdminCog(BaseCog):
             stats = ai_client.get_cache_stats()
 
             embed = discord.Embed(
-                title=DiscordUIMessages.EMBED_CACHE_STATISTICS, color=discord.Color.blue()
+                title="📊 Cache Statistics", color=discord.Color.blue()
             )
             embed.add_field(name="Size", value=str(stats.get("size", 0)), inline=True)
             embed.add_field(name="Hits", value=str(stats.get("hits", 0)), inline=True)
@@ -241,7 +237,7 @@ class AdminCog(BaseCog):
             await self._reply(ctx, embed=embed)
         except Exception:
             logger.exception("Failed to get cache status")
-            await self._reply(ctx, DiscordUIMessages.ERROR_CACHE_STATUS_FAILED)
+            await self._reply(ctx, "❌ Failed to get cache status.")
 
     @commands.command(name="cache_clear", description="Clear the AI cache.")
     @require_owner()
@@ -249,10 +245,10 @@ class AdminCog(BaseCog):
         try:
             ai_client = self.container.ai_client
             cleared = ai_client.clear_cache()
-            await self._reply(ctx, DiscordUIMessages.SUCCESS_CACHE_CLEARED.format(cleared=cleared))
+            await self._reply(ctx, f"✅ Cleared {cleared} cache entries.")
         except Exception:
             logger.exception("Failed to clear cache")
-            await self._reply(ctx, DiscordUIMessages.ERROR_CACHE_CLEAR_FAILED)
+            await self._reply(ctx, "❌ Failed to clear cache.")
 
     @commands.command(name="cache_prune", description="Prune old cache entries.")
     @require_owner()
@@ -260,10 +256,10 @@ class AdminCog(BaseCog):
         try:
             ai_client = self.container.ai_client
             pruned = ai_client.prune_cache(max_age_seconds)
-            await self._reply(ctx, DiscordUIMessages.SUCCESS_CACHE_PRUNED.format(pruned=pruned))
+            await self._reply(ctx, f"✅ Pruned {pruned} expired cache entries.")
         except Exception:
             logger.exception("Failed to prune cache")
-            await self._reply(ctx, DiscordUIMessages.ERROR_CACHE_PRUNE_FAILED)
+            await self._reply(ctx, "❌ Failed to prune cache.")
 
     # ─────────────────────────────────────────────────────────────────
     # Database & Cleanup
@@ -277,7 +273,7 @@ class AdminCog(BaseCog):
             stats = await cleanup_job.run_cleanup()
 
             embed = discord.Embed(
-                title=DiscordUIMessages.EMBED_CLEANUP_RESULTS, color=discord.Color.green()
+                title="🧹 Cleanup Results", color=discord.Color.green()
             )
             embed.add_field(name="Sessions", value=str(stats.sessions_cleaned), inline=True)
             embed.add_field(name="Votes", value=str(stats.votes_cleaned), inline=True)
@@ -288,7 +284,7 @@ class AdminCog(BaseCog):
             await self._reply(ctx, embed=embed)
         except Exception:
             logger.exception("Failed to run cleanup")
-            await self._reply(ctx, DiscordUIMessages.ERROR_CLEANUP_FAILED)
+            await self._reply(ctx, "❌ Failed to run cleanup.")
 
     @commands.command(name="db_stats", description="Show database statistics.")
     @require_owner()
@@ -298,7 +294,7 @@ class AdminCog(BaseCog):
             stats = await db.get_stats()
 
             embed = discord.Embed(
-                title=DiscordUIMessages.EMBED_DATABASE_STATISTICS, color=discord.Color.gold()
+                title="🗄️ Database Statistics", color=discord.Color.gold()
             )
             embed.add_field(
                 name="Initialized", value="✅" if stats.initialized else "❌", inline=True
@@ -318,7 +314,7 @@ class AdminCog(BaseCog):
             await self._reply(ctx, embed=embed)
         except Exception:
             logger.exception("Failed to get db stats")
-            await self._reply(ctx, DiscordUIMessages.ERROR_DB_STATS_FAILED)
+            await self._reply(ctx, "❌ Failed to get database stats.")
 
     @commands.command(name="db_validate", description="Validate database schema.")
     @require_owner()
@@ -331,7 +327,7 @@ class AdminCog(BaseCog):
             color = discord.Color.green() if not issues else discord.Color.orange()
 
             embed = discord.Embed(
-                title=DiscordUIMessages.EMBED_DATABASE_VALIDATION, color=color
+                title="🔍 Database Validation", color=color
             )
 
             embed.add_field(
@@ -367,7 +363,7 @@ class AdminCog(BaseCog):
             await self._reply(ctx, embed=embed)
         except Exception:
             logger.exception("Failed to validate database schema")
-            await self._reply(ctx, DiscordUIMessages.ERROR_DB_VALIDATE_FAILED)
+            await self._reply(ctx, "❌ Failed to validate database.")
 
     # ─────────────────────────────────────────────────────────────────
     # System Info
@@ -376,7 +372,7 @@ class AdminCog(BaseCog):
     @commands.command(name="status", description="Show bot status.")
     @require_owner_or_admin()
     async def status(self, ctx: commands.Context) -> None:
-        embed = discord.Embed(title=DiscordUIMessages.EMBED_BOT_STATUS, color=discord.Color.green())
+        embed = discord.Embed(title="🤖 Bot Status", color=discord.Color.green())
         embed.add_field(name="Guilds", value=str(len(self.bot.guilds)), inline=True)
         embed.add_field(name="Latency", value=f"{self.bot.latency * UIConstants.MS_PER_SECOND:.0f}ms", inline=True)
 
@@ -392,7 +388,7 @@ class AdminCog(BaseCog):
     @commands.command(name="shutdown", description="Gracefully shutdown the bot.")
     @require_owner()
     async def shutdown(self, ctx: commands.Context) -> None:
-        await self._reply(ctx, DiscordUIMessages.SUCCESS_SHUTTING_DOWN)
+        await self._reply(ctx, "👋 Shutting down...")
 
         try:
             cleanup_job = self.container.cleanup_job
@@ -406,6 +402,6 @@ class AdminCog(BaseCog):
 async def setup(bot: commands.Bot) -> None:
     container = getattr(bot, "container", None)
     if container is None:
-        raise RuntimeError(ErrorMessages.CONTAINER_NOT_FOUND)
+        raise RuntimeError("Container not found on bot instance")
 
     await bot.add_cog(AdminCog(bot, container))

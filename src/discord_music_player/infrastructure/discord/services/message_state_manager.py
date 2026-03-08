@@ -21,6 +21,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_EMBED_NOW_PLAYING = "🎵 Now Playing"
+_UP_NEXT_NONE = "No Track Queued"
+_NEXT_UP_EMOJI = "\u23ed"
+
 
 class TrackKey(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -46,7 +50,7 @@ class TrackedMessage(BaseModel):
     track_key: TrackKey
 
     @classmethod
-    def from_track(cls, track: Track, *, channel_id: int, message_id: int) -> TrackedMessage:
+    def for_track(cls, track: Track, *, channel_id: int, message_id: int) -> TrackedMessage:
         return cls(
             channel_id=channel_id,
             message_id=message_id,
@@ -101,7 +105,7 @@ class MessageStateManager:
         message_id: int,
     ) -> None:
         state = self.get_state(guild_id)
-        state.now_playing = TrackedMessage.from_track(
+        state.now_playing = TrackedMessage.for_track(
             track,
             channel_id=channel_id,
             message_id=message_id,
@@ -117,7 +121,7 @@ class MessageStateManager:
     ) -> None:
         state = self.get_state(guild_id)
         state.queued.append(
-            TrackedMessage.from_track(
+            TrackedMessage.for_track(
                 track,
                 channel_id=channel_id,
                 message_id=message_id,
@@ -157,8 +161,6 @@ class MessageStateManager:
     def build_now_playing_embed(
         track: Track, *, next_track: Track | None = None
     ) -> discord.Embed:
-        from ....domain.shared.messages import DiscordUIMessages
-
         requester_display = MessageStateManager.format_requester(track)
         artist_or_uploader = track.artist or track.uploader
         likes_display = f"{track.like_count:,}" if track.like_count is not None else None
@@ -167,7 +169,7 @@ class MessageStateManager:
         description_lines.append(f"Requested by: {requester_display}")
 
         embed = discord.Embed(
-            title=DiscordUIMessages.EMBED_NOW_PLAYING,
+            title=_EMBED_NOW_PLAYING,
             description="\n".join(description_lines),
             color=discord.Color.green(),
         )
@@ -204,7 +206,7 @@ class MessageStateManager:
         else:
             embed.add_field(
                 name="\u23ed\ufe0f Next Up",
-                value=DiscordUIMessages.UP_NEXT_NONE,
+                value=_UP_NEXT_NONE,
                 inline=False,
             )
 
@@ -269,8 +271,6 @@ class MessageStateManager:
 
     async def update_next_up(self, guild_id: int, next_track: Track | None) -> None:
         """Update the 'Next Up' field on the current Now Playing embed."""
-        from ....domain.shared.messages import DiscordUIMessages
-
         state = self._state_by_guild.get(guild_id)
         if state is None or state.now_playing is None:
             return
@@ -288,10 +288,10 @@ class MessageStateManager:
         next_up_value = (
             truncate(next_track.title, 60)
             if next_track
-            else DiscordUIMessages.UP_NEXT_NONE
+            else _UP_NEXT_NONE
         )
         for i, field in enumerate(embed.fields):
-            if field.name and "\u23ed" in field.name:  # ⏭ emoji
+            if field.name and _NEXT_UP_EMOJI in field.name:
                 embed.set_field_at(i, name=field.name, value=next_up_value, inline=False)
                 break
 

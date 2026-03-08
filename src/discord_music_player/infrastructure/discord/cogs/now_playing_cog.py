@@ -8,7 +8,6 @@ from discord import app_commands
 from discord.ext import commands
 
 from discord_music_player.domain.shared.constants import AnalyticsConstants, UIConstants
-from discord_music_player.domain.shared.messages import DiscordUIMessages, ErrorMessages
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
@@ -38,7 +37,7 @@ class NowPlayingCog(BaseCog):
 
         if not queue_info.current_track:
             await interaction.response.send_message(
-                DiscordUIMessages.STATE_NOTHING_PLAYING, ephemeral=True
+                "Nothing is playing.", ephemeral=True
             )
             return
 
@@ -79,46 +78,50 @@ class NowPlayingCog(BaseCog):
         history_repo = self.container.history_repository
         tracks = await history_repo.get_recent(interaction.guild.id, limit=AnalyticsConstants.DEFAULT_LEADERBOARD_LIMIT)
         if not tracks:
-            await send_ephemeral(interaction, DiscordUIMessages.STATE_NO_TRACKS_PLAYED_YET)
+            await send_ephemeral(interaction, "No tracks have been played yet in this server.")
             return
 
-        lines: list[str] = []
-        for index, history_track in enumerate(tracks, start=1):
-            parts: list[str] = []
-
-            title = truncate(history_track.title, UIConstants.TITLE_TRUNCATION)
-            parts.append(f"**{index}.** [{title}]({history_track.webpage_url})")
-
-            artist_or_uploader = history_track.artist or history_track.uploader
-            if artist_or_uploader:
-                parts.append(truncate(artist_or_uploader, 48))
-
-            duration = format_duration(history_track.duration_seconds)
-            if duration:
-                parts.append(duration)
-
-            if history_track.like_count is not None:
-                parts.append(f"\U0001f44d {history_track.like_count:,}")
-
-            if history_track.requested_by_id:
-                parts.append(f"req <@{history_track.requested_by_id}>")
-            elif history_track.requested_by_name:
-                parts.append(f"req {truncate(history_track.requested_by_name, 24)}")
-
-            lines.append(" \u2014 ".join(parts))
-
+        lines = [self._format_history_line(i, t) for i, t in enumerate(tracks, start=1)]
         embed = discord.Embed(
-            title=DiscordUIMessages.EMBED_RECENTLY_PLAYED,
+            title="Recently Played",
             description="\n".join(lines),
             color=discord.Color.blurple(),
         )
-
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @staticmethod
+    def _format_history_line(index: int, track: object) -> str:
+        """Format a single track's history line for the /played embed."""
+        from ....domain.music.entities import Track as TrackType
+
+        assert isinstance(track, TrackType)
+
+        parts: list[str] = [
+            f"**{index}.** [{truncate(track.title, UIConstants.TITLE_TRUNCATION)}]({track.webpage_url})"
+        ]
+
+        artist_or_uploader = track.artist or track.uploader
+        if artist_or_uploader:
+            parts.append(truncate(artist_or_uploader, 48))
+
+        duration = format_duration(track.duration_seconds)
+        if duration:
+            parts.append(duration)
+
+        if track.like_count is not None:
+            parts.append(f"\U0001f44d {track.like_count:,}")
+
+        if track.requested_by_id:
+            parts.append(f"req <@{track.requested_by_id}>")
+        elif track.requested_by_name:
+            parts.append(f"req {truncate(track.requested_by_name, 24)}")
+
+        return " \u2014 ".join(parts)
 
 
 async def setup(bot: commands.Bot) -> None:
     container = getattr(bot, "container", None)
     if container is None:
-        raise RuntimeError(ErrorMessages.CONTAINER_NOT_FOUND)
+        raise RuntimeError("Container not found on bot instance")
 
     await bot.add_cog(NowPlayingCog(bot, container))

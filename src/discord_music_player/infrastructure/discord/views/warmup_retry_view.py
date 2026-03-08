@@ -8,11 +8,10 @@ from typing import TYPE_CHECKING, Protocol
 
 import discord
 
-from discord_music_player.domain.shared.messages import DiscordUIMessages
 from discord_music_player.infrastructure.discord.views.base_view import BaseInteractiveView
 
 if TYPE_CHECKING:
-    from ....domain.music.value_objects import StartSeconds
+    from ....domain.music.wrappers import StartSeconds
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +57,7 @@ class WarmupRetryView(BaseInteractiveView):
         if self._message is not None:
             try:
                 await self._message.edit(
-                    content=DiscordUIMessages.STATE_VOICE_WARMUP_READY,
+                    content="You can now use commands! Click **Retry** to play.",
                     view=self,
                 )
             except discord.HTTPException:

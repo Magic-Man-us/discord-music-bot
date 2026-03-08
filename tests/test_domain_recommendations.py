@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.music.value_objects import TrackId
+from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.recommendations.entities import (
     MAX_RECOMMENDATION_COUNT,
     Recommendation,
@@ -267,7 +267,7 @@ class TestRecommendationDomainService:
     def track(self):
         """Fixture providing a sample track."""
         return Track(
-            id=TrackId("test123"),
+            id=TrackId(value="test123"),
             title="Artist Name - Song Title (Official Video)",
             webpage_url="https://youtube.com/watch?v=test123",
         )

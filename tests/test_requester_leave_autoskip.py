@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
-from discord_music_player.domain.music.value_objects import TrackId
+from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.shared.events import (
     VoiceMemberLeftVoiceChannel,
     get_event_bus,
@@ -43,7 +43,7 @@ def _make_session_with_track(
 ) -> GuildPlaybackSession:
     session = GuildPlaybackSession(guild_id=guild_id)
     session.current_track = Track(
-        id=TrackId(track_id),
+        id=TrackId(value=track_id),
         title=title,
         webpage_url="https://example.com",
         requested_by_id=requested_by_id,

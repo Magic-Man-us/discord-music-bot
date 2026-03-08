@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterable
 from contextlib import asynccontextmanager
+from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 import aiosqlite
 from pydantic import BaseModel, ConfigDict, Field
@@ -24,6 +25,28 @@ if TYPE_CHECKING:
     from ...config.settings import DatabaseSettings
 
 logger = logging.getLogger(__name__)
+
+# ── Types ─────────────────────────────────────────────────────────────
+
+SqlParams = tuple[Any, ...] | dict[str, Any]
+"""Positional (``?``) or named (``:name``) SQL parameters."""
+
+# ── Constants ──────────────────────────────────────────────────────────
+
+_MEMORY_PATH: Final[str] = ":memory:"
+
+_TABLE_QUEUE_TRACKS: Final[str] = "queue_tracks"
+_TABLE_TRACK_HISTORY: Final[str] = "track_history"
+
+
+class _SQLiteType(StrEnum):
+    """SQLite column type identifiers used in migration ALTER TABLE statements."""
+
+    TEXT = "TEXT"
+    INTEGER = "INTEGER"
+
+
+# ── Schema validation models ──────────────────────────────────────────
 
 
 class DatabaseStats(BaseModel):
@@ -85,18 +108,26 @@ class SchemaValidationResult(BaseModel):
     issues: list[str] = Field(default_factory=list)
 
 
+class _ExistingSchema(BaseModel):
+    """Names currently present in sqlite_master."""
+
+    model_config = ConfigDict(frozen=True)
+    tables: frozenset[str]
+    indexes: frozenset[str]
+
+
 EXPECTED_SCHEMA = ExpectedSchema(
     tables={
         "guild_sessions": [
             "guild_id", "state", "loop_mode", "created_at", "last_activity",
         ],
-        "queue_tracks": [
+        _TABLE_QUEUE_TRACKS: [
             "id", "guild_id", "track_id", "title", "webpage_url", "stream_url",
             "duration_seconds", "thumbnail_url", "artist", "uploader", "like_count",
             "view_count", "requested_by_id", "requested_by_name", "requested_at",
             "position", "is_current",
         ],
-        "track_history": [
+        _TABLE_TRACK_HISTORY: [
             "id", "guild_id", "track_id", "title", "webpage_url", "duration_seconds",
             "artist", "uploader", "like_count", "view_count", "requested_by_id",
             "requested_by_name", "played_at", "finished_at", "skipped",
@@ -126,6 +157,9 @@ EXPECTED_SCHEMA = ExpectedSchema(
 )
 
 
+# ── Database class ────────────────────────────────────────────────────
+
+
 class Database:
     def __init__(self, url: str, settings: DatabaseSettings | None = None) -> None:
         if url.startswith("sqlite:///"):
@@ -142,17 +176,21 @@ class Database:
     def db_path(self) -> str:
         return self._db_path
 
+    @property
+    def _is_memory(self) -> bool:
+        return self._db_path == _MEMORY_PATH
+
     async def initialize(self) -> None:
         if self._initialized:
             return
 
-        if self._db_path != ":memory:":
+        if not self._is_memory:
             db_dir = Path(self._db_path).parent
             db_dir.mkdir(parents=True, exist_ok=True)
 
         # Keep one connection alive for in-memory DBs; otherwise the shared
         # in-memory DB is destroyed once the last connection closes.
-        if self._db_path == ":memory:" and self._keepalive_conn is None:
+        if self._is_memory and self._keepalive_conn is None:
             self._keepalive_conn = await self._connect()
 
         conn = self._keepalive_conn
@@ -238,15 +276,19 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_track_history_guild_track ON track_history(guild_id, track_id)"
         )
 
-        await self._ensure_column(conn, "queue_tracks", "artist", "TEXT")
-        await self._ensure_column(conn, "queue_tracks", "uploader", "TEXT")
-        await self._ensure_column(conn, "queue_tracks", "like_count", "INTEGER")
-        await self._ensure_column(conn, "queue_tracks", "view_count", "INTEGER")
-
-        await self._ensure_column(conn, "track_history", "artist", "TEXT")
-        await self._ensure_column(conn, "track_history", "uploader", "TEXT")
-        await self._ensure_column(conn, "track_history", "like_count", "INTEGER")
-        await self._ensure_column(conn, "track_history", "view_count", "INTEGER")
+        # Migration: add columns that may not exist in older schemas
+        _migration_columns = [
+            (_TABLE_QUEUE_TRACKS, "artist", _SQLiteType.TEXT),
+            (_TABLE_QUEUE_TRACKS, "uploader", _SQLiteType.TEXT),
+            (_TABLE_QUEUE_TRACKS, "like_count", _SQLiteType.INTEGER),
+            (_TABLE_QUEUE_TRACKS, "view_count", _SQLiteType.INTEGER),
+            (_TABLE_TRACK_HISTORY, "artist", _SQLiteType.TEXT),
+            (_TABLE_TRACK_HISTORY, "uploader", _SQLiteType.TEXT),
+            (_TABLE_TRACK_HISTORY, "like_count", _SQLiteType.INTEGER),
+            (_TABLE_TRACK_HISTORY, "view_count", _SQLiteType.INTEGER),
+        ]
+        for table, column, col_type in _migration_columns:
+            await self._ensure_column(conn, table, column, col_type)
 
         await conn.execute(
             """
@@ -332,7 +374,7 @@ class Database:
     async def _connect(self) -> aiosqlite.Connection:
         # SQLite ":memory:" is per-connection, so use a shared URI to allow
         # multiple connections to see the same in-memory database.
-        if self._db_path == ":memory:":
+        if self._is_memory:
             db_path = "file:discord-music-player?mode=memory&cache=shared"
             uri = True
         else:
@@ -381,7 +423,7 @@ class Database:
                 raise
 
     async def execute(
-        self, sql: str, parameters: tuple[Any, ...] | None = None
+        self, sql: str, parameters: SqlParams | None = None
     ) -> aiosqlite.Cursor:
         async with self.transaction() as conn:
             if parameters is not None:
@@ -391,7 +433,7 @@ class Database:
             return cursor
 
     async def fetch_one(
-        self, sql: str, parameters: tuple[Any, ...] | None = None
+        self, sql: str, parameters: SqlParams | None = None
     ) -> dict[str, Any] | None:
         async with self.connection() as conn:
             if parameters is not None:
@@ -402,7 +444,7 @@ class Database:
             return dict(row) if row else None
 
     async def fetch_all(
-        self, sql: str, parameters: tuple[Any, ...] | None = None
+        self, sql: str, parameters: SqlParams | None = None
     ) -> list[dict[str, Any]]:
         async with self.connection() as conn:
             if parameters is not None:
@@ -464,94 +506,95 @@ class Database:
             error=error,
         )
 
+    # ── Schema validation (decomposed) ────────────────────────────────
+
     async def validate_schema(self) -> SchemaValidationResult:
         result = SchemaValidationResult()
 
-        expected_tables = EXPECTED_SCHEMA.tables
-        expected_indexes = EXPECTED_SCHEMA.indexes
-
-        result.tables.expected = len(expected_tables)
-        result.indexes.expected = len(expected_indexes)
-
-        total_expected_cols = sum(len(cols) for cols in expected_tables.values())
-        result.columns.expected = total_expected_cols
-
         async with self.connection() as conn:
-            # Check tables
-            cursor = await conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
-            rows = await cursor.fetchall()
-            existing_tables = {row[0] for row in rows}
-
-            found_tables = [t for t in expected_tables if t in existing_tables]
-            missing_tables = [t for t in expected_tables if t not in existing_tables]
-            result.tables.found = len(found_tables)
-            result.tables.missing = missing_tables
-
-            if missing_tables:
-                result.issues.append(f"Missing tables: {', '.join(missing_tables)}")
-
-            # Check columns per table
-            total_found_cols = 0
-            for table, expected_cols in expected_tables.items():
-                if table not in existing_tables:
-                    result.columns.missing[table] = expected_cols
-                    continue
-
-                col_rows = await conn.execute_fetchall(
-                    SQLPragmas.TABLE_INFO.format(table=table)
-                )
-                existing_cols = {r[1] for r in col_rows}
-                total_found_cols += len(existing_cols & set(expected_cols))
-
-                missing_cols = [c for c in expected_cols if c not in existing_cols]
-                if missing_cols:
-                    result.columns.missing[table] = missing_cols
-                    result.issues.append(
-                        f"Missing columns in {table}: {', '.join(missing_cols)}"
-                    )
-
-            result.columns.found = total_found_cols
-
-            # Check indexes
-            idx_cursor = await conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='index'"
-            )
-            idx_rows = await idx_cursor.fetchall()
-            existing_indexes = {row[0] for row in idx_rows}
-
-            found_indexes = [i for i in expected_indexes if i in existing_indexes]
-            missing_indexes = [i for i in expected_indexes if i not in existing_indexes]
-            result.indexes.found = len(found_indexes)
-            result.indexes.missing = missing_indexes
-
-            if missing_indexes:
-                result.issues.append(
-                    f"Missing indexes: {', '.join(missing_indexes)}"
-                )
-
-            # Check pragmas
-            jm_cursor = await conn.execute("PRAGMA journal_mode")
-            jm_row = await jm_cursor.fetchone()
-            journal_mode = jm_row[0] if jm_row else None
-            result.pragmas.journal_mode = journal_mode
-
-            fk_cursor = await conn.execute("PRAGMA foreign_keys")
-            fk_row = await fk_cursor.fetchone()
-            foreign_keys = fk_row[0] if fk_row else None
-            result.pragmas.foreign_keys = foreign_keys
-
-            if journal_mode != "wal":
-                result.issues.append(
-                    f"journal_mode is '{journal_mode}', expected 'wal'"
-                )
-            if foreign_keys != 1:
-                result.issues.append(
-                    f"foreign_keys is {foreign_keys}, expected 1"
-                )
+            existing = await self._fetch_existing_schema(conn)
+            self._check_names(EXPECTED_SCHEMA.tables.keys(), existing.tables, result.tables, result.issues, "tables")
+            self._check_names(EXPECTED_SCHEMA.indexes, existing.indexes, result.indexes, result.issues, "indexes")
+            await self._check_columns(conn, EXPECTED_SCHEMA.tables, existing.tables, result)
+            await self._check_pragmas(conn, result)
 
         return result
+
+    @staticmethod
+    async def _fetch_existing_schema(conn: aiosqlite.Connection) -> _ExistingSchema:
+        """Query sqlite_master for all existing table and index names."""
+        cursor = await conn.execute(
+            "SELECT type, name FROM sqlite_master WHERE type IN ('table', 'index')"
+        )
+        rows = await cursor.fetchall()
+        tables: set[str] = set()
+        indexes: set[str] = set()
+        for row_type, name in rows:
+            if row_type == "table":
+                tables.add(name)
+            else:
+                indexes.add(name)
+        return _ExistingSchema(tables=frozenset(tables), indexes=frozenset(indexes))
+
+    @staticmethod
+    def _check_names(
+        expected: Iterable[str],
+        existing: frozenset[str],
+        validation: CountValidation,
+        issues: list[str],
+        label: str,
+    ) -> None:
+        """Compare expected names against existing, populating validation counts."""
+        expected_list = list(expected)
+        validation.expected = len(expected_list)
+        missing = [name for name in expected_list if name not in existing]
+        validation.found = len(expected_list) - len(missing)
+        validation.missing = missing
+        if missing:
+            issues.append(f"Missing {label}: {', '.join(missing)}")
+
+    @staticmethod
+    async def _check_columns(
+        conn: aiosqlite.Connection,
+        expected_tables: dict[str, list[str]],
+        existing_tables: frozenset[str],
+        result: SchemaValidationResult,
+    ) -> None:
+        """Check that each expected table has all expected columns."""
+        result.columns.expected = sum(len(cols) for cols in expected_tables.values())
+        total_found = 0
+
+        for table, expected_cols in expected_tables.items():
+            if table not in existing_tables:
+                result.columns.missing[table] = expected_cols
+                continue
+
+            col_rows = await conn.execute_fetchall(SQLPragmas.TABLE_INFO.format(table=table))
+            existing_cols = {r[1] for r in col_rows}
+            total_found += len(existing_cols & set(expected_cols))
+
+            missing_cols = [c for c in expected_cols if c not in existing_cols]
+            if missing_cols:
+                result.columns.missing[table] = missing_cols
+                result.issues.append(f"Missing columns in {table}: {', '.join(missing_cols)}")
+
+        result.columns.found = total_found
+
+    @staticmethod
+    async def _check_pragmas(
+        conn: aiosqlite.Connection, result: SchemaValidationResult
+    ) -> None:
+        """Check journal_mode and foreign_keys pragmas."""
+        jm_row = await (await conn.execute("PRAGMA journal_mode")).fetchone()
+        result.pragmas.journal_mode = jm_row[0] if jm_row else None
+
+        fk_row = await (await conn.execute("PRAGMA foreign_keys")).fetchone()
+        result.pragmas.foreign_keys = fk_row[0] if fk_row else None
+
+        if result.pragmas.journal_mode != "wal":
+            result.issues.append(f"journal_mode is '{result.pragmas.journal_mode}', expected 'wal'")
+        if result.pragmas.foreign_keys != 1:
+            result.issues.append(f"foreign_keys is {result.pragmas.foreign_keys}, expected 1")
 
     async def close(self) -> None:
         if self._keepalive_conn is not None:

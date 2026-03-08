@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict
 
 from discord_music_player.domain.shared.types import DiscordSnowflake, NonNegativeInt
-from discord_music_player.domain.voting.value_objects import VoteResult, VoteType
+from discord_music_player.domain.voting.enums import VoteResult, VoteType
 
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository
