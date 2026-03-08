@@ -18,7 +18,8 @@ from discord_music_player.domain.recommendations.entities import (
     RecommendationRequest,
     RecommendationSet,
 )
-from discord_music_player.domain.recommendations.services import RecommendationDomainService
+from discord_music_player.domain.recommendations.entities import filter_duplicates
+from discord_music_player.domain.recommendations.title_utils import clean_title, extract_artist_from_title
 
 # =============================================================================
 # RecommendationRequest Entity Tests
@@ -70,14 +71,14 @@ class TestRecommendationRequest:
         request = RecommendationRequest(
             base_track_title="Test Song", base_track_artist="Test Artist", count=3
         )
-        assert "test song" in request.cache_key
-        assert "test artist" in request.cache_key
-        assert "3" in request.cache_key
+        assert "test song" in request.request_cache_key
+        assert "test artist" in request.request_cache_key
+        assert "3" in request.request_cache_key
 
     def test_cache_key_without_artist(self):
         """Should handle missing artist in cache key."""
         request = RecommendationRequest(base_track_title="Test Song")
-        assert "unknown" in request.cache_key
+        assert "unknown" in request.request_cache_key
 
 
 # =============================================================================
@@ -256,12 +257,12 @@ class TestRecommendationSet:
 
 
 # =============================================================================
-# RecommendationDomainService Tests
+# Recommendation Utility Tests
 # =============================================================================
 
 
-class TestRecommendationDomainService:
-    """Unit tests for RecommendationDomainService."""
+class TestRecommendationUtilities:
+    """Unit tests for recommendation utilities and entity methods."""
 
     @pytest.fixture
     def track(self):
@@ -276,23 +277,23 @@ class TestRecommendationDomainService:
 
     def test_create_request_from_track_basic(self, track):
         """Should create request from track."""
-        request = RecommendationDomainService.create_request_from_track(track)
+        request = RecommendationRequest.from_track(track)
         assert isinstance(request, RecommendationRequest)
         assert request.count == 3  # Default
 
     def test_create_request_with_count(self, track):
         """Should respect custom count."""
-        request = RecommendationDomainService.create_request_from_track(track, count=5)
+        request = RecommendationRequest.from_track(track, count=5)
         assert request.count == 5
 
     def test_create_request_caps_count(self, track):
         """Should cap count at MAX_RECOMMENDATION_COUNT."""
-        request = RecommendationDomainService.create_request_from_track(track, count=100)
+        request = RecommendationRequest.from_track(track, count=100)
         assert request.count <= MAX_RECOMMENDATION_COUNT
 
     def test_create_request_with_exclude_ids(self, track):
         """Should include exclude IDs."""
-        request = RecommendationDomainService.create_request_from_track(
+        request = RecommendationRequest.from_track(
             track, exclude_ids=["id1", "id2"]
         )
         assert "id1" in request.exclude_tracks
@@ -302,72 +303,72 @@ class TestRecommendationDomainService:
 
     def test_extract_artist_dash_format(self):
         """Should extract artist from 'Artist - Title' format."""
-        artist = RecommendationDomainService.extract_artist_from_title("The Beatles - Yesterday")
+        artist = extract_artist_from_title("The Beatles - Yesterday")
         assert artist == "The Beatles"
 
     def test_extract_artist_by_format(self):
         """Should extract artist from 'Title by Artist' format."""
-        artist = RecommendationDomainService.extract_artist_from_title("Yesterday by The Beatles")
+        artist = extract_artist_from_title("Yesterday by The Beatles")
         assert artist == "The Beatles"
 
     def test_extract_artist_by_format_with_brackets(self):
         """Should handle 'Title by Artist [metadata]' format."""
-        artist = RecommendationDomainService.extract_artist_from_title(
+        artist = extract_artist_from_title(
             "Yesterday by The Beatles [Official Audio]"
         )
         assert artist == "The Beatles"
 
     def test_extract_artist_filters_common_prefixes(self):
         """Should filter common non-artist prefixes."""
-        artist = RecommendationDomainService.extract_artist_from_title("VEVO - Song")
+        artist = extract_artist_from_title("VEVO - Song")
         assert artist is None
 
-        artist = RecommendationDomainService.extract_artist_from_title("Official - Song")
+        artist = extract_artist_from_title("Official - Song")
         assert artist is None
 
     def test_extract_artist_returns_none_when_not_found(self):
         """Should return None when no artist pattern found."""
-        artist = RecommendationDomainService.extract_artist_from_title("Just A Song Name")
+        artist = extract_artist_from_title("Just A Song Name")
         assert artist is None
 
     # --- clean_title tests ---
 
     def test_clean_title_removes_official_video(self):
         """Should remove (Official Video) suffix."""
-        cleaned = RecommendationDomainService.clean_title("Song Title (Official Video)")
+        cleaned = clean_title("Song Title (Official Video)")
         assert "official video" not in cleaned.lower()
         assert "Song Title" in cleaned
 
     def test_clean_title_removes_lyrics(self):
         """Should remove [Lyrics] suffix."""
-        cleaned = RecommendationDomainService.clean_title("Song Title [Lyrics]")
+        cleaned = clean_title("Song Title [Lyrics]")
         assert "lyrics" not in cleaned.lower()
         assert "Song Title" in cleaned
 
     def test_clean_title_removes_hd_hq(self):
         """Should remove quality markers."""
-        cleaned = RecommendationDomainService.clean_title("Song Title (HD)")
+        cleaned = clean_title("Song Title (HD)")
         assert "hd" not in cleaned.lower()
 
-        cleaned = RecommendationDomainService.clean_title("Song Title [HQ]")
+        cleaned = clean_title("Song Title [HQ]")
         assert "hq" not in cleaned.lower()
 
     def test_clean_title_removes_feat(self):
         """Should remove featuring credits."""
-        cleaned = RecommendationDomainService.clean_title("Song Title (ft. Other Artist)")
+        cleaned = clean_title("Song Title (ft. Other Artist)")
         assert "ft." not in cleaned.lower()
 
-        cleaned = RecommendationDomainService.clean_title("Song Title (feat. Other Artist)")
+        cleaned = clean_title("Song Title (feat. Other Artist)")
         assert "feat." not in cleaned.lower()
 
     def test_clean_title_removes_remaster(self):
         """Should remove remaster tags."""
-        cleaned = RecommendationDomainService.clean_title("Song Title (Remastered)")
+        cleaned = clean_title("Song Title (Remastered)")
         assert "remaster" not in cleaned.lower()
 
     def test_clean_title_removes_multiple_suffixes(self):
         """Should remove multiple suffixes."""
-        cleaned = RecommendationDomainService.clean_title(
+        cleaned = clean_title(
             "Song Title (Official Video) [Lyrics] (HD)"
         )
         assert "official video" not in cleaned.lower()
@@ -376,7 +377,7 @@ class TestRecommendationDomainService:
 
     def test_clean_title_preserves_core_title(self):
         """Should preserve the core title."""
-        cleaned = RecommendationDomainService.clean_title("Artist - Song Title (Official Video)")
+        cleaned = clean_title("Artist - Song Title (Official Video)")
         assert "Artist - Song Title" in cleaned
 
     # --- filter_duplicates tests ---
@@ -388,7 +389,7 @@ class TestRecommendationDomainService:
             Recommendation(title="Song", artist="Artist"),
             Recommendation(title="Another", artist="Artist"),
         ]
-        filtered = RecommendationDomainService.filter_duplicates(recs)
+        filtered = filter_duplicates(recs)
         assert len(filtered) == 2
 
     def test_filter_duplicates_case_insensitive(self):
@@ -397,7 +398,7 @@ class TestRecommendationDomainService:
             Recommendation(title="Song", artist="Artist"),
             Recommendation(title="SONG", artist="ARTIST"),
         ]
-        filtered = RecommendationDomainService.filter_duplicates(recs)
+        filtered = filter_duplicates(recs)
         assert len(filtered) == 1
 
     def test_filter_duplicates_preserves_order(self):
@@ -407,14 +408,14 @@ class TestRecommendationDomainService:
             Recommendation(title="Second", artist="B", confidence=0.9),
             Recommendation(title="First", artist="A", confidence=0.8),
         ]
-        filtered = RecommendationDomainService.filter_duplicates(recs)
+        filtered = filter_duplicates(recs)
         assert len(filtered) == 2
         assert filtered[0].title == "First"
         assert filtered[0].confidence == 0.5  # First occurrence kept
 
     def test_filter_duplicates_empty_list(self):
         """Should handle empty list."""
-        filtered = RecommendationDomainService.filter_duplicates([])
+        filtered = filter_duplicates([])
         assert filtered == []
 
     # --- validate_recommendations tests ---
@@ -429,7 +430,7 @@ class TestRecommendationDomainService:
                 Recommendation(title="Song 2", artist="Artist 2"),
             ],
         )
-        errors = RecommendationDomainService.validate_recommendations(rec_set)
+        errors = rec_set.validate_set()
         assert len(errors) == 0
 
     def test_validate_empty_set(self):
@@ -439,7 +440,7 @@ class TestRecommendationDomainService:
             base_track_artist="Base Artist",
             recommendations=[],
         )
-        errors = RecommendationDomainService.validate_recommendations(rec_set)
+        errors = rec_set.validate_set()
         assert any("No recommendations" in e for e in errors)
 
     def test_validate_expired_set(self):
@@ -451,7 +452,7 @@ class TestRecommendationDomainService:
             generated_at=datetime.now(UTC) - timedelta(hours=48),
             expires_at=datetime.now(UTC) - timedelta(hours=24),
         )
-        errors = RecommendationDomainService.validate_recommendations(rec_set)
+        errors = rec_set.validate_set()
         assert any("expired" in e.lower() for e in errors)
 
 
@@ -481,7 +482,7 @@ class TestRecommendationIntegration:
         rec_set = RecommendationSet.from_request(request, recommendations)
 
         # Validate
-        errors = RecommendationDomainService.validate_recommendations(rec_set)
+        errors = rec_set.validate_set()
         assert len(errors) == 0
 
         # Get top recommendations
@@ -499,7 +500,7 @@ class TestRecommendationIntegration:
 
         # Cache keys should have same base (title|artist)
         # Request includes count, set doesn't
-        assert "test song" in request.cache_key
+        assert "test song" in request.request_cache_key
         assert "test song" in rec_set.cache_key
-        assert "test artist" in request.cache_key
+        assert "test artist" in request.request_cache_key
         assert "test artist" in rec_set.cache_key

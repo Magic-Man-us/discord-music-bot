@@ -33,7 +33,7 @@ class RecommendationRequest(BaseModel):
     exclude_tracks: frozenset[NonEmptyStr] = Field(default_factory=frozenset)
 
     @property
-    def cache_key(self) -> str:
+    def request_cache_key(self) -> str:
         artist = self.base_track_artist or "unknown"
         title_normalized = self.base_track_title.lower().strip()
         artist_normalized = artist.lower().strip()
@@ -171,3 +171,26 @@ class RecommendationSet(ExpirableMixin, BaseModel):
             base_track_artist=request.base_track_artist,
             recommendations=recommendations,
         )
+
+
+class CacheStats(BaseModel):
+    """Cache statistics for the recommendation cache repository."""
+
+    model_config = ConfigDict(frozen=True)
+
+    total_entries: NonNegativeInt = 0
+    expired_entries: NonNegativeInt = 0
+    valid_entries: NonNegativeInt = 0
+    oldest_entry: datetime | None = None
+    newest_entry: datetime | None = None
+
+
+def filter_duplicates(recommendations: list[Recommendation]) -> list[Recommendation]:
+    """Deduplicate a list of recommendations by artist|title key."""
+    seen: set[str] = set()
+    unique: list[Recommendation] = []
+    for rec in recommendations:
+        if rec.dedup_key not in seen:
+            seen.add(rec.dedup_key)
+            unique.append(rec)
+    return unique

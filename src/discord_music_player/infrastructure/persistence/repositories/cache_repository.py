@@ -6,12 +6,11 @@ import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import TypeAdapter
 
-from discord_music_player.domain.recommendations.entities import Recommendation, RecommendationSet
+from discord_music_player.domain.recommendations.entities import CacheStats, Recommendation, RecommendationSet
 from discord_music_player.domain.recommendations.repository import RecommendationCacheRepository
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
-from discord_music_player.domain.shared.types import NonNegativeInt
 
 if TYPE_CHECKING:
     from ..database import Database
@@ -20,18 +19,6 @@ logger = logging.getLogger(__name__)
 
 # TypeAdapter for list[Recommendation] — avoids manual dict plucking
 _recommendation_list_ta = TypeAdapter(list[Recommendation])
-
-
-class CacheStats(BaseModel):
-    """Cache statistics for the recommendation cache repository."""
-
-    model_config = ConfigDict(frozen=True)
-
-    total_entries: NonNegativeInt = 0
-    expired_entries: NonNegativeInt = 0
-    valid_entries: NonNegativeInt = 0
-    oldest_entry: datetime | None = None
-    newest_entry: datetime | None = None
 
 
 class SQLiteCacheRepository(RecommendationCacheRepository):

@@ -3,14 +3,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
 
-from discord_music_player.domain.recommendations.entities import RecommendationSet
-
-if TYPE_CHECKING:
-    from discord_music_player.infrastructure.persistence.repositories.cache_repository import (
-        CacheStats,
-    )
+from discord_music_player.domain.recommendations.entities import CacheStats, RecommendationSet
 
 
 class RecommendationCacheRepository(ABC):

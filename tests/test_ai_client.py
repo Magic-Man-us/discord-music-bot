@@ -211,7 +211,7 @@ class TestRecommendationRequest:
         )
 
         # Cache keys should be case-insensitive
-        assert request1.cache_key == request2.cache_key
+        assert request1.request_cache_key == request2.request_cache_key
 
     def test_empty_title_fails(self) -> None:
         """Test that empty title fails validation."""

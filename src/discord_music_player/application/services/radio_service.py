@@ -6,8 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ...domain.music.entities import GuildPlaybackSession, Track
-from ...domain.recommendations.entities import Recommendation
-from ...domain.recommendations.services import RecommendationDomainService
+from ...domain.recommendations.entities import Recommendation, RecommendationRequest, filter_duplicates
 from ...domain.shared.types import (
     DiscordSnowflake,
     NonEmptyStr,
@@ -332,15 +331,15 @@ class RadioApplicationService:
         exclude_ids: list[str],
     ) -> list[Recommendation]:
         """Create recommendation request, call AI, and filter duplicates."""
-        request = RecommendationDomainService.create_request_from_track(
-            track=base_track,
+        request = RecommendationRequest.from_track(
+            base_track,
             count=count,
             exclude_ids=exclude_ids,
         )
         recommendations = await self._ai_client.get_recommendations(request)
         if not recommendations:
             return []
-        return RecommendationDomainService.filter_duplicates(recommendations)
+        return filter_duplicates(recommendations)
 
     async def _resolve_and_enqueue_first(
         self,
