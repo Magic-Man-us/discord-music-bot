@@ -37,7 +37,7 @@ class RequesterLeftView(BaseInteractiveView):
 
     @discord.ui.button(label="Yes, continue", style=discord.ButtonStyle.green)
     async def yes_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button[RequesterLeftView]
+        self, interaction: discord.Interaction, _button: discord.ui.Button[RequesterLeftView]
     ) -> None:
         if not self._finish_view():
             return
@@ -48,7 +48,7 @@ class RequesterLeftView(BaseInteractiveView):
 
     @discord.ui.button(label="No, skip", style=discord.ButtonStyle.red)
     async def no_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button[RequesterLeftView]
+        self, interaction: discord.Interaction, _button: discord.ui.Button[RequesterLeftView]
     ) -> None:
         if not self._finish_view():
             return

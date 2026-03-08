@@ -65,7 +65,7 @@ class WarmupRetryView(BaseInteractiveView):
 
     @discord.ui.button(label="Retry", style=discord.ButtonStyle.secondary, disabled=True)
     async def retry_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button[WarmupRetryView]
+        self, interaction: discord.Interaction, _button: discord.ui.Button[WarmupRetryView]
     ) -> None:
         await interaction.response.defer(ephemeral=True)
         self._disable_buttons()

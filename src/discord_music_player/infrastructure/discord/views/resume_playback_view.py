@@ -37,7 +37,7 @@ class ResumePlaybackView(BaseInteractiveView):
 
     @discord.ui.button(label="Resume", style=discord.ButtonStyle.green)
     async def resume_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button[ResumePlaybackView]
+        self, interaction: discord.Interaction, _button: discord.ui.Button[ResumePlaybackView]
     ) -> None:
         msg = f"Resumed playback: **{self._track_title}**"
         if not self._finish_view():
@@ -47,7 +47,7 @@ class ResumePlaybackView(BaseInteractiveView):
 
     @discord.ui.button(label="Skip", style=discord.ButtonStyle.red)
     async def skip_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button[ResumePlaybackView]
+        self, interaction: discord.Interaction, _button: discord.ui.Button[ResumePlaybackView]
     ) -> None:
         if not self._finish_view():
             return

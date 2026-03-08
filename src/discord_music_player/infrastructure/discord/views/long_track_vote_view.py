@@ -45,7 +45,7 @@ class LongTrackVoteView(BaseInteractiveView):
 
     @discord.ui.button(label="Accept", style=discord.ButtonStyle.green)
     async def accept_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button[LongTrackVoteView]
+        self, interaction: discord.Interaction, _button: discord.ui.Button[LongTrackVoteView]
     ) -> None:
         user_id = interaction.user.id
 
@@ -58,7 +58,7 @@ class LongTrackVoteView(BaseInteractiveView):
 
     @discord.ui.button(label="Reject", style=discord.ButtonStyle.red)
     async def reject_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button[LongTrackVoteView]
+        self, interaction: discord.Interaction, _button: discord.ui.Button[LongTrackVoteView]
     ) -> None:
         user_id = interaction.user.id
 

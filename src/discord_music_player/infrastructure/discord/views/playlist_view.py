@@ -108,12 +108,12 @@ class PlaylistView(BaseInteractiveView):
             self.add_item(select)
 
     @discord.ui.button(label="Add All", style=discord.ButtonStyle.success, row=1)
-    async def add_all_button(self, interaction: discord.Interaction, button: discord.ui.Button[PlaylistView]) -> None:
+    async def add_all_button(self, interaction: discord.Interaction, _button: discord.ui.Button[PlaylistView]) -> None:
         all_indices = list(range(len(self._entries)))
         await self._enqueue_tracks(interaction, all_indices)
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, row=1)
-    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button[PlaylistView]) -> None:
+    async def cancel_button(self, interaction: discord.Interaction, _button: discord.ui.Button[PlaylistView]) -> None:
         if not self._finish_view():
             return
         self._disable_all_items()

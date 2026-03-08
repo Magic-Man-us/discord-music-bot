@@ -134,7 +134,7 @@ class RadioView(BaseInteractiveView):
 
     @discord.ui.button(label="Accept", style=discord.ButtonStyle.success, row=1)
     async def accept_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button[RadioView]
+        self, interaction: discord.Interaction, _button: discord.ui.Button[RadioView]
     ) -> None:
         if self._reroll_in_progress:
             await interaction.response.send_message(
