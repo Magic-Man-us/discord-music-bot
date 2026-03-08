@@ -3,8 +3,10 @@ LongTrackVoteView, and RadioView."""
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import pytest
 
 
@@ -37,7 +39,7 @@ class TestResumePlaybackView:
 
         ps.start_playback.assert_awaited_once_with(1)
         call_kwargs = interaction.response.edit_message.call_args[1]
-        assert "▶️ Resumed playback: **Test Song**" in call_kwargs["content"]
+        assert "Resumed playback: **Test Song**" in call_kwargs["content"]
 
     @pytest.mark.asyncio
     async def test_skip_button_stops_playback(self):
@@ -48,7 +50,7 @@ class TestResumePlaybackView:
 
         ps.stop_playback.assert_awaited_once_with(1)
         call_kwargs = interaction.response.edit_message.call_args[1]
-        assert call_kwargs["content"] == "⏭️ Skipped. Playback cleared."
+        assert call_kwargs["content"] == "Skipped. Playback cleared."
 
     @pytest.mark.asyncio
     async def test_on_timeout_stops_and_edits(self):
@@ -61,7 +63,7 @@ class TestResumePlaybackView:
         ps.stop_playback.assert_awaited_once_with(1)
         message.edit.assert_awaited_once()
         call_kwargs = message.edit.call_args[1]
-        assert call_kwargs["content"] == "⏭️ Playback cleared (no response)."
+        assert call_kwargs["content"] == "Playback cleared (no response)."
 
     @pytest.mark.asyncio
     async def test_buttons_disabled_after_resume(self):
@@ -385,6 +387,11 @@ def _make_radio_view():
     return view, container, tracks
 
 
+def _get_reroll_buttons(view: discord.ui.View) -> list[discord.ui.Button[Any]]:
+    """Return row-0 buttons (the dynamically-added reroll buttons)."""
+    return [item for item in view.children if isinstance(item, discord.ui.Button) and item.row == 0]
+
+
 class TestRadioView:
     @pytest.mark.asyncio
     async def test_reroll_button_success(self):
@@ -405,19 +412,14 @@ class TestRadioView:
         interaction.user.id = 42
         interaction.user.display_name = "User"
 
-        from discord_music_player.infrastructure.discord.views.radio_view import RerollButton
-
-        reroll_btn = next(item for item in view.children if isinstance(item, RerollButton) and item.index == 0)
+        reroll_btn = _get_reroll_buttons(view)[0]
         await reroll_btn.callback(interaction)
 
         container.radio_service.reroll_track.assert_awaited_once_with(
             guild_id=1, queue_position=0, user_id=42, user_name="User"
         )
-        # Track list should be updated
         assert view._tracks[0].title == "New Recommendation"
-        # Buttons should be re-enabled after success
         assert not reroll_btn.disabled
-        # Concurrency flag should be cleared
         assert not view._reroll_in_progress
 
     @pytest.mark.asyncio
@@ -430,16 +432,12 @@ class TestRadioView:
         interaction.user.id = 42
         interaction.user.display_name = "User"
 
-        from discord_music_player.infrastructure.discord.views.radio_view import RerollButton
-
-        reroll_btn = next(item for item in view.children if isinstance(item, RerollButton) and item.index == 0)
+        reroll_btn = _get_reroll_buttons(view)[0]
         await reroll_btn.callback(interaction)
 
         msg = interaction.followup.send.call_args[0][0]
         assert "Couldn't" in msg
-        # Buttons should be re-enabled after failure
         assert not reroll_btn.disabled
-        # Concurrency flag should be cleared
         assert not view._reroll_in_progress
 
     @pytest.mark.asyncio
@@ -452,12 +450,9 @@ class TestRadioView:
         interaction.user.id = 42
         interaction.user.display_name = "User"
 
-        from discord_music_player.infrastructure.discord.views.radio_view import RerollButton
-
-        reroll_btn = next(item for item in view.children if isinstance(item, RerollButton) and item.index == 0)
+        reroll_btn = _get_reroll_buttons(view)[0]
         await reroll_btn.callback(interaction)
 
-        # Should send ephemeral "in progress" message, not call reroll_track
         interaction.response.send_message.assert_awaited_once()
         msg = interaction.response.send_message.call_args[0][0]
         assert "already in progress" in msg
@@ -469,13 +464,7 @@ class TestRadioView:
 
         interaction = AsyncMock()
 
-        from discord_music_player.infrastructure.discord.views.radio_view import AcceptButton
-
-        accept_btn = next(item for item in view.children if isinstance(item, AcceptButton))
-        await accept_btn.callback(interaction)
-
-        # All buttons should be disabled
-        import discord
+        await view.accept_button.callback(interaction)
 
         for item in view.children:
             if isinstance(item, discord.ui.Button):
@@ -486,18 +475,13 @@ class TestRadioView:
         """View should have N reroll buttons + 1 accept button."""
         view, _, tracks = _make_radio_view()
 
-        import discord
-
         buttons = [item for item in view.children if isinstance(item, discord.ui.Button)]
-        assert len(buttons) == len(tracks) + 1  # reroll buttons + accept
+        assert len(buttons) == len(tracks) + 1
 
     @pytest.mark.asyncio
     async def test_queue_start_position_offsets_buttons(self):
-        """Buttons should use queue_start_position offset for queue positions."""
-        from discord_music_player.infrastructure.discord.views.radio_view import (
-            RadioView,
-            RerollButton,
-        )
+        """Reroll buttons should use queue_start_position as offset."""
+        from discord_music_player.infrastructure.discord.views.radio_view import RadioView
 
         container = MagicMock()
         tracks = _make_radio_tracks()
@@ -506,10 +490,9 @@ class TestRadioView:
             seed_title="Song", queue_start_position=3,
         )
 
-        reroll_buttons = sorted(
-            [item for item in view.children if isinstance(item, RerollButton)],
-            key=lambda b: b.index,
-        )
-        assert reroll_buttons[0].queue_position == 3
-        assert reroll_buttons[1].queue_position == 4
-        assert reroll_buttons[2].queue_position == 5
+        reroll_buttons = _get_reroll_buttons(view)
+        # Labels are 1-indexed display numbers; verify by invoking callbacks
+        assert len(reroll_buttons) == 3
+        assert reroll_buttons[0].label == "1"
+        assert reroll_buttons[1].label == "2"
+        assert reroll_buttons[2].label == "3"

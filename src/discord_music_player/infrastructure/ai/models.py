@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 from typing import Final
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from discord_music_player.domain.recommendations.entities import Recommendation
 from discord_music_player.domain.shared.types import (
@@ -17,6 +17,7 @@ from discord_music_player.domain.shared.types import (
     NonEmptyStr,
     NonNegativeFloat,
     NonNegativeInt,
+    PercentageInt,
     PositiveInt,
 )
 
@@ -67,12 +68,30 @@ class AICacheEntry(BaseModel):
 
 
 class AICacheStats(BaseModel):
-    """Cache statistics for the AI recommendation client."""
+    """Cache statistics for the AI recommendation client.
+
+    Constructed from raw counters; ``hit_rate`` is derived automatically.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     size: NonNegativeInt
+    """Number of entries currently in the cache."""
+
     hits: NonNegativeInt
+    """Total cache hits since last reset."""
+
     misses: NonNegativeInt
-    hit_rate: NonNegativeInt
+    """Total cache misses since last reset."""
+
     inflight: NonNegativeInt
+    """Number of in-flight (singleflight-deduped) requests."""
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def hit_rate(self) -> PercentageInt:
+        """Cache hit rate as an integer percentage (0–100)."""
+        total = self.hits + self.misses
+        if total == 0:
+            return 0
+        return int((self.hits / total) * 100)

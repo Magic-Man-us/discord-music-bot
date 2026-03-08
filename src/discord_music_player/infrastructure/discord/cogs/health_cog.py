@@ -3,27 +3,38 @@
 from __future__ import annotations
 
 import json
-import logging
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord.ext import commands, tasks
+from pydantic import BaseModel, ConfigDict
 
 from discord_music_player.domain.shared.constants import HealthConstants, UIConstants
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
 from discord_music_player.domain.shared.enums import BotStatus
 from discord_music_player.domain.shared.types import BYTES_PER_MB
+from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 
 if TYPE_CHECKING:
     from ....config.container import Container
 
-logger = logging.getLogger(__name__)
+_HEALTH_SETTINGS_ATTR = "health"
 
 
-class BasicStats(TypedDict):
+def _get_health_settings(settings: object) -> object | None:
+    """Safely retrieve optional health settings sub-object."""
+    if hasattr(settings, _HEALTH_SETTINGS_ATTR):
+        return settings.health  # type: ignore[attr-defined]
+    return None
+
+
+class BasicStats(BaseModel):
+    """Core heartbeat stats written to JSON file."""
+
+    model_config = ConfigDict(extra="forbid")
 
     ts: str
     uptime_s: int
@@ -33,23 +44,26 @@ class BasicStats(TypedDict):
     queue_len: int
     current: str | None
     connected: bool
-    status: Literal["online", "offline"]
+    status: str
 
 
-class DetailedStats(BasicStats, total=False):
+class DetailedStats(BasicStats):
+    """Extended heartbeat stats with optional system info."""
 
-    guild_count: int
-    voice_connections: int
-    rss_mb: float
-    vms_mb: float | None
-    db_initialized: bool
-    db_size_mb: float
+    model_config = ConfigDict(extra="allow")
+
+    guild_count: int | None = None
+    voice_connections: int | None = None
+    rss_mb: float | None = None
+    vms_mb: float | None = None
+    db_initialized: bool | None = None
+    db_size_mb: float | None = None
 
 
-class HealthCog(commands.Cog):
+class HealthCog(BaseCog):
     def __init__(self, bot: commands.Bot, container: Container) -> None:
-        self.bot = bot
-        self.container = container
+        super().__init__(bot, container)
+
         self.started_at = time.monotonic()
         self._warned = False
 
@@ -60,17 +74,14 @@ class HealthCog(commands.Cog):
         self.heartbeat_file = log_dir / "heartbeat.json"
         self.detailed_file = log_dir / "heartbeat_detailed.json"
 
-        health_settings = getattr(settings, "health", None)
-        fast_interval = (
-            getattr(health_settings, "fast_interval", HealthConstants.DEFAULT_FAST_INTERVAL)
-            if health_settings
-            else HealthConstants.DEFAULT_FAST_INTERVAL
-        )
-        detailed_interval = (
-            getattr(health_settings, "detailed_interval", HealthConstants.DEFAULT_DETAILED_INTERVAL)
-            if health_settings
-            else HealthConstants.DEFAULT_DETAILED_INTERVAL
-        )
+        health_settings = _get_health_settings(settings)
+        fast_interval = HealthConstants.DEFAULT_FAST_INTERVAL
+        detailed_interval = HealthConstants.DEFAULT_DETAILED_INTERVAL
+        if health_settings is not None:
+            if hasattr(health_settings, "fast_interval"):
+                fast_interval = health_settings.fast_interval  # type: ignore[union-attr]
+            if hasattr(health_settings, "detailed_interval"):
+                detailed_interval = health_settings.detailed_interval  # type: ignore[union-attr]
 
         self.heartbeat_fast.change_interval(seconds=fast_interval)
         self.heartbeat_detailed.change_interval(seconds=detailed_interval)
@@ -78,12 +89,12 @@ class HealthCog(commands.Cog):
     async def cog_load(self) -> None:
         self.heartbeat_fast.start()
         self.heartbeat_detailed.start()
-        logger.info("Health cog loaded, heartbeat loops started")
+        self.logger.info("Health cog loaded, heartbeat loops started")
 
     async def cog_unload(self) -> None:
         self.heartbeat_fast.cancel()
         self.heartbeat_detailed.cancel()
-        logger.info("Health cog unloaded, heartbeat loops stopped")
+        self.logger.info("Health cog unloaded, heartbeat loops stopped")
 
     # ─────────────────────────────────────────────────────────────────
     # Helper Methods
@@ -103,15 +114,15 @@ class HealthCog(commands.Cog):
     def _latency_ms(self) -> float:
         return round((self.bot.latency or 0.0) * UIConstants.MS_PER_SECOND, 1)
 
-    def _latency_emoji(self, ms: float) -> str:
+    def _latency_label(self, ms: float) -> str:
         if ms < HealthConstants.LATENCY_OK_MS:
-            return "🟢"
+            return "OK"
         if ms < HealthConstants.LATENCY_WARN_MS:
-            return "🟠"
-        return "🔴"
+            return "Slow"
+        return "Critical"
 
-    def _status_emoji(self, connected: bool) -> str:
-        return "🟢" if connected else "🔴"
+    def _status_label(self, connected: bool) -> str:
+        return "Online" if connected else "Offline"
 
     def _embed_color_for_latency(self, ms: float) -> discord.Color:
         if ms < HealthConstants.LATENCY_OK_MS:
@@ -132,11 +143,11 @@ class HealthCog(commands.Cog):
         return queue_len, current_title
 
     def _atomic_write(
-        self, path: Path, payload: BasicStats | DetailedStats | dict[str, Any]
+        self, path: Path, payload: BasicStats | DetailedStats
     ) -> None:
         tmp = path.with_suffix(path.suffix + ".tmp")
         with tmp.open("w", encoding="utf-8") as f:
-            json.dump(dict(payload), f, ensure_ascii=False, indent=2)
+            json.dump(payload.model_dump(exclude_none=True), f, ensure_ascii=False, indent=2)
         tmp.replace(path)
 
     # ─────────────────────────────────────────────────────────────────
@@ -149,22 +160,25 @@ class HealthCog(commands.Cog):
         queue_len, current_title = self._audio_snapshot()
         connected = not self.bot.is_closed()
 
-        return {
-            "ts": UtcDateTime.now().iso,
-            "uptime_s": uptime_s,
-            "uptime_human": self._format_uptime(uptime_s),
-            "latency_ms": lat_ms,
-            "latency_human": f"{lat_ms:.1f} ms",
-            "queue_len": queue_len,
-            "current": current_title,
-            "connected": connected,
-            "status": BotStatus.ONLINE if connected else BotStatus.OFFLINE,
-        }
+        return BasicStats(
+            ts=UtcDateTime.now().iso,
+            uptime_s=uptime_s,
+            uptime_human=self._format_uptime(uptime_s),
+            latency_ms=lat_ms,
+            latency_human=f"{lat_ms:.1f} ms",
+            queue_len=queue_len,
+            current=current_title,
+            connected=connected,
+            status=BotStatus.ONLINE if connected else BotStatus.OFFLINE,
+        )
 
     async def _collect_detailed_stats(self) -> DetailedStats:
-        payload: DetailedStats = {**self._collect_basic_stats()}
-        payload["guild_count"] = len(self.bot.guilds)
-        payload["voice_connections"] = len(self.bot.voice_clients)
+        basic = self._collect_basic_stats()
+        payload = DetailedStats(
+            **basic.model_dump(),
+            guild_count=len(self.bot.guilds),
+            voice_connections=len(self.bot.voice_clients),
+        )
 
         try:
             import psutil  # type: ignore
@@ -172,9 +186,9 @@ class HealthCog(commands.Cog):
             proc = psutil.Process()
             with proc.oneshot():
                 mem = proc.memory_full_info()
-                payload["rss_mb"] = round(mem.rss / BYTES_PER_MB, 1)
+                payload.rss_mb = round(mem.rss / BYTES_PER_MB, 1)
                 vms = getattr(mem, "vms", None)
-                payload["vms_mb"] = round(vms / BYTES_PER_MB, 1) if vms else None
+                payload.vms_mb = round(vms / BYTES_PER_MB, 1) if vms else None
         except ImportError:
             pass
         except Exception:
@@ -183,8 +197,8 @@ class HealthCog(commands.Cog):
         try:
             db = self.container.database
             db_stats = await db.get_stats()
-            payload["db_initialized"] = db_stats.initialized
-            payload["db_size_mb"] = db_stats.file_size_mb if db_stats.file_size_mb is not None else 0.0
+            payload.db_initialized = db_stats.initialized
+            payload.db_size_mb = db_stats.file_size_mb if db_stats.file_size_mb is not None else 0.0
         except Exception:
             pass
 
@@ -201,9 +215,10 @@ class HealthCog(commands.Cog):
             self._atomic_write(self.heartbeat_file, payload)
 
             # Latency warning logic
-            lat_ms = payload["latency_ms"]
+            lat_ms = payload.latency_ms
             settings = self.container.settings
-            alert_channel_id = getattr(getattr(settings, "health", None), "alert_channel_id", None)
+            health_settings = _get_health_settings(settings)
+            alert_channel_id = getattr(health_settings, "alert_channel_id", None) if health_settings else None
 
             if alert_channel_id:
                 ch = self.bot.get_channel(alert_channel_id)
@@ -211,7 +226,7 @@ class HealthCog(commands.Cog):
                     if lat_ms >= HealthConstants.LATENCY_WARN_MS and not self._warned:
                         try:
                             await ch.send(
-                                f"⚠️ Heartbeat warning: latency {lat_ms}ms (>= {HealthConstants.LATENCY_WARN_MS}ms)"
+                                f"Heartbeat warning: latency {lat_ms}ms (>= {HealthConstants.LATENCY_WARN_MS}ms)"
                             )
                             self._warned = True
                         except Exception:
@@ -219,18 +234,18 @@ class HealthCog(commands.Cog):
                     elif self._warned and lat_ms < (HealthConstants.LATENCY_WARN_MS * HealthConstants.LATENCY_RESET_FACTOR):
                         self._warned = False
 
-            logger.debug("Fast heartbeat: latency=%.1fms", lat_ms)
+            self.logger.debug("Fast heartbeat: latency=%.1fms", lat_ms)
         except Exception:
-            logger.exception("Fast heartbeat error")
+            self.logger.exception("Fast heartbeat error")
 
     @tasks.loop(seconds=HealthConstants.DEFAULT_DETAILED_INTERVAL, reconnect=True)
     async def heartbeat_detailed(self) -> None:
         try:
             payload = await self._collect_detailed_stats()
             self._atomic_write(self.detailed_file, payload)
-            logger.debug("Detailed heartbeat collected")
+            self.logger.debug("Detailed heartbeat collected")
         except Exception:
-            logger.exception("Detailed heartbeat error")
+            self.logger.exception("Detailed heartbeat error")
 
     @heartbeat_fast.before_loop
     async def _wait_ready_fast(self) -> None:
@@ -247,9 +262,9 @@ class HealthCog(commands.Cog):
     @commands.hybrid_command(name="ping", description="Check bot latency.")
     async def ping(self, ctx: commands.Context) -> None:
         lat_ms = self._latency_ms()
-        emoji = self._latency_emoji(lat_ms)
+        label = self._latency_label(lat_ms)
         await ctx.send(
-            f"{emoji} Pong: {lat_ms:.1f} ms",
+            f"Pong: {lat_ms:.1f} ms ({label})",
             ephemeral=True,
         )
 
@@ -266,10 +281,10 @@ class HealthCog(commands.Cog):
         return False
 
     def _build_health_embed(self, payload: DetailedStats, show_admin_info: bool) -> discord.Embed:
-        lat_ms = float(payload["latency_ms"])
+        lat_ms = payload.latency_ms
         color = self._embed_color_for_latency(lat_ms)
 
-        embed = discord.Embed(title="🏥 Bot Health", color=color)
+        embed = discord.Embed(title="Bot Health", color=color)
         embed.timestamp = datetime.now(UTC)
 
         self._add_connection_fields(embed, payload, lat_ms)
@@ -285,53 +300,46 @@ class HealthCog(commands.Cog):
     def _add_connection_fields(
         self, embed: discord.Embed, payload: DetailedStats, lat_ms: float
     ) -> None:
-        connected = bool(payload["connected"])
-        status_text = "Connected" if connected else "Disconnected"
+        status_text = self._status_label(payload.connected)
         embed.add_field(
-            name="Status", value=f"{self._status_emoji(connected)} {status_text}", inline=True
+            name="Status", value=status_text, inline=True
         )
-        embed.add_field(name="Uptime", value=str(payload["uptime_human"]), inline=True)
+        embed.add_field(name="Uptime", value=payload.uptime_human, inline=True)
         embed.add_field(
             name="Latency",
-            value=f"{self._latency_emoji(lat_ms)} {payload['latency_human']}",
+            value=f"{payload.latency_human} ({self._latency_label(lat_ms)})",
             inline=True,
         )
 
     def _add_server_fields(self, embed: discord.Embed, payload: DetailedStats) -> None:
-        if "guild_count" in payload:
-            embed.add_field(name="Guilds", value=str(payload["guild_count"]), inline=True)
-        if "voice_connections" in payload:
+        if payload.guild_count is not None:
+            embed.add_field(name="Guilds", value=str(payload.guild_count), inline=True)
+        if payload.voice_connections is not None:
             embed.add_field(
-                name="Voice Connections", value=str(payload["voice_connections"]), inline=True
+                name="Voice Connections", value=str(payload.voice_connections), inline=True
             )
 
     def _add_audio_fields(self, embed: discord.Embed, payload: DetailedStats) -> None:
-        embed.add_field(name="Queue Length", value=str(payload["queue_len"]), inline=True)
-        current = payload.get("current")
-        embed.add_field(name="Now Playing", value=current or "Nothing", inline=False)
+        embed.add_field(name="Queue Length", value=str(payload.queue_len), inline=True)
+        embed.add_field(name="Now Playing", value=payload.current or "Nothing", inline=False)
 
     def _add_admin_fields(self, embed: discord.Embed, payload: DetailedStats) -> None:
         mem_parts = self._format_memory_stats(payload)
         if mem_parts:
             embed.add_field(name="Memory", value=", ".join(mem_parts), inline=True)
 
-        if "db_initialized" in payload:
-            db_status = "✅" if payload["db_initialized"] else "❌"
-            db_size = payload.get("db_size_mb", 0)
+        if payload.db_initialized is not None:
+            db_status = "Yes" if payload.db_initialized else "No"
+            db_size = payload.db_size_mb or 0
             embed.add_field(name="Database", value=f"{db_status} ({db_size} MB)", inline=True)
 
     def _format_memory_stats(self, payload: DetailedStats) -> list[str]:
         mem_parts: list[str] = []
-        if "rss_mb" in payload:
-            mem_parts.append(f"RSS: {payload['rss_mb']} MB")
-        if "vms_mb" in payload and payload["vms_mb"]:
-            mem_parts.append(f"VMS: {payload['vms_mb']} MB")
+        if payload.rss_mb is not None:
+            mem_parts.append(f"RSS: {payload.rss_mb} MB")
+        if payload.vms_mb is not None:
+            mem_parts.append(f"VMS: {payload.vms_mb} MB")
         return mem_parts
 
 
-async def setup(bot: commands.Bot) -> None:
-    container = getattr(bot, "container", None)
-    if container is None:
-        raise RuntimeError("Container not found on bot instance")
-
-    await bot.add_cog(HealthCog(bot, container))
+setup = HealthCog.setup

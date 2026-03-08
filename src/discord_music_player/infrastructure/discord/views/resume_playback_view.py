@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from discord_music_player.domain.shared.types import DiscordSnowflake
 from discord_music_player.infrastructure.discord.guards.voice_guards import check_user_in_voice
 from discord_music_player.infrastructure.discord.views.base_view import BaseInteractiveView
 
@@ -20,8 +21,8 @@ class ResumePlaybackView(BaseInteractiveView):
     def __init__(
         self,
         *,
-        guild_id: int,
-        channel_id: int,
+        guild_id: DiscordSnowflake,
+        channel_id: DiscordSnowflake,
         playback_service: PlaybackApplicationService,
         track_title: str,
     ) -> None:
@@ -34,17 +35,17 @@ class ResumePlaybackView(BaseInteractiveView):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return await check_user_in_voice(interaction, self._guild_id)
 
-    @discord.ui.button(label="▶️ Resume", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="Resume", style=discord.ButtonStyle.green)
     async def resume_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[ResumePlaybackView]
     ) -> None:
-        msg = f"▶️ Resumed playback: **{self._track_title}**"
+        msg = f"Resumed playback: **{self._track_title}**"
         if not self._finish_view():
             return
         await self._playback_service.start_playback(self._guild_id)
         await interaction.response.edit_message(content=msg, view=self)
 
-    @discord.ui.button(label="⏭️ Skip", style=discord.ButtonStyle.red)
+    @discord.ui.button(label="Skip", style=discord.ButtonStyle.red)
     async def skip_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[ResumePlaybackView]
     ) -> None:
@@ -52,7 +53,7 @@ class ResumePlaybackView(BaseInteractiveView):
             return
         await self._playback_service.stop_playback(self._guild_id)
         await interaction.response.edit_message(
-            content="⏭️ Skipped. Playback cleared.", view=self
+            content="Skipped. Playback cleared.", view=self
         )
 
     async def on_timeout(self) -> None:
@@ -64,7 +65,7 @@ class ResumePlaybackView(BaseInteractiveView):
         if self._message is not None:
             try:
                 await self._message.edit(
-                    content="⏭️ Playback cleared (no response).", view=self
+                    content="Playback cleared (no response).", view=self
                 )
             except discord.HTTPException:
                 logger.debug("Failed to edit resume playback message on timeout")

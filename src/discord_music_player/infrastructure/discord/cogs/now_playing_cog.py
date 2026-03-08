@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 import discord
 from discord import app_commands
-from discord.ext import commands
 
 from discord_music_player.domain.shared.constants import AnalyticsConstants, UIConstants
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
@@ -13,16 +11,13 @@ from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     send_ephemeral,
 )
-from discord_music_player.infrastructure.discord.services.message_state_manager import (
-    MessageStateManager,
+from discord_music_player.infrastructure.discord.services.embed_builder import (
+    build_now_playing_embed,
 )
 from discord_music_player.utils.reply import format_duration, truncate
 
-logger = logging.getLogger(__name__)
-
 
 class NowPlayingCog(BaseCog):
-
     @app_commands.command(name="current", description="Show the current track.")
     async def current(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
@@ -36,15 +31,13 @@ class NowPlayingCog(BaseCog):
         queue_info = await queue_service.get_queue(interaction.guild.id)
 
         if not queue_info.current_track:
-            await interaction.response.send_message(
-                "Nothing is playing.", ephemeral=True
-            )
+            await interaction.response.send_message("Nothing is playing.", ephemeral=True)
             return
 
         track = queue_info.current_track
         upcoming = queue_info.tracks[0] if queue_info.tracks else None
 
-        embed = MessageStateManager.build_now_playing_embed(track, next_track=upcoming)
+        embed = build_now_playing_embed(track, next_track=upcoming)
 
         from ..views.now_playing_view import NowPlayingView
 
@@ -76,7 +69,9 @@ class NowPlayingCog(BaseCog):
             return
 
         history_repo = self.container.history_repository
-        tracks = await history_repo.get_recent(interaction.guild.id, limit=AnalyticsConstants.DEFAULT_LEADERBOARD_LIMIT)
+        tracks = await history_repo.get_recent(
+            interaction.guild.id, limit=AnalyticsConstants.DEFAULT_LEADERBOARD_LIMIT
+        )
         if not tracks:
             await send_ephemeral(interaction, "No tracks have been played yet in this server.")
             return
@@ -109,19 +104,14 @@ class NowPlayingCog(BaseCog):
             parts.append(duration)
 
         if track.like_count is not None:
-            parts.append(f"\U0001f44d {track.like_count:,}")
+            parts.append(f"{track.like_count:,} likes")
 
         if track.requested_by_id:
             parts.append(f"req <@{track.requested_by_id}>")
         elif track.requested_by_name:
             parts.append(f"req {truncate(track.requested_by_name, 24)}")
 
-        return " \u2014 ".join(parts)
+        return " — ".join(parts)
 
 
-async def setup(bot: commands.Bot) -> None:
-    container = getattr(bot, "container", None)
-    if container is None:
-        raise RuntimeError("Container not found on bot instance")
-
-    await bot.add_cog(NowPlayingCog(bot, container))
+setup = NowPlayingCog.setup

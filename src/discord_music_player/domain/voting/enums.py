@@ -87,15 +87,26 @@ class VoteResult(StrEnum):
             VoteResult.VOTE_EXPIRED,
         }
 
-    def get_message(self, vote_type: VoteType, votes: int = 0, needed: int = 0) -> str:
-        """Get a user-friendly message for this result."""
-        messages = {
-            VoteResult.VOTE_RECORDED: f"Vote recorded! ({votes}/{needed} votes to {vote_type.action_verb})",
-            VoteResult.THRESHOLD_MET: f"Vote threshold met! Track {vote_type.past_tense}.",
-            VoteResult.REQUESTER_SKIP: f"Track {vote_type.past_tense} by the requester.",
-            VoteResult.AUTO_SKIP: f"Auto-{vote_type.past_tense} (small audience rule).",
-            VoteResult.ALREADY_VOTED: "You've already voted!",
-            VoteResult.NO_PLAYING: "Nothing is currently playing.",
+    def get_message(
+        self,
+        vote_type: VoteType,
+        votes: int = 0,
+        needed: int = 0,
+        *,
+        track_title: str | None = None,
+    ) -> str:
+        """Get a user-friendly message for this result.
+
+        When *track_title* is provided, action-executed messages include it.
+        """
+        title_suffix = f": **{track_title}**" if track_title else ""
+        messages: dict[VoteResult, str] = {
+            VoteResult.VOTE_RECORDED: f"Vote recorded ({votes}/{needed} votes to {vote_type.action_verb}).",
+            VoteResult.THRESHOLD_MET: f"Skip threshold met ({votes}/{needed}). Skipped{title_suffix}",
+            VoteResult.REQUESTER_SKIP: f"Requester skipped{title_suffix}",
+            VoteResult.AUTO_SKIP: f"Auto-skipped (small audience){title_suffix}",
+            VoteResult.ALREADY_VOTED: f"You already voted. Votes: {votes}/{needed}",
+            VoteResult.NO_PLAYING: "Nothing is playing.",
             VoteResult.NOT_IN_CHANNEL: "You need to be in the voice channel to vote.",
             VoteResult.BOT_NOT_IN_CHANNEL: "I'm not in a voice channel.",
             VoteResult.VOTE_EXPIRED: "The voting session has expired.",

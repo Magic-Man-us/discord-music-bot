@@ -25,6 +25,21 @@ FADE_IN_SECONDS: float = 0.5
 DEFAULT_VOLUME: float = 0.2
 
 
+async def _safe_voice_op(label: str, coro: Awaitable[bool]) -> bool:
+    """Execute a voice operation, logging failures and returning False on error."""
+    try:
+        return await coro
+    except TimeoutError:
+        logger.error("Timeout during %s", label)
+    except discord.Forbidden:
+        logger.error("No permission for %s", label)
+    except discord.ClientException as exc:
+        logger.error("Client error during %s: %r", label, exc)
+    except Exception:
+        logger.exception("Failed: %s", label)
+    return False
+
+
 class DiscordVoiceAdapter(VoiceAdapter):
     def __init__(self, bot: discord.Client, settings: AudioSettings | None = None) -> None:
         self._bot = bot
@@ -63,27 +78,13 @@ class DiscordVoiceAdapter(VoiceAdapter):
             logger.warning("Channel %s is not a voice channel", channel_id)
             return False
 
-        try:
+        async def _do() -> bool:
             async with asyncio.timeout(CONNECT_TIMEOUT):
                 await channel.connect(self_deaf=True)
-            logger.info(
-                "Connected to voice channel %s in %s",
-                channel.name,
-                guild.name,
-            )
+            logger.info("Connected to voice channel %s in %s", channel.name, guild.name)
             return True
-        except TimeoutError:
-            logger.error("Timeout connecting to channel %s", channel_id)
-            return False
-        except discord.ClientException as e:
-            logger.error("Client error connecting: %r", e)
-            return False
-        except discord.Forbidden:
-            logger.error("No permission to connect to channel %s", channel_id)
-            return False
-        except Exception:
-            logger.exception("Failed to connect to voice")
-            return False
+
+        return await _safe_voice_op(f"connect to channel {channel_id}", _do())
 
     async def _ensure_self_deaf(
         self,
@@ -103,15 +104,13 @@ class DiscordVoiceAdapter(VoiceAdapter):
         if not vc:
             return True  # Not connected
 
-        try:
+        async def _do() -> bool:
             self._current_track.pop(guild_id, None)
-
             await vc.disconnect(force=True)
             logger.info("Disconnected from voice in guild %s", guild_id)
             return True
-        except Exception:
-            logger.exception("Failed to disconnect from voice")
-            return False
+
+        return await _safe_voice_op(f"disconnect from guild {guild_id}", _do())
 
     async def ensure_connected(self, guild_id: int, channel_id: int) -> bool:
         """Connect if not connected, move if in a different channel."""
@@ -143,18 +142,14 @@ class DiscordVoiceAdapter(VoiceAdapter):
             logger.warning("Channel %s is not a voice channel", channel_id)
             return False
 
-        try:
+        async def _do() -> bool:
             async with asyncio.timeout(CONNECT_TIMEOUT):
                 await vc.move_to(channel)
             await self._ensure_self_deaf(guild, channel)
             logger.info("Moved to voice channel %s", channel.name)
             return True
-        except TimeoutError:
-            logger.error("Timeout moving to channel %s", channel_id)
-            return False
-        except Exception:
-            logger.exception("Failed to move to channel")
-            return False
+
+        return await _safe_voice_op(f"move to channel {channel_id}", _do())
 
     async def play(
         self,
@@ -208,11 +203,8 @@ class DiscordVoiceAdapter(VoiceAdapter):
             logger.info("Started playing '%s' in guild %s", track.title, guild_id)
             return True
 
-        except discord.ClientException as e:
-            logger.error("Client error connecting: %r", e)
-            return False
         except Exception as e:
-            logger.error("Failed to start playback: %s", e)
+            logger.error("Failed to start playback in guild %s: %r", guild_id, e)
             return False
 
     async def stop(self, guild_id: int) -> bool:

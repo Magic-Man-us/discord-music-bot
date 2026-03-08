@@ -10,8 +10,12 @@ from discord.ext import commands
 
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.wrappers import TrackId
+from discord_music_player.domain.shared.types import TrackForClassification
 from discord_music_player.infrastructure.discord.cogs.analytics_cog import AnalyticsCog
 from discord_music_player.infrastructure.persistence.repositories.history_repository import GenreTrackInfo, UserStats
+
+def _track(tid: str, desc: str | None = None) -> TrackForClassification:
+    return TrackForClassification(track_id=tid, description=desc)
 
 
 # ============================================================================
@@ -275,7 +279,7 @@ class TestGenreClassifier:
         mock_agent.run = AsyncMock(return_value=mock_result)
         classifier._agent = mock_agent
 
-        result = await classifier.classify_tracks([("t1", "Rock Anthem - Band A"), ("t2", "Pop Hit - Singer B")])
+        result = await classifier.classify_tracks([_track("t1", "Rock Anthem - Band A"), _track("t2", "Pop Hit - Singer B")])
         assert result["t1"] == "Rock"
         assert result["t2"] == "Pop"
 
@@ -284,13 +288,13 @@ class TestGenreClassifier:
         mock_agent.run = AsyncMock(side_effect=Exception("API error"))
         classifier._agent = mock_agent
 
-        result = await classifier.classify_tracks([("t1", "Some Song")])
+        result = await classifier.classify_tracks([_track("t1", "Some Song")])
         assert result == {"t1": "Unknown"}
 
-    async def test_classify_tracks_invalid_genre_mapped_to_other(self, classifier):
+    async def test_classify_tracks_passes_through_ai_genre(self, classifier):
         from discord_music_player.infrastructure.ai.genre_classifier import GenreClassificationResponse
 
-        mock_output = GenreClassificationResponse(genres={"t1": "NotAGenre"})
+        mock_output = GenreClassificationResponse(genres={"t1": "Synthwave"})
         mock_result = MagicMock()
         mock_result.output = mock_output
 
@@ -298,8 +302,8 @@ class TestGenreClassifier:
         mock_agent.run = AsyncMock(return_value=mock_result)
         classifier._agent = mock_agent
 
-        result = await classifier.classify_tracks([("t1", "Unknown Song")])
-        assert result["t1"] == "Other"
+        result = await classifier.classify_tracks([_track("t1", "Unknown Song")])
+        assert result["t1"] == "Synthwave"
 
     async def test_get_agent_creates_agent(self, classifier):
         """Should create an Agent on first call."""
@@ -311,7 +315,7 @@ class TestGenreClassifier:
             assert classifier._agent is not None
 
     async def test_classify_batch_empty_response(self, classifier):
-        """Should return Other for all tracks when AI returns empty genres."""
+        """Should return Unknown for all tracks when AI returns empty genres."""
         from discord_music_player.infrastructure.ai.genre_classifier import GenreClassificationResponse
 
         mock_output = GenreClassificationResponse(genres={})
@@ -322,13 +326,12 @@ class TestGenreClassifier:
         mock_agent.run = AsyncMock(return_value=mock_result)
         classifier._agent = mock_agent
 
-        result = await classifier.classify_tracks([("t1", "Song A"), ("t2", "Song B")])
-        # "Unknown" is not in GENRE_VOCABULARY, so it maps to "Other"
-        assert result == {"t1": "Other", "t2": "Other"}
+        result = await classifier.classify_tracks([_track("t1", "Song A"), _track("t2", "Song B")])
+        assert result == {"t1": "Unknown", "t2": "Unknown"}
 
     async def test_classify_tracks_batching(self, classifier):
         """Should process tracks in batches of BATCH_SIZE."""
-        from discord_music_player.infrastructure.ai.genre_classifier import BATCH_SIZE, GenreClassificationResponse
+        from discord_music_player.infrastructure.ai.genre_classifier import _BATCH_SIZE as BATCH_SIZE, GenreClassificationResponse
 
         call_count = 0
 
@@ -350,7 +353,7 @@ class TestGenreClassifier:
         classifier._agent = mock_agent
 
         # Create more tracks than one batch
-        tracks = [(f"t{i}", f"Song {i}") for i in range(BATCH_SIZE + 5)]
+        tracks = [_track(f"t{i}", f"Song {i}") for i in range(BATCH_SIZE + 5)]
         result = await classifier.classify_tracks(tracks)
 
         assert call_count == 2  # Two batches
@@ -368,7 +371,7 @@ class TestGenreClassifier:
         mock_agent.run = AsyncMock(return_value=mock_result)
         classifier._agent = mock_agent
 
-        result = await classifier.classify_tracks([("t1", None)])
+        result = await classifier.classify_tracks([_track("t1")])
         assert result["t1"] == "Rock"
 
 
@@ -462,7 +465,7 @@ def mock_analytics_container(mock_history_repo, mock_chart_gen):
 def analytics_cog(mock_analytics_container):
     bot = MagicMock(spec=commands.Bot)
     bot.container = mock_analytics_container
-    return AnalyticsCog(bot)
+    return AnalyticsCog(bot, mock_analytics_container)
 
 
 class TestStatsCogCommand:
@@ -476,7 +479,7 @@ class TestStatsCogCommand:
         mock_interaction.response.defer.assert_called_once()
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
-        assert "📊 Server Music Stats" in embed.title
+        assert "Server Music Stats" in embed.title
 
         field_names = [f.name for f in embed.fields]
         assert "Total Plays" in field_names
@@ -563,7 +566,7 @@ class TestTopCogCommand:
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
-        assert "🏆 Top Tracks" in embed.title
+        assert "Top Tracks" in embed.title
         assert "Rock Anthem" in embed.description
 
     @pytest.mark.asyncio
@@ -576,7 +579,7 @@ class TestTopCogCommand:
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
-        assert "🏆 Top Tracks" in embed.title
+        assert "Top Tracks" in embed.title
 
     @pytest.mark.asyncio
     async def test_top_users(self, analytics_cog, mock_interaction):
@@ -588,7 +591,7 @@ class TestTopCogCommand:
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
-        assert "🏆 Top Listeners" in embed.title
+        assert "Top Listeners" in embed.title
         assert "Alice" in embed.description
 
     @pytest.mark.asyncio
@@ -601,7 +604,7 @@ class TestTopCogCommand:
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
-        assert "⏭️ Most Skipped" in embed.title
+        assert "Most Skipped" in embed.title
         assert "Pop Hit" in embed.description
 
     @pytest.mark.asyncio
@@ -661,7 +664,7 @@ class TestMystatsCogCommand:
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
-        assert "🎵 Your Music Stats" in embed.title
+        assert "Your Music Stats" in embed.title
 
         field_names = [f.name for f in embed.fields]
         assert "Total Plays" in field_names
@@ -742,7 +745,7 @@ class TestActivityCogCommand:
         mock_interaction.response.defer.assert_called_once()
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
-        assert "📈 Listening Activity" in embed.title
+        assert "Listening Activity" in embed.title
         assert "total plays" in embed.description
 
     @pytest.mark.asyncio

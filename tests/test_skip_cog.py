@@ -1,4 +1,4 @@
-"""Tests for SkipCog — _send_skip_success, _send_skip_failure, and edge cases."""
+"""Tests for SkipCog — vote skip, force skip, and edge cases."""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from discord_music_player.domain.voting.enums import VoteResult
+from discord_music_player.application.commands.vote_skip import VoteSkipResult
+from discord_music_player.domain.voting.enums import VoteResult, VoteType
 from discord_music_player.infrastructure.discord.cogs.skip_cog import SkipCog
 
 
@@ -61,131 +62,105 @@ def interaction():
     return i
 
 
-def _vote_result(result: VoteResult, action_executed: bool = False) -> MagicMock:
-    r = MagicMock()
-    r.result = result
-    r.votes_current = 2
-    r.votes_needed = 3
-    r.action_executed = action_executed
-    return r
+# =============================================================================
+# VoteSkipResult.format_display — no match/case, uses get_message dispatch
+# =============================================================================
+
+
+@pytest.mark.parametrize(
+    "vote_result, expected_fragment",
+    [
+        (VoteResult.REQUESTER_SKIP, "Requester skipped"),
+        (VoteResult.AUTO_SKIP, "Auto-skipped"),
+        (VoteResult.THRESHOLD_MET, "threshold met"),
+    ],
+)
+def test_format_display_includes_track_title(vote_result: VoteResult, expected_fragment: str):
+    result = VoteSkipResult.from_vote_result(vote_result, votes_current=2, votes_needed=3)
+    msg = result.format_display("My Track")
+    assert expected_fragment.lower() in msg.lower()
+    assert "My Track" in msg
+
+
+def test_format_display_failure_uses_message():
+    result = VoteSkipResult.from_vote_result(VoteResult.NO_PLAYING)
+    msg = result.format_display("Irrelevant")
+    assert "Nothing is playing" in msg
 
 
 # =============================================================================
-# _send_skip_success
+# VoteResult.get_message — domain message dispatch
+# =============================================================================
+
+
+def test_get_message_with_track_title():
+    msg = VoteResult.REQUESTER_SKIP.get_message(VoteType.SKIP, track_title="Cool Song")
+    assert "Cool Song" in msg
+
+
+def test_get_message_without_track_title():
+    msg = VoteResult.REQUESTER_SKIP.get_message(VoteType.SKIP)
+    assert "skipped" in msg.lower()
+
+
+def test_get_message_failure_no_track():
+    msg = VoteResult.NO_PLAYING.get_message(VoteType.SKIP)
+    assert "Nothing is playing" in msg
+
+
+def test_get_message_vote_recorded_shows_counts():
+    msg = VoteResult.VOTE_RECORDED.get_message(VoteType.SKIP, votes=2, needed=3)
+    assert "2/3" in msg
+
+
+def test_get_message_already_voted_shows_counts():
+    msg = VoteResult.ALREADY_VOTED.get_message(VoteType.SKIP, votes=2, needed=3)
+    assert "2/3" in msg
+
+
+# =============================================================================
+# _handle_vote_skip integration (action_executed path)
 # =============================================================================
 
 
 @pytest.mark.asyncio
-async def test_send_skip_success_requester_skip(cog, interaction, mock_container):
+async def test_handle_vote_skip_action_executed(cog, interaction, mock_container):
     sample_track = MagicMock()
     sample_track.title = "My Track"
     mock_container.playback_service.skip_track = AsyncMock(return_value=sample_track)
 
-    result = _vote_result(VoteResult.REQUESTER_SKIP, action_executed=True)
+    result = VoteSkipResult.from_vote_result(VoteResult.REQUESTER_SKIP)
+    mock_container.vote_skip_handler.handle = AsyncMock(return_value=result)
 
-    await cog._send_skip_success(interaction, result)
+    await cog._handle_vote_skip(interaction, interaction.user)
 
+    mock_container.playback_service.skip_track.assert_awaited_once_with(111)
     msg = interaction.response.send_message.call_args[0][0]
     assert "Requester skipped" in msg
     assert "My Track" in msg
 
 
 @pytest.mark.asyncio
-async def test_send_skip_success_auto_skip(cog, interaction, mock_container):
-    sample_track = MagicMock()
-    sample_track.title = "Auto Song"
-    mock_container.playback_service.skip_track = AsyncMock(return_value=sample_track)
+async def test_handle_vote_skip_no_action(cog, interaction, mock_container):
+    result = VoteSkipResult.from_vote_result(VoteResult.VOTE_RECORDED, votes_current=2, votes_needed=3)
+    mock_container.vote_skip_handler.handle = AsyncMock(return_value=result)
 
-    result = _vote_result(VoteResult.AUTO_SKIP, action_executed=True)
+    await cog._handle_vote_skip(interaction, interaction.user)
 
-    await cog._send_skip_success(interaction, result)
-
+    mock_container.playback_service.skip_track.assert_not_awaited()
     msg = interaction.response.send_message.call_args[0][0]
-    assert "Auto-skipped" in msg
+    assert "2/3" in msg
 
 
 @pytest.mark.asyncio
-async def test_send_skip_success_threshold_met(cog, interaction, mock_container):
-    sample_track = MagicMock()
-    sample_track.title = "Voted Song"
-    mock_container.playback_service.skip_track = AsyncMock(return_value=sample_track)
+async def test_handle_vote_skip_nothing_playing(cog, interaction, mock_container):
+    result = VoteSkipResult.from_vote_result(VoteResult.NO_PLAYING)
+    mock_container.vote_skip_handler.handle = AsyncMock(return_value=result)
 
-    result = _vote_result(VoteResult.THRESHOLD_MET, action_executed=True)
-
-    await cog._send_skip_success(interaction, result)
+    await cog._handle_vote_skip(interaction, interaction.user)
 
     msg = interaction.response.send_message.call_args[0][0]
-    assert "threshold" in msg.lower() or "Skipped" in msg
-
-
-@pytest.mark.asyncio
-async def test_send_skip_success_default_case(cog, interaction, mock_container):
-    sample_track = MagicMock()
-    sample_track.title = "Unknown Song"
-    mock_container.playback_service.skip_track = AsyncMock(return_value=sample_track)
-
-    # Use an unusual result that doesn't match specific cases
-    result = _vote_result(VoteResult.VOTE_RECORDED, action_executed=True)
-
-    await cog._send_skip_success(interaction, result)
-
-    msg = interaction.response.send_message.call_args[0][0]
-    assert "Skipped" in msg
-
-
-# =============================================================================
-# _send_skip_failure
-# =============================================================================
-
-
-@pytest.mark.asyncio
-async def test_send_skip_failure_no_playing(cog, interaction):
-    result = _vote_result(VoteResult.NO_PLAYING)
-
-    await cog._send_skip_failure(interaction, result)
-
-    msg = interaction.response.send_message.call_args[0][0]
-    assert msg == "Nothing is playing."
-
-
-@pytest.mark.asyncio
-async def test_send_skip_failure_not_in_channel(cog, interaction):
-    result = _vote_result(VoteResult.NOT_IN_CHANNEL)
-
-    await cog._send_skip_failure(interaction, result)
-
-    msg = interaction.response.send_message.call_args[0][0]
-    assert msg == "Join my voice channel to vote skip."
-
-
-@pytest.mark.asyncio
-async def test_send_skip_failure_already_voted(cog, interaction):
-    result = _vote_result(VoteResult.ALREADY_VOTED)
-
-    await cog._send_skip_failure(interaction, result)
-
-    msg = interaction.response.send_message.call_args[0][0]
-    assert "already voted" in msg.lower()
-
-
-@pytest.mark.asyncio
-async def test_send_skip_failure_vote_recorded(cog, interaction):
-    result = _vote_result(VoteResult.VOTE_RECORDED)
-
-    await cog._send_skip_failure(interaction, result)
-
-    msg = interaction.response.send_message.call_args[0][0]
-    assert "2" in msg and "3" in msg  # votes_current/votes_needed
-
-
-@pytest.mark.asyncio
-async def test_send_skip_failure_default(cog, interaction):
-    result = _vote_result(VoteResult.INVALID_VOTE)
-
-    await cog._send_skip_failure(interaction, result)
-
-    msg = interaction.response.send_message.call_args[0][0]
-    assert msg == "Skip request processed."
+    assert "Nothing is playing" in msg
 
 
 # =============================================================================
@@ -195,9 +170,6 @@ async def test_send_skip_failure_default(cog, interaction):
 
 @pytest.mark.asyncio
 async def test_skip_user_not_member(cog, interaction, mock_container):
-    # Pass voice guard but then fail the isinstance check
-    mock_container.vote_skip_handler.handle = AsyncMock()
-
     # User is Member for the voice guard, but we set it to a non-Member after
     interaction.user = MagicMock(spec=discord.User)
     interaction.user.voice = None

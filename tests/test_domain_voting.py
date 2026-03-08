@@ -90,7 +90,7 @@ class TestVoteResult:
         """Should return success message for THRESHOLD_MET."""
         msg = VoteResult.THRESHOLD_MET.get_message(VoteType.SKIP)
         assert "threshold met" in msg.lower()
-        assert "skipped" in msg
+        assert "skipped" in msg.lower()
 
     def test_get_message_requester_skip(self):
         """Should return requester message for REQUESTER_SKIP."""

@@ -29,6 +29,16 @@ def mock_container():
     container.queue_service.clear_recommendations = AsyncMock(return_value=0)
     container.queue_service.get_queue = AsyncMock()
 
+    # Audio/playback services for _seed_track
+    container.audio_resolver = MagicMock()
+    container.audio_resolver.resolve = AsyncMock(return_value=None)
+
+    container.voice_adapter = MagicMock()
+    container.voice_adapter.is_connected = MagicMock(return_value=True)
+
+    container.playback_service = MagicMock()
+    container.playback_service.start_playback = AsyncMock()
+
     return container
 
 
@@ -158,25 +168,27 @@ async def test_toggle_disable_with_message(cog, interaction, mock_container):
 
 
 # =============================================================================
-# Toggle with query — seeds radio
+# Toggle with query — seeds via container services (no cross-cog coupling)
 # =============================================================================
 
 
 @pytest.mark.asyncio
-async def test_toggle_with_query_calls_execute_play(cog, interaction, mock_container):
-    playback_cog_mock = MagicMock()
-    playback_cog_mock._execute_play = AsyncMock()
-    cog.bot.get_cog = MagicMock(return_value=playback_cog_mock)
+async def test_toggle_with_query_resolves_and_enqueues(cog, interaction, mock_container):
+    """Seed query resolves a track via audio_resolver and enqueues it."""
+    seed_track = MagicMock()
+    seed_track.title = "Queried Song"
+    mock_container.audio_resolver.resolve = AsyncMock(return_value=seed_track)
 
-    track_mock = MagicMock()
-    track_mock.title = "Queried Song"
+    enqueue_result = MagicMock()
+    enqueue_result.success = True
+    enqueue_result.should_start = True
+    mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
 
-    result = MagicMock()
-    result.enabled = True
-    result.seed_title = "Queried Song"
-    result.tracks_added = 1
-    result.generated_tracks = [track_mock]
-    mock_container.radio_service.toggle_radio = AsyncMock(return_value=result)
+    radio_result = MagicMock()
+    radio_result.enabled = True
+    radio_result.seed_title = "Queried Song"
+    radio_result.generated_tracks = [seed_track]
+    mock_container.radio_service.toggle_radio = AsyncMock(return_value=radio_result)
 
     queue_info = MagicMock()
     queue_info.total_length = 1
@@ -184,31 +196,69 @@ async def test_toggle_with_query_calls_execute_play(cog, interaction, mock_conta
 
     await cog.radio.callback(cog, interaction, query="my query", action=None)
 
-    playback_cog_mock._execute_play.assert_awaited_once_with(interaction, "my query")
+    mock_container.audio_resolver.resolve.assert_awaited_once_with("my query")
+    mock_container.queue_service.enqueue.assert_awaited_once()
+    mock_container.playback_service.start_playback.assert_awaited_once_with(111)
 
 
 @pytest.mark.asyncio
-async def test_toggle_with_query_playback_cog_missing(cog, interaction, mock_container):
-    cog.bot.get_cog = MagicMock(return_value=None)
+async def test_toggle_with_query_resolve_fails(cog, interaction, mock_container):
+    """When audio_resolver returns None, sends ephemeral error and stops."""
+    mock_container.audio_resolver.resolve = AsyncMock(return_value=None)
 
-    track_mock = MagicMock()
-    track_mock.title = "Song"
+    await cog.radio.callback(cog, interaction, query="bad query", action=None)
 
-    result = MagicMock()
-    result.enabled = True
-    result.seed_title = "Song"
-    result.tracks_added = 0
-    result.generated_tracks = [track_mock]
-    mock_container.radio_service.toggle_radio = AsyncMock(return_value=result)
+    msg = interaction.followup.send.call_args[0][0]
+    assert "Couldn't find" in msg
+    mock_container.radio_service.toggle_radio.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_toggle_with_query_enqueue_fails(cog, interaction, mock_container):
+    """When enqueue returns failure, sends the error message and stops."""
+    seed_track = MagicMock()
+    seed_track.title = "Dup Song"
+    mock_container.audio_resolver.resolve = AsyncMock(return_value=seed_track)
+
+    enqueue_result = MagicMock()
+    enqueue_result.success = False
+    enqueue_result.message = "Already in queue"
+    mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
+
+    await cog.radio.callback(cog, interaction, query="dup query", action=None)
+
+    msg = interaction.followup.send.call_args[0][0]
+    assert "Already in queue" in msg
+    mock_container.radio_service.toggle_radio.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_toggle_with_query_disables_existing_radio(cog, interaction, mock_container):
+    """When radio is already enabled, _seed_track disables it so toggle re-enables fresh."""
+    mock_container.radio_service.is_enabled = MagicMock(return_value=True)
+
+    seed_track = MagicMock()
+    seed_track.title = "New Seed"
+    mock_container.audio_resolver.resolve = AsyncMock(return_value=seed_track)
+
+    enqueue_result = MagicMock()
+    enqueue_result.success = True
+    enqueue_result.should_start = False
+    mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
+
+    radio_result = MagicMock()
+    radio_result.enabled = True
+    radio_result.seed_title = "New Seed"
+    radio_result.generated_tracks = [seed_track]
+    mock_container.radio_service.toggle_radio = AsyncMock(return_value=radio_result)
 
     queue_info = MagicMock()
     queue_info.total_length = 1
     mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
-    # Should not raise
-    await cog.radio.callback(cog, interaction, query="my query", action=None)
+    await cog.radio.callback(cog, interaction, query="new seed", action=None)
 
-    interaction.followup.send.assert_called_once()
+    mock_container.radio_service.disable_radio.assert_called_once_with(111)
 
 
 # =============================================================================

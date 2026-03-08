@@ -7,32 +7,32 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent
+from pydantic_ai.settings import ModelSettings
 
+from discord_music_player.domain.shared.types import TrackForClassification, TrackGenreMap
 
 if TYPE_CHECKING:
     from discord_music_player.config.settings import AISettings
 
-logger = logging.getLogger(__name__)
-
-GENRE_VOCABULARY = [
-    "Rock", "Pop", "Hip-Hop", "Electronic", "R&B", "Country", "Jazz",
-    "Classical", "Latin", "Metal", "Folk", "Indie", "Reggae", "Blues",
-    "Punk", "Soul", "Funk", "Ambient", "Other",
-]
-
-BATCH_SIZE = 20
+_BATCH_SIZE = 20
+_UNKNOWN_GENRE = "Unknown"
 
 
 class GenreClassificationResponse(BaseModel):
+    """AI agent output mapping track IDs to genre strings."""
+
     model_config = ConfigDict(frozen=True)
 
-    genres: dict[str, str] = Field(default_factory=dict)
+    genres: TrackGenreMap = Field(default_factory=dict)
 
 
 class AIGenreClassifier:
+    """Classifies tracks into genres via an AI agent (genres are AI-determined, not hardcoded)."""
+
     def __init__(self, settings: AISettings) -> None:
         self._settings = settings
         self._agent: Agent[None, GenreClassificationResponse] | None = None
+        self._logger = logging.getLogger(type(self).__module__)
 
     def is_available(self) -> bool:
         try:
@@ -45,14 +45,14 @@ class AIGenreClassifier:
         if self._agent is not None:
             return self._agent
 
-        genres_text = ", ".join(GENRE_VOCABULARY)
         system_prompt = (
             "You are a music genre classifier. "
-            f"Allowed genres: {genres_text}. "
             "Rules:\n"
-            "- Classify each track into exactly one genre from the allowed list.\n"
+            "- Classify each track into exactly one genre.\n"
             "- Use the track title and artist to determine genre.\n"
-            "- If unsure, use 'Other'.\n"
+            "- Use standard, widely-recognised genre names (e.g. Rock, Pop, Hip-Hop, Electronic, Jazz, Classical, R&B, Metal, Folk, Country).\n"
+            "- Keep genre names short (one or two words) and consistent across tracks.\n"
+            "- If the genre is genuinely unclear, use 'Other'.\n"
         )
 
         self._agent = Agent(
@@ -63,61 +63,50 @@ class AIGenreClassifier:
         return self._agent
 
     async def classify_tracks(
-        self, tracks: list[tuple[str, str | None]]
-    ) -> dict[str, str]:
-        """Classify tracks by genre using AI.
-
-        Args:
-            tracks: List of (track_id, "title - artist" or just "title") tuples.
-
-        Returns:
-            Dict mapping track_id -> genre string.
-        """
+        self, tracks: list[TrackForClassification]
+    ) -> TrackGenreMap:
+        """Batch-classify tracks into genres, splitting into chunks of _BATCH_SIZE."""
         if not tracks:
             return {}
 
-        results: dict[str, str] = {}
+        results: TrackGenreMap = {}
 
-        for i in range(0, len(tracks), BATCH_SIZE):
-            batch = tracks[i : i + BATCH_SIZE]
+        for i in range(0, len(tracks), _BATCH_SIZE):
+            batch = tracks[i : i + _BATCH_SIZE]
             batch_results = await self._classify_batch(batch)
             results.update(batch_results)
 
         return results
 
     async def _classify_batch(
-        self, batch: list[tuple[str, str | None]]
-    ) -> dict[str, str]:
+        self, batch: list[TrackForClassification]
+    ) -> TrackGenreMap:
         try:
             agent = self._get_agent()
 
-            track_lines = []
-            for track_id, description in batch:
-                track_lines.append(f"- id:{track_id} | {description or 'Unknown'}")
+            track_lines = [
+                f"- id:{t.track_id} | {t.description or _UNKNOWN_GENRE}"
+                for t in batch
+            ]
 
-            tracks_text = "\n".join(track_lines)
-            user_prompt = f"Classify these tracks:\n{tracks_text}"
+            user_prompt = f"Classify these tracks:\n{chr(10).join(track_lines)}"
 
-            ai_result = await agent.run(
-                user_prompt,
-                model_settings={
-                    "max_tokens": self._settings.max_tokens,
-                    "temperature": 0.3,
-                },
+            settings = ModelSettings(
+                max_tokens=self._settings.max_tokens,
+                temperature=self._settings.temperature,
             )
+            ai_result = await agent.run(user_prompt, model_settings=settings)
 
             genres = ai_result.output.genres
 
-            result = {}
-            for track_id, _ in batch:
-                genre = genres.get(track_id, "Unknown")
-                if genre not in GENRE_VOCABULARY:
-                    genre = "Other"
-                result[track_id] = genre
+            result: TrackGenreMap = {
+                t.track_id: genres.get(t.track_id, _UNKNOWN_GENRE)
+                for t in batch
+            }
 
-            logger.info("Classified %d tracks into genres", len(result))
+            self._logger.info("Classified %d tracks into genres", len(result))
             return result
 
         except Exception as e:
-            logger.error("Genre classification failed: %s", e)
-            return {tid: "Unknown" for tid, _ in batch}
+            self._logger.error("Genre classification failed: %s", e)
+            return {t.track_id: _UNKNOWN_GENRE for t in batch}

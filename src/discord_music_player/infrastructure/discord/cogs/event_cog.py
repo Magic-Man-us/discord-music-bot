@@ -10,24 +10,23 @@ from typing import TYPE_CHECKING, Any
 import discord
 from discord.ext import commands
 
-from discord_music_player.domain.shared.constants import ConfigKeys, UIConstants
+from discord_music_player.domain.shared.constants import ConfigKeys, DiscordEmbedLimits, UIConstants
+from discord_music_player.domain.shared.types import DiscordSnowflake
+from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
+from discord_music_player.utils.reply import truncate
 
 if TYPE_CHECKING:
     from ....config.container import Container
 
-logger = logging.getLogger(__name__)
-
-
-class EventCog(commands.Cog):
+class EventCog(BaseCog):
     def __init__(self, bot: commands.Bot, container: Container) -> None:
-        self.bot = bot
-        self.container = container
+        super().__init__(bot, container)
         self._resumed_logged_once = False
 
         # Idle disconnect timers per guild
-        self._idle_timers: dict[int, asyncio.Task[None]] = {}
+        self._idle_timers: dict[DiscordSnowflake, asyncio.Task[None]] = {}
         # Empty-channel disconnect timers per guild
-        self._empty_channel_timers: dict[int, asyncio.Task[None]] = {}
+        self._empty_channel_timers: dict[DiscordSnowflake, asyncio.Task[None]] = {}
 
         from ....domain.shared.events import get_event_bus
 
@@ -43,8 +42,8 @@ class EventCog(commands.Cog):
         self._event_bus.subscribe(TrackStartedPlaying, self._on_track_started)
 
     @staticmethod
-    def _env_flag(name: str) -> bool:
-        return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+    def _env_flag(key: str) -> bool:  # ConfigKeys constant
+        return os.getenv(key, "").strip().lower() in {"1", "true", "yes", "on"}
 
     @staticmethod
     def _is_bot_or_none(user: discord.abc.User | discord.Member | None) -> bool:
@@ -57,20 +56,20 @@ class EventCog(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self) -> None:
         bot_user = self.bot.user
-        logger.info("Bot ready as %s (%s)", bot_user, bot_user.id if bot_user else "?")
+        self.logger.info("Bot ready as %s (%s)", bot_user, bot_user.id if bot_user else "?")
 
     @commands.Cog.listener()
     async def on_connect(self) -> None:
-        logger.info("WebSocket connected")
+        self.logger.info("WebSocket connected")
 
     @commands.Cog.listener()
     async def on_disconnect(self) -> None:
-        logger.warning("WebSocket disconnected")
+        self.logger.warning("WebSocket disconnected")
 
     @commands.Cog.listener()
     async def on_resumed(self) -> None:
         if not self._resumed_logged_once:
-            logger.info("WebSocket session resumed")
+            self.logger.info("WebSocket session resumed")
             self._resumed_logged_once = True
 
     # ─────────────────────────────────────────────────────────────────
@@ -79,7 +78,7 @@ class EventCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild) -> None:
-        logger.info("Joined guild: %s (%s)", guild.name, guild.id)
+        self.logger.info("Joined guild: %s (%s)", guild.name, guild.id)
         if guild.system_channel:
             try:
                 await guild.system_channel.send("Thanks for inviting me! Use `/help` for commands.")
@@ -88,7 +87,7 @@ class EventCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild) -> None:
-        logger.info("Left guild: %s (%s)", guild.name, guild.id)
+        self.logger.info("Left guild: %s (%s)", guild.name, guild.id)
 
         self._cancel_idle_timer(guild.id)
         self._cancel_empty_channel_timer(guild.id)
@@ -96,19 +95,19 @@ class EventCog(commands.Cog):
         try:
             self.container.message_state_manager.reset(guild.id)
         except Exception:
-            logger.debug("Could not cleanup message state for guild %s", guild.id)
+            self.logger.debug("Could not cleanup message state for guild %s", guild.id)
 
         try:
             repo = self.container.session_repository
             await repo.delete(guild.id)
-            logger.debug("Cleaned up session for guild %s", guild.id)
+            self.logger.debug("Cleaned up session for guild %s", guild.id)
         except Exception:
             pass
 
     @commands.Cog.listener()
     async def on_guild_update(self, before: discord.Guild, after: discord.Guild) -> None:
         if before.name != after.name:
-            logger.info("Guild renamed: %s -> %s", before.name, after.name)
+            self.logger.info("Guild renamed: %s -> %s", before.name, after.name)
 
     # ─────────────────────────────────────────────────────────────────
     # Member Events
@@ -116,7 +115,7 @@ class EventCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
-        logger.info("Member joined: %s (%s) guild=%s", member, member.id, member.guild.id)
+        self.logger.info("Member joined: %s (%s) guild=%s", member, member.id, member.guild.id)
         ch = member.guild.system_channel
         if ch:
             try:
@@ -128,17 +127,17 @@ class EventCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
-        logger.info(
+        self.logger.info(
             "Member left: %s (%s) guild=%s", member.display_name, member.id, member.guild.id
         )
 
     @commands.Cog.listener()
     async def on_member_ban(self, guild: discord.Guild, user: discord.User) -> None:
-        logger.warning("User banned: %s (%s) guild=%s", user.display_name, user.id, guild.id)
+        self.logger.warning("User banned: %s (%s) guild=%s", user.display_name, user.id, guild.id)
 
     @commands.Cog.listener()
     async def on_member_unban(self, guild: discord.Guild, user: discord.User) -> None:
-        logger.info("User unbanned: %s (%s) guild=%s", user.display_name, user.id, guild.id)
+        self.logger.info("User unbanned: %s (%s) guild=%s", user.display_name, user.id, guild.id)
 
     # ─────────────────────────────────────────────────────────────────
     # Idle Disconnect (AFK timeout)
@@ -146,13 +145,13 @@ class EventCog(commands.Cog):
 
     async def _on_queue_exhausted(self, event: Any) -> None:
         """Start an idle timer when the queue runs out."""
-        guild_id: int = event.guild_id
+        guild_id: DiscordSnowflake = event.guild_id
         self._cancel_idle_timer(guild_id)
 
         from ....domain.shared.constants import TimeConstants
 
         timeout = TimeConstants.IDLE_DISCONNECT_SECONDS
-        logger.info(
+        self.logger.info(
             "Queue exhausted in guild %s, scheduling idle disconnect in %ss",
             guild_id,
             timeout,
@@ -165,13 +164,13 @@ class EventCog(commands.Cog):
         """Cancel any pending idle timer when a new track starts."""
         self._cancel_idle_timer(event.guild_id)
 
-    def _cancel_idle_timer(self, guild_id: int) -> None:
+    def _cancel_idle_timer(self, guild_id: DiscordSnowflake) -> None:
         timer = self._idle_timers.pop(guild_id, None)
         if timer is not None and not timer.done():
             timer.cancel()
-            logger.debug("Cancelled idle timer for guild %s", guild_id)
+            self.logger.debug("Cancelled idle timer for guild %s", guild_id)
 
-    async def _idle_disconnect(self, guild_id: int, timeout: int) -> None:
+    async def _idle_disconnect(self, guild_id: DiscordSnowflake, timeout: int) -> None:
         """Wait *timeout* seconds, then disconnect if still idle."""
         try:
             await asyncio.sleep(timeout)
@@ -187,7 +186,7 @@ class EventCog(commands.Cog):
         if guild is None:
             return
 
-        logger.info("Idle timeout reached, disconnecting from guild %s", guild_id)
+        self.logger.info("Idle timeout reached, disconnecting from guild %s", guild_id)
         await self._disconnect_and_cleanup(guild)
 
     # ─────────────────────────────────────────────────────────────────
@@ -286,16 +285,20 @@ class EventCog(commands.Cog):
         from ....domain.shared.constants import TimeConstants
 
         timeout = TimeConstants.EMPTY_CHANNEL_DISCONNECT_SECONDS
-        logger.info("No users left in voice channel, scheduling disconnect in %ss for guild %s", timeout, guild.id)
+        self.logger.info(
+            "No users left in voice channel, scheduling disconnect in %ss for guild %s",
+            timeout,
+            guild.id,
+        )
         self._empty_channel_timers[guild.id] = asyncio.create_task(
             self._empty_channel_disconnect(guild, timeout)
         )
 
-    def _cancel_empty_channel_timer(self, guild_id: int) -> None:
+    def _cancel_empty_channel_timer(self, guild_id: DiscordSnowflake) -> None:
         timer = self._empty_channel_timers.pop(guild_id, None)
         if timer is not None and not timer.done():
             timer.cancel()
-            logger.debug("Cancelled empty-channel timer for guild %s", guild_id)
+            self.logger.debug("Cancelled empty-channel timer for guild %s", guild_id)
 
     async def _empty_channel_disconnect(self, guild: discord.Guild, timeout: int) -> None:
         """Wait *timeout* seconds, then disconnect if the channel is still empty."""
@@ -308,7 +311,7 @@ class EventCog(commands.Cog):
         if bot_channel is None or self._has_non_bot_members(bot_channel):
             return
 
-        logger.info("Empty-channel timeout reached, disconnecting guild %s", guild.id)
+        self.logger.info("Empty-channel timeout reached, disconnecting guild %s", guild.id)
         await self._disconnect_and_cleanup(guild)
 
     async def _disconnect_and_cleanup(self, guild: discord.Guild) -> None:
@@ -316,7 +319,7 @@ class EventCog(commands.Cog):
             await self.container.playback_service.cleanup_guild(guild.id)
             self.container.message_state_manager.reset(guild.id)
         except Exception:
-            logger.exception("Failed to disconnect and cleanup guild %s", guild.id)
+            self.logger.exception("Failed to disconnect and cleanup guild %s", guild.id)
 
     # ─────────────────────────────────────────────────────────────────
     # Message Events
@@ -327,11 +330,11 @@ class EventCog(commands.Cog):
         if self._is_bot_or_none(message.author):
             return
 
-        if not (self._chat_logging and logger.isEnabledFor(logging.DEBUG)):
+        if not (self._chat_logging and self.logger.isEnabledFor(logging.DEBUG)):
             return
 
-        snippet = (message.content[:UIConstants.TITLE_TRUNCATION] + "…") if len(message.content) > UIConstants.TITLE_TRUNCATION else message.content
-        logger.debug("Message by %s: %s", message.author.display_name, snippet)
+        snippet = truncate(message.content, DiscordEmbedLimits.MESSAGE_CONTENT_SNIPPET)
+        self.logger.debug("Message by %s: %s", message.author.display_name, snippet)
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:
@@ -341,10 +344,10 @@ class EventCog(commands.Cog):
         if before.content == after.content:
             return
 
-        if not (self._chat_logging and logger.isEnabledFor(logging.DEBUG)):
+        if not (self._chat_logging and self.logger.isEnabledFor(logging.DEBUG)):
             return
 
-        logger.debug(
+        self.logger.debug(
             "Message edit by %s: '%s' -> '%s'",
             after.author.display_name,
             before.content[:60],
@@ -356,10 +359,10 @@ class EventCog(commands.Cog):
         if self._is_bot_or_none(message.author):
             return
 
-        if not (self._chat_logging and logger.isEnabledFor(logging.DEBUG)):
+        if not (self._chat_logging and self.logger.isEnabledFor(logging.DEBUG)):
             return
 
-        logger.debug("Message deleted %s by %s", message.id, message.author.display_name)
+        self.logger.debug("Message deleted %s by %s", message.id, message.author.display_name)
 
     # ─────────────────────────────────────────────────────────────────
     # Reaction Events
@@ -370,10 +373,10 @@ class EventCog(commands.Cog):
         if self._is_bot_or_none(payload.member):
             return
 
-        if not (self._reaction_logging and logger.isEnabledFor(logging.DEBUG)):
+        if not (self._reaction_logging and self.logger.isEnabledFor(logging.DEBUG)):
             return
 
-        logger.debug(
+        self.logger.debug(
             "Reaction add msg=%s user=%s emoji=%s",
             payload.message_id,
             payload.member.display_name if payload.member else f"user_id={payload.user_id}",
@@ -385,10 +388,10 @@ class EventCog(commands.Cog):
         if self._is_bot_or_none(user):
             return
 
-        if not (self._reaction_logging and logger.isEnabledFor(logging.DEBUG)):
+        if not (self._reaction_logging and self.logger.isEnabledFor(logging.DEBUG)):
             return
 
-        logger.debug(
+        self.logger.debug(
             "Reaction remove msg=%s user=%s emoji=%s",
             reaction.message.id,
             user.display_name,
@@ -404,7 +407,7 @@ class EventCog(commands.Cog):
         if isinstance(error, commands.CommandOnCooldown):
             retry_after = error.retry_after
             time_str = f"{retry_after:.1f}s" if retry_after >= 1 else f"{retry_after * UIConstants.MS_PER_SECOND:.0f}ms"
-            logger.debug(
+            self.logger.debug(
                 "Cooldown triggered for command '%s' by %s (%.2fs remaining)",
                 ctx.command.qualified_name if ctx.command else "<unknown>",
                 ctx.author.id,
@@ -412,7 +415,7 @@ class EventCog(commands.Cog):
             )
             try:
                 await ctx.reply(
-                    f"⏳ Command on cooldown. Try again in {time_str}.",
+                    f"Command on cooldown. Try again in {time_str}.",
                     mention_author=False,
                 )
             except discord.HTTPException:
@@ -420,13 +423,13 @@ class EventCog(commands.Cog):
             return
 
         if isinstance(error, commands.MissingPermissions):
-            await ctx.reply("❌ You don't have permission to use this command.", mention_author=False)
+            await ctx.reply("You don't have permission to use this command.", mention_author=False)
             return
 
         if isinstance(error, commands.BotMissingPermissions):
             missing = ", ".join(error.missing_permissions)
             await ctx.reply(
-                f"❌ I need these permissions: {missing}",
+                f"I need these permissions: {missing}",
                 mention_author=False,
             )
             return
@@ -435,16 +438,11 @@ class EventCog(commands.Cog):
             return
 
         original = error.original if isinstance(error, commands.CommandInvokeError) else error
-        logger.exception(
+        self.logger.exception(
             "Unhandled command error in '%s'",
             ctx.command.qualified_name if ctx.command else "<unknown>",
             exc_info=original,
         )
 
 
-async def setup(bot: commands.Bot) -> None:
-    container = getattr(bot, "container", None)
-    if container is None:
-        raise RuntimeError("Container not found on bot instance")
-
-    await bot.add_cog(EventCog(bot, container))
+setup = EventCog.setup

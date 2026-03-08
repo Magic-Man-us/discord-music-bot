@@ -41,7 +41,7 @@ def _make_interaction(
     guild = MagicMock()
     if bot_channel_id is not None:
         guild.voice_client = MagicMock()
-        guild.voice_client.channel = MagicMock()
+        guild.voice_client.channel = MagicMock(spec=discord.VoiceChannel)
         guild.voice_client.channel.id = bot_channel_id
     else:
         guild.voice_client = None

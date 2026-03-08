@@ -23,7 +23,7 @@ class MusicBot(commands.Bot):
         self,
         container: Container,
         settings: Settings,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
@@ -166,7 +166,7 @@ class MusicBot(commands.Bot):
             )
 
             message = await text_channel.send(
-                f"🔄 I was playing **{track_title}** before restarting. Resume playback?",
+                f"I was playing **{track_title}** before restarting. Resume playback?",
                 view=view,
             )
             view.set_message(message)
@@ -258,7 +258,7 @@ class MusicBot(commands.Bot):
             original,
         )
 
-        error_msg = f"❌ An error occurred: {original}"
+        error_msg = f"An error occurred: {original}"
 
         try:
             if interaction.response.is_done():
@@ -328,7 +328,7 @@ class MusicBot(commands.Bot):
         logger.info("Bot shutdown complete")
 
     def run_with_graceful_shutdown(self, token: str, *, shutdown_timeout: float = 30.0) -> None:
-        async def runner():
+        async def runner() -> None:
             async with self:
                 loop = asyncio.get_running_loop()
 

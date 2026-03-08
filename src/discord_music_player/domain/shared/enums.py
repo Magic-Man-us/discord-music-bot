@@ -52,6 +52,18 @@ class LogLevel(StrEnum):
     CRITICAL = "CRITICAL"
 
 
+class Weekday(StrEnum):
+    """Weekday short names ordered Sunday=0 to match SQLite strftime('%w')."""
+
+    SUN = "Sun"
+    MON = "Mon"
+    TUE = "Tue"
+    WED = "Wed"
+    THU = "Thu"
+    FRI = "Fri"
+    SAT = "Sat"
+
+
 class EnvironmentType(StrEnum):
     """Valid environment types."""
 

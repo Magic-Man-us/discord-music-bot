@@ -189,7 +189,7 @@ class TestEventCogInitialization:
         mock_bot.container = None
         mock_bot.add_cog = AsyncMock()
 
-        with pytest.raises(RuntimeError, match="Container not found on bot instance"):
+        with pytest.raises(RuntimeError, match="container not found on bot instance"):
             await setup(mock_bot)
 
 
@@ -768,7 +768,7 @@ class TestMessageEvents:
         message.author = MagicMock()
         message.author.bot = False
         message.author.display_name = "TestUser"
-        message.content = "A" * 100
+        message.content = "A" * 300
 
         event_cog._chat_logging = True
 

@@ -1,20 +1,23 @@
-"""Now-playing view with YouTube, Download, and AI Shuffle buttons."""
+"""Now-playing view with YouTube, Download, and AI Similar-track buttons."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import urllib.parse
 from typing import TYPE_CHECKING, ClassVar
 
 import discord
 
 from discord_music_player.domain.recommendations.entities import RecommendationRequest
+from discord_music_player.domain.shared.types import DiscordSnowflake, HttpUrlStr, NonEmptyStr
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     check_user_in_voice,
 )
 from discord_music_player.infrastructure.discord.views.base_view import (
     BaseInteractiveView,
+)
+from discord_music_player.infrastructure.discord.views.download_view import (
+    add_track_link_buttons,
 )
 from discord_music_player.utils.reply import truncate
 
@@ -23,22 +26,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_SHUFFLE_LABEL = "\U0001f500 Shuffle"
-_SHUFFLE_THINKING_LABEL = "\U0001f500 Thinking..."
-_MAX_GUILD_LOCKS = 256
-
 
 class NowPlayingView(BaseInteractiveView):
-    """View for now-playing embeds: YouTube link, Download link, and AI Shuffle button."""
+    """Adds an AI-powered "Similar" button alongside the standard YouTube/Download links."""
 
-    _guild_locks: ClassVar[dict[int, asyncio.Lock]] = {}
+    _SIMILAR_LABEL: ClassVar[str] = "Similar"
+    _MAX_GUILD_LOCKS: ClassVar[int] = 256
+    _guild_locks: ClassVar[dict[DiscordSnowflake, asyncio.Lock]] = {}
 
     def __init__(
         self,
         *,
-        webpage_url: str,
-        title: str,
-        guild_id: int,
+        webpage_url: HttpUrlStr,
+        title: NonEmptyStr,
+        guild_id: DiscordSnowflake,
         container: Container,
         timeout: float = 300.0,
     ) -> None:
@@ -46,33 +47,14 @@ class NowPlayingView(BaseInteractiveView):
         self.webpage_url = webpage_url
         self.title = title
         self.guild_id = guild_id
-        self.container = container
+        self._container = container
 
-        self._add_link_buttons()
-
-    def _add_link_buttons(self) -> None:
-        self.add_item(
-            discord.ui.Button(
-                style=discord.ButtonStyle.link,
-                label="\U0001f4fa YouTube",
-                url=self.webpage_url,
-            )
-        )
-
-        cobalt_url = f"https://cobalt.tools/#{urllib.parse.quote(self.webpage_url, safe='')}"
-        self.add_item(
-            discord.ui.Button(
-                style=discord.ButtonStyle.link,
-                label="\u2b07\ufe0f Download",
-                url=cobalt_url,
-            )
-        )
+        add_track_link_buttons(self, webpage_url)
 
     @classmethod
-    def _get_lock(cls, guild_id: int) -> asyncio.Lock:
+    def _get_lock(cls, guild_id: DiscordSnowflake) -> asyncio.Lock:
         if guild_id not in cls._guild_locks:
-            # Evict stale entries if the dict grows too large
-            if len(cls._guild_locks) >= _MAX_GUILD_LOCKS:
+            if len(cls._guild_locks) >= cls._MAX_GUILD_LOCKS:
                 unlocked = [gid for gid, lk in cls._guild_locks.items() if not lk.locked()]
                 for gid in unlocked:
                     del cls._guild_locks[gid]
@@ -82,15 +64,15 @@ class NowPlayingView(BaseInteractiveView):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return await check_user_in_voice(interaction, self.guild_id)
 
-    @discord.ui.button(label=_SHUFFLE_LABEL, style=discord.ButtonStyle.primary)
-    async def shuffle_button(
+    @discord.ui.button(label=_SIMILAR_LABEL, style=discord.ButtonStyle.primary)
+    async def similar_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[NowPlayingView]
     ) -> None:
         lock = self._get_lock(self.guild_id)
 
         if lock.locked():
             await interaction.response.send_message(
-                "Someone is already shuffling, please wait.", ephemeral=True
+                "A similar track search is already in progress, please wait.", ephemeral=True
             )
             return
 
@@ -99,13 +81,11 @@ class NowPlayingView(BaseInteractiveView):
         async with lock:
             edited = False
             try:
-                # Disable the shuffle button while processing
                 button.disabled = True
-                button.label = _SHUFFLE_THINKING_LABEL
+                button.label = "Thinking..."
                 await self._try_edit_message()
 
-                # Get current track info for the recommendation
-                session = await self.container.session_repository.get(self.guild_id)
+                session = await self._container.session_repository.get(self.guild_id)
                 if session is None or session.current_track is None:
                     await interaction.followup.send(
                         "Nothing is playing.", ephemeral=True
@@ -114,13 +94,12 @@ class NowPlayingView(BaseInteractiveView):
 
                 current = session.current_track
 
-                # Get 1 AI recommendation
                 request = RecommendationRequest(
                     base_track_title=current.title,
                     base_track_artist=current.artist or current.uploader,
                     count=1,
                 )
-                recommendations = await self.container.shuffle_ai_client.get_recommendations(
+                recommendations = await self._container.shuffle_ai_client.get_recommendations(
                     request
                 )
 
@@ -133,8 +112,7 @@ class NowPlayingView(BaseInteractiveView):
 
                 rec = recommendations[0]
 
-                # Resolve the recommendation to a playable track
-                track = await self.container.audio_resolver.resolve(rec.query)
+                track = await self._container.audio_resolver.resolve(rec.query)
                 if not track:
                     await interaction.followup.send(
                         f"Could not find a playable track for: {rec.display_text}",
@@ -142,12 +120,10 @@ class NowPlayingView(BaseInteractiveView):
                     )
                     return
 
-                # Mark as recommendation
                 track = track.model_copy(update={"is_from_recommendation": True})
 
-                # Enqueue as next track
                 user = interaction.user
-                result = await self.container.queue_service.enqueue_next(
+                result = await self._container.queue_service.enqueue_next(
                     guild_id=self.guild_id,
                     track=track,
                     user_id=user.id,
@@ -160,39 +136,35 @@ class NowPlayingView(BaseInteractiveView):
 
                 resolved_track = result.track or track
 
-                # Send ephemeral confirmation
                 await interaction.followup.send(
-                    f"🔀 Queued next: **{truncate(resolved_track.title, 60)}**",
+                    f"Queued next: **{truncate(resolved_track.title, 60)}**",
                     ephemeral=True,
                 )
 
-                # Re-enable button and update embed with "Next Up" in a single edit
                 button.disabled = False
-                button.label = _SHUFFLE_LABEL
+                button.label = self._SIMILAR_LABEL
                 if self._message:
-                    from ..services.message_state_manager import MessageStateManager
+                    from ..services.embed_builder import build_now_playing_embed
 
-                    embed = MessageStateManager.build_now_playing_embed(
+                    embed = build_now_playing_embed(
                         current, next_track=resolved_track
                     )
                     await self._try_edit_message(embed=embed)
                 edited = True
 
             except Exception:
-                logger.exception("Error in shuffle button handler")
+                logger.exception("Error in similar button handler")
                 await interaction.followup.send(
-                    "An error occurred while shuffling. Please try again.",
+                    "An error occurred while finding similar tracks. Please try again.",
                     ephemeral=True,
                 )
             finally:
-                # Re-enable the button if the success path didn't already do it
                 if not edited:
                     button.disabled = False
-                    button.label = _SHUFFLE_LABEL
+                    button.label = self._SIMILAR_LABEL
                     await self._try_edit_message()
 
     async def _try_edit_message(self, *, embed: discord.Embed | None = None) -> None:
-        """Edit the tracked message, silently ignoring failures."""
         if self._message is None:
             return
         try:

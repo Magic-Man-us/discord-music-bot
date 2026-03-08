@@ -6,6 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
+from discord_music_player.domain.shared.types import TrackGenreMap
 
 if TYPE_CHECKING:
     from ..database import Database
@@ -17,7 +18,7 @@ class SQLiteGenreCacheRepository:
     def __init__(self, database: Database) -> None:
         self._db = database
 
-    async def get_genres(self, track_ids: list[str]) -> dict[str, str]:
+    async def get_genres(self, track_ids: list[str]) -> TrackGenreMap:
         """Batch lookup cached genre classifications."""
         if not track_ids:
             return {}
@@ -29,7 +30,7 @@ class SQLiteGenreCacheRepository:
         )
         return {row["track_id"]: row["genre"] for row in rows}
 
-    async def save_genres(self, classifications: dict[str, str]) -> None:
+    async def save_genres(self, classifications: TrackGenreMap) -> None:
         """Batch upsert genre classifications."""
         if not classifications:
             return

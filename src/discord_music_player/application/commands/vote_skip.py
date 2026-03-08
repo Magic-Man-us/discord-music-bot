@@ -37,6 +37,15 @@ class VoteSkipResult(BaseModel):
     def is_success(self) -> bool:
         return self.result.is_success
 
+    def format_display(self, track_title: str) -> str:
+        """Format a user-facing message with track title for action-executed results."""
+        return self.result.get_message(
+            VoteType.SKIP,
+            self.votes_current,
+            self.votes_needed,
+            track_title=track_title,
+        )
+
     @classmethod
     def from_vote_result(
         cls,

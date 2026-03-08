@@ -11,6 +11,9 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from discord_music_player.domain.shared.constants import UIConstants
+from discord_music_player.domain.shared.types import DiscordSnowflake
+
 if TYPE_CHECKING:
     from ....application.interfaces.voice_adapter import VoiceAdapter
     from ....infrastructure.discord.services.voice_warmup import VoiceWarmupTracker
@@ -71,7 +74,7 @@ async def ensure_user_in_voice_and_warm(
         return False
 
     if not member.voice or not member.voice.channel:
-        await send_ephemeral(interaction, "You need to be in a voice channel first.")
+        await send_ephemeral(interaction, UIConstants.NOT_IN_VOICE)
         return False
 
     return await ensure_voice_warmup(interaction, member, voice_warmup_tracker)
@@ -90,7 +93,7 @@ async def ensure_voice(
     assert interaction.guild is not None
 
     if not member.voice or not member.voice.channel:
-        await send_ephemeral(interaction, "You need to be in a voice channel first.")
+        await send_ephemeral(interaction, UIConstants.NOT_IN_VOICE)
         return False
 
     if not await ensure_voice_warmup(interaction, member, voice_warmup_tracker):
@@ -108,7 +111,7 @@ async def ensure_voice(
 
 
 async def check_user_in_voice(
-    interaction: discord.Interaction, guild_id: int
+    interaction: discord.Interaction, guild_id: DiscordSnowflake
 ) -> bool:
     """Return True if the interacting user is in the bot's voice channel.
 
@@ -124,13 +127,16 @@ async def check_user_in_voice(
 
     if not user.voice or not user.voice.channel:
         await interaction.response.send_message(
-            "You need to be in a voice channel first.", ephemeral=True
+            UIConstants.NOT_IN_VOICE, ephemeral=True
         )
         return False
 
     guild = interaction.client.get_guild(guild_id)
     if guild and guild.voice_client and guild.voice_client.channel:
-        if user.voice.channel.id != guild.voice_client.channel.id:
+        bot_channel = guild.voice_client.channel
+        # voice_client.channel is typed as Connectable in discord.py stubs,
+        # but at runtime it's always VoiceChannel/StageChannel which have .id
+        if isinstance(bot_channel, discord.abc.GuildChannel) and user.voice.channel.id != bot_channel.id:
             await interaction.response.send_message(
                 "You must be in a voice channel to use this command!", ephemeral=True
             )

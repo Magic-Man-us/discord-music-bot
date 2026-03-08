@@ -89,7 +89,7 @@ class TestNowPlayingViewInit:
         assert view.webpage_url == "https://youtube.com/watch?v=xyz"
         assert view.title == "My Song"
         assert view.guild_id == 42
-        assert view.container is container
+        assert view._container is container
 
     def test_default_timeout(self):
         view, _ = _make_view()
@@ -132,14 +132,14 @@ class TestNowPlayingViewInit:
         expected_cobalt = f"https://cobalt.tools/#{urllib.parse.quote(url, safe='')}"
         assert download_btn[0].url == expected_cobalt
 
-    def test_has_shuffle_button(self):
+    def test_has_similar_button(self):
         view, _ = _make_view()
-        shuffle_buttons = [
+        similar_buttons = [
             item for item in view.children
-            if isinstance(item, discord.ui.Button) and "Shuffle" in (item.label or "")
+            if isinstance(item, discord.ui.Button) and "Similar" in (item.label or "")
         ]
-        assert len(shuffle_buttons) == 1
-        assert shuffle_buttons[0].style == discord.ButtonStyle.primary
+        assert len(similar_buttons) == 1
+        assert similar_buttons[0].style == discord.ButtonStyle.primary
 
 
 # =============================================================================
@@ -209,13 +209,13 @@ class TestInteractionCheck:
 
 
 # =============================================================================
-# Shuffle Button Tests
+# Similar Button Tests
 # =============================================================================
 
 
-class TestShuffleButton:
+class TestSimilarButton:
     @pytest.mark.asyncio
-    async def test_shuffle_lock_already_held_sends_ephemeral(self):
+    async def test_similar_lock_already_held_sends_ephemeral(self):
         view, _ = _make_view(guild_id=500)
         interaction = _make_interaction()
 
@@ -227,17 +227,17 @@ class TestShuffleButton:
         await lock.acquire()
 
         try:
-            await view.shuffle_button.callback(interaction)
+            await view.similar_button.callback(interaction)
 
             interaction.response.send_message.assert_awaited_once_with(
-                "Someone is already shuffling, please wait.", ephemeral=True
+                "A similar track search is already in progress, please wait.", ephemeral=True
             )
         finally:
             lock.release()
             NowPlayingView._guild_locks.pop(500, None)
 
     @pytest.mark.asyncio
-    async def test_shuffle_no_session_sends_nothing_playing(self):
+    async def test_similar_no_session_sends_nothing_playing(self):
         container = _make_container()
         container.session_repository.get = AsyncMock(return_value=None)
         view, _ = _make_view(container=container, guild_id=501)
@@ -248,7 +248,7 @@ class TestShuffleButton:
         )
 
         try:
-            await view.shuffle_button.callback(interaction)
+            await view.similar_button.callback(interaction)
 
             interaction.response.defer.assert_awaited_once_with(ephemeral=True)
             interaction.followup.send.assert_awaited_once_with(
@@ -258,7 +258,7 @@ class TestShuffleButton:
             NowPlayingView._guild_locks.pop(501, None)
 
     @pytest.mark.asyncio
-    async def test_shuffle_session_no_current_track_sends_nothing_playing(self):
+    async def test_similar_session_no_current_track_sends_nothing_playing(self):
         container = _make_container()
         session = MagicMock()
         session.current_track = None
@@ -271,7 +271,7 @@ class TestShuffleButton:
         )
 
         try:
-            await view.shuffle_button.callback(interaction)
+            await view.similar_button.callback(interaction)
 
             interaction.followup.send.assert_awaited_once_with(
                 "Nothing is playing.", ephemeral=True
@@ -280,7 +280,7 @@ class TestShuffleButton:
             NowPlayingView._guild_locks.pop(502, None)
 
     @pytest.mark.asyncio
-    async def test_shuffle_no_recommendations_sends_error(self):
+    async def test_similar_no_recommendations_sends_error(self):
         container = _make_container()
         session = MagicMock()
         session.current_track = _make_track()
@@ -294,7 +294,7 @@ class TestShuffleButton:
         )
 
         try:
-            await view.shuffle_button.callback(interaction)
+            await view.similar_button.callback(interaction)
 
             interaction.followup.send.assert_awaited_once_with(
                 "Could not generate a recommendation. Try again later.", ephemeral=True
@@ -303,7 +303,7 @@ class TestShuffleButton:
             NowPlayingView._guild_locks.pop(503, None)
 
     @pytest.mark.asyncio
-    async def test_shuffle_track_not_resolved_sends_not_found(self):
+    async def test_similar_track_not_resolved_sends_not_found(self):
         container = _make_container()
         session = MagicMock()
         session.current_track = _make_track()
@@ -323,7 +323,7 @@ class TestShuffleButton:
         )
 
         try:
-            await view.shuffle_button.callback(interaction)
+            await view.similar_button.callback(interaction)
 
             interaction.followup.send.assert_awaited_once_with(
                 "Could not find a playable track for: Artist - Song",
@@ -333,7 +333,7 @@ class TestShuffleButton:
             NowPlayingView._guild_locks.pop(504, None)
 
     @pytest.mark.asyncio
-    async def test_shuffle_enqueue_fails_sends_result_message(self):
+    async def test_similar_enqueue_fails_sends_result_message(self):
         container = _make_container()
         session = MagicMock()
         current = _make_track()
@@ -360,14 +360,14 @@ class TestShuffleButton:
         )
 
         try:
-            await view.shuffle_button.callback(interaction)
+            await view.similar_button.callback(interaction)
 
             interaction.followup.send.assert_awaited_once_with("Queue is full", ephemeral=True)
         finally:
             NowPlayingView._guild_locks.pop(505, None)
 
     @pytest.mark.asyncio
-    async def test_shuffle_success_sends_confirmation(self):
+    async def test_similar_success_sends_confirmation(self):
         container = _make_container()
         session = MagicMock()
         current = _make_track()
@@ -394,7 +394,7 @@ class TestShuffleButton:
         )
 
         try:
-            await view.shuffle_button.callback(interaction)
+            await view.similar_button.callback(interaction)
 
             msg = interaction.followup.send.call_args[0][0]
             assert "Shuffled Song" in msg
@@ -402,7 +402,7 @@ class TestShuffleButton:
             NowPlayingView._guild_locks.pop(506, None)
 
     @pytest.mark.asyncio
-    async def test_shuffle_success_updates_embed_when_message_set(self):
+    async def test_similar_success_updates_embed_when_message_set(self):
         container = _make_container()
         session = MagicMock()
         current = _make_track()
@@ -431,7 +431,7 @@ class TestShuffleButton:
         )
 
         try:
-            await view.shuffle_button.callback(interaction)
+            await view.similar_button.callback(interaction)
 
             # Message should have been edited (button disable + embed update)
             assert message.edit.await_count >= 1
@@ -439,7 +439,7 @@ class TestShuffleButton:
             NowPlayingView._guild_locks.pop(507, None)
 
     @pytest.mark.asyncio
-    async def test_shuffle_exception_sends_error_and_restores_button(self):
+    async def test_similar_exception_sends_error_and_restores_button(self):
         container = _make_container()
         session = MagicMock()
         session.current_track = _make_track()
@@ -456,15 +456,15 @@ class TestShuffleButton:
         )
 
         try:
-            await view.shuffle_button.callback(interaction)
+            await view.similar_button.callback(interaction)
 
             interaction.followup.send.assert_awaited_once_with(
-                "An error occurred while shuffling. Please try again.", ephemeral=True
+                "An error occurred while finding similar tracks. Please try again.", ephemeral=True
             )
             # Button should be re-enabled after error
             shuffle_btn = [
                 item for item in view.children
-                if isinstance(item, discord.ui.Button) and "Shuffle" in (item.label or "")
+                if isinstance(item, discord.ui.Button) and "Similar" in (item.label or "")
             ]
             assert len(shuffle_btn) == 1
             assert shuffle_btn[0].disabled is False
@@ -472,7 +472,7 @@ class TestShuffleButton:
             NowPlayingView._guild_locks.pop(508, None)
 
     @pytest.mark.asyncio
-    async def test_shuffle_uses_result_track_over_resolved(self):
+    async def test_similar_uses_result_track_over_resolved(self):
         """When enqueue_next returns a track, it should be used for the confirmation."""
         container = _make_container()
         session = MagicMock()
@@ -500,7 +500,7 @@ class TestShuffleButton:
         )
 
         try:
-            await view.shuffle_button.callback(interaction)
+            await view.similar_button.callback(interaction)
 
             msg = interaction.followup.send.call_args[0][0]
             assert "Result Title" in msg
@@ -508,7 +508,7 @@ class TestShuffleButton:
             NowPlayingView._guild_locks.pop(509, None)
 
     @pytest.mark.asyncio
-    async def test_shuffle_falls_back_to_resolved_track_when_result_track_none(self):
+    async def test_similar_falls_back_to_resolved_track_when_result_track_none(self):
         """When result.track is None, fallback to the resolved track."""
         container = _make_container()
         session = MagicMock()
@@ -535,7 +535,7 @@ class TestShuffleButton:
         )
 
         try:
-            await view.shuffle_button.callback(interaction)
+            await view.similar_button.callback(interaction)
 
             msg = interaction.followup.send.call_args[0][0]
             assert "Fallback Title" in msg

@@ -72,14 +72,10 @@ def mock_container():
 
     # Mock AI client
     container.ai_client = MagicMock()
+    from discord_music_player.infrastructure.ai.models import AICacheStats
+
     container.ai_client.get_cache_stats = MagicMock(
-        return_value={
-            "size": 10,
-            "hits": 50,
-            "misses": 25,
-            "hit_rate": 66.67,
-            "inflight": 2,
-        }
+        return_value=AICacheStats(size=10, hits=50, misses=25, inflight=2)
     )
     container.ai_client.clear_cache = MagicMock(return_value=10)
     container.ai_client.prune_cache = MagicMock(return_value=5)
@@ -341,7 +337,7 @@ class TestAdminCogInitialization:
 
         mock_bot.container = None
 
-        with pytest.raises(RuntimeError, match="Container not found on bot instance"):
+        with pytest.raises(RuntimeError, match="container not found on bot instance"):
             await setup(mock_bot)
 
 
@@ -401,7 +397,7 @@ class TestErrorHandler:
 
         await admin_cog.cog_command_error(mock_ctx, error)
 
-        mock_ctx.send.assert_called_once_with("❌ Requires owner or admin permissions.")
+        mock_ctx.send.assert_called_once_with("Requires owner or admin permissions.")
 
     @pytest.mark.asyncio
     async def test_handles_missing_required_argument(self, admin_cog, mock_ctx):
@@ -422,7 +418,7 @@ class TestErrorHandler:
 
         await admin_cog.cog_command_error(mock_ctx, error)
 
-        mock_ctx.send.assert_called_once_with("❌ Invalid argument.")
+        mock_ctx.send.assert_called_once_with("Invalid argument.")
 
     @pytest.mark.asyncio
     async def test_handles_generic_exception(self, admin_cog, mock_ctx):
@@ -431,7 +427,7 @@ class TestErrorHandler:
 
         await admin_cog.cog_command_error(mock_ctx, error)
 
-        mock_ctx.send.assert_called_once_with("❌ Command failed. See logs.")
+        mock_ctx.send.assert_called_once_with("Command failed. See logs.")
 
     @pytest.mark.asyncio
     async def test_handles_original_exception(self, admin_cog, mock_ctx):
@@ -589,7 +585,7 @@ class TestSlashStatusCommand:
         # Find the Global Names field
         for field in embed.fields:
             if field.name == "Global Names":
-                assert len(field.value) <= 501  # 500 + ellipsis
+                assert len(field.value) <= 503  # 500 + "..."
 
     @pytest.mark.asyncio
     async def test_slash_status_handles_exception(self, admin_cog, mock_admin_ctx, mock_bot):
@@ -915,7 +911,7 @@ class TestDatabaseCommands:
         assert field_values["Tables"] == "7/7"
         assert field_values["Columns"] == "47/47"
         assert field_values["Indexes"] == "9/9"
-        assert "✅" in field_values["Pragmas"]
+        assert "Yes" in field_values["Pragmas"]
 
         # No Issues field when everything is fine
         assert "Issues" not in field_values
@@ -972,7 +968,7 @@ class TestDatabaseCommands:
         assert embed.color == discord.Color.orange()
 
         field_values = {f.name: f.value for f in embed.fields}
-        assert "❌" in field_values["Pragmas"]
+        assert "No" in field_values["Pragmas"]
 
     @pytest.mark.asyncio
     async def test_db_validate_handles_exception(self, admin_cog, mock_admin_ctx, mock_container):
@@ -1244,7 +1240,7 @@ class TestIntegration:
         # Check status
         await admin_cog.cache_status.callback(admin_cog, mock_admin_ctx)
         stats1 = mock_container.ai_client.get_cache_stats()
-        assert stats1["size"] == 10
+        assert stats1.size == 10
 
         # Prune old entries
         await admin_cog.cache_prune.callback(admin_cog, mock_admin_ctx, max_age_seconds=3600)

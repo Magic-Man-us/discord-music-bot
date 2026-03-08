@@ -33,7 +33,7 @@ async def test_yes_button_resumes_playback() -> None:
     playback_service.skip_track.assert_not_called()
     interaction.response.edit_message.assert_awaited_once()
     call_kwargs = interaction.response.edit_message.call_args[1]
-    assert call_kwargs["content"] == "▶️ Playback resumed."
+    assert call_kwargs["content"] == "Playback resumed."
 
 
 @pytest.mark.asyncio
@@ -48,7 +48,7 @@ async def test_no_button_skips_track() -> None:
     playback_service.resume_playback.assert_not_called()
     interaction.response.edit_message.assert_awaited_once()
     call_kwargs = interaction.response.edit_message.call_args[1]
-    assert call_kwargs["content"] == "⏭️ Track skipped."
+    assert call_kwargs["content"] == "Track skipped."
 
 
 @pytest.mark.asyncio
@@ -63,7 +63,7 @@ async def test_timeout_skips_track() -> None:
     playback_service.skip_track.assert_awaited_once_with(123)
     message.edit.assert_awaited_once()
     call_kwargs = message.edit.call_args[1]
-    assert call_kwargs["content"] == "⏭️ Track skipped (no response)."
+    assert call_kwargs["content"] == "Track skipped (no response)."
 
 
 @pytest.mark.asyncio

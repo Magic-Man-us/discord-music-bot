@@ -1,17 +1,22 @@
-"""Tracks and manages Discord messages for now-playing and queued track announcements."""
+"""Per-guild tracking and editing of Discord now-playing and queued messages."""
 
 from __future__ import annotations
 
 import logging
-from collections import deque
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 import discord
-from pydantic import BaseModel, ConfigDict, Field
 
-from discord_music_player.domain.shared.types import DiscordSnowflake, NonEmptyStr, UserIdField
-from discord_music_player.utils.reply import format_duration, truncate
+from discord_music_player.domain.shared.constants import UIConstants
+from discord_music_player.domain.shared.types import ChannelIdField, DiscordSnowflake
+from discord_music_player.utils.reply import truncate
+
+from ..views.base_view import BaseInteractiveView
+from .embed_builder import build_now_playing_embed, format_finished_line
+from .models import GuildMessageState, TrackedMessage
+
+_FINISHED_DELETE_AFTER = UIConstants.FINISHED_DELETE_AFTER
+_QUEUED_DELETE_AFTER = UIConstants.QUEUED_DELETE_AFTER
 
 if TYPE_CHECKING:
     from discord.ext import commands
@@ -21,66 +26,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_EMBED_NOW_PLAYING = "🎵 Now Playing"
-_UP_NEXT_NONE = "No Track Queued"
-_NEXT_UP_EMOJI = "\u23ed"
-
-
-class TrackKey(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    track_id: NonEmptyStr
-    requested_by_id: UserIdField | None = None
-    requested_at: datetime | None = None
-
-    @classmethod
-    def from_track(cls, track: Track) -> TrackKey:
-        return cls(
-            track_id=track.id.value,
-            requested_by_id=track.requested_by_id,
-            requested_at=track.requested_at,
-        )
-
-
-class TrackedMessage(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    channel_id: DiscordSnowflake
-    message_id: DiscordSnowflake
-    track_key: TrackKey
-
-    @classmethod
-    def for_track(cls, track: Track, *, channel_id: int, message_id: int) -> TrackedMessage:
-        return cls(
-            channel_id=channel_id,
-            message_id=message_id,
-            track_key=TrackKey.from_track(track),
-        )
-
-
-class GuildMessageState(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    now_playing: TrackedMessage | None = None
-    queued: deque[TrackedMessage] = Field(default_factory=deque)
-
-    def pop_matching_queued(self, track: Track) -> TrackedMessage | None:
-        target = TrackKey.from_track(track)
-        if not self.queued:
-            return None
-
-        found: TrackedMessage | None = None
-        for tracked in self.queued:
-            if tracked.track_key == target:
-                found = tracked
-                break
-
-        if found is None:
-            return None
-
-        self.queued = deque(t for t in self.queued if t.track_key != target)
-        return found
-
 
 class MessageStateManager:
     """Per-guild tracking of Discord messages posted for now-playing and queued tracks."""
@@ -89,20 +34,22 @@ class MessageStateManager:
         self._bot = bot
         self._state_by_guild: dict[int, GuildMessageState] = {}
 
-    def get_state(self, guild_id: int) -> GuildMessageState:
+    def get_state(self, guild_id: DiscordSnowflake) -> GuildMessageState:
         state = self._state_by_guild.get(guild_id)
         if state is None:
             state = GuildMessageState()
             self._state_by_guild[guild_id] = state
         return state
 
+    # ── State mutation ─────────────────────────────────────────────
+
     def track_now_playing(
         self,
         *,
-        guild_id: int,
+        guild_id: DiscordSnowflake,
         track: Track,
-        channel_id: int,
-        message_id: int,
+        channel_id: ChannelIdField,
+        message_id: DiscordSnowflake,
     ) -> None:
         state = self.get_state(guild_id)
         state.now_playing = TrackedMessage.for_track(
@@ -114,10 +61,10 @@ class MessageStateManager:
     def track_queued(
         self,
         *,
-        guild_id: int,
+        guild_id: DiscordSnowflake,
         track: Track,
-        channel_id: int,
-        message_id: int,
+        channel_id: ChannelIdField,
+        message_id: DiscordSnowflake,
     ) -> None:
         state = self.get_state(guild_id)
         state.queued.append(
@@ -128,89 +75,12 @@ class MessageStateManager:
             )
         )
 
-    def reset(self, guild_id: int) -> None:
+    def reset(self, guild_id: DiscordSnowflake) -> None:
         self._state_by_guild.pop(guild_id, None)
         logger.debug("Cleaned up message state for guild %s", guild_id)
 
     def clear_all(self) -> None:
         self._state_by_guild.clear()
-
-    # ── Formatting helpers ──────────────────────────────────────────
-
-    @staticmethod
-    def format_requester(track: Track) -> str:
-        if track.requested_by_id:
-            return f"<@{track.requested_by_id}>"
-        if track.requested_by_name:
-            return track.requested_by_name
-        return "Unknown"
-
-    @staticmethod
-    def format_queued_line(track: Track) -> str:
-        requester = MessageStateManager.format_requester(track)
-        title = truncate(track.title, 80)
-        return f"\u23ed\ufe0f Queued for play: [{title}]({track.webpage_url}) \u2014 {requester}"
-
-    @staticmethod
-    def format_finished_line(track: Track) -> str:
-        requester = MessageStateManager.format_requester(track)
-        title = truncate(track.title, 80)
-        return f"\u2705 Finished playing: [{title}]({track.webpage_url}) \u2014 {requester}"
-
-    @staticmethod
-    def build_now_playing_embed(
-        track: Track, *, next_track: Track | None = None
-    ) -> discord.Embed:
-        requester_display = MessageStateManager.format_requester(track)
-        artist_or_uploader = track.artist or track.uploader
-        likes_display = f"{track.like_count:,}" if track.like_count is not None else None
-
-        description_lines = [f"[{track.title}]({track.webpage_url})"]
-        description_lines.append(f"Requested by: {requester_display}")
-
-        embed = discord.Embed(
-            title=_EMBED_NOW_PLAYING,
-            description="\n".join(description_lines),
-            color=discord.Color.green(),
-        )
-
-        if track.thumbnail_url:
-            embed.set_thumbnail(url=track.thumbnail_url)
-
-        embed.add_field(
-            name="\u23f1\ufe0f Duration",
-            value=format_duration(track.duration_seconds),
-            inline=True,
-        )
-
-        if artist_or_uploader:
-            embed.add_field(
-                name="\U0001f464 Artist",
-                value=truncate(artist_or_uploader, 64),
-                inline=True,
-            )
-
-        if likes_display:
-            embed.add_field(
-                name="\U0001f44d Likes",
-                value=likes_display,
-                inline=True,
-            )
-
-        if next_track:
-            embed.add_field(
-                name="\u23ed\ufe0f Next Up",
-                value=truncate(next_track.title, 60),
-                inline=False,
-            )
-        else:
-            embed.add_field(
-                name="\u23ed\ufe0f Next Up",
-                value=_UP_NEXT_NONE,
-                inline=False,
-            )
-
-        return embed
 
     # ── Message editing ─────────────────────────────────────────────
 
@@ -258,18 +128,17 @@ class MessageStateManager:
             except discord.HTTPException:
                 return None
 
-        fetch_message = getattr(channel, "fetch_message", None)
-        if fetch_message is None:
+        if not isinstance(channel, discord.abc.Messageable):
             return None
 
         try:
-            return await fetch_message(tracked.message_id)
+            return await channel.fetch_message(tracked.message_id)
         except discord.HTTPException:
             return None
 
     # ── Live "Next Up" update ──────────────────────────────────────
 
-    async def update_next_up(self, guild_id: int, next_track: Track | None) -> None:
+    async def update_next_up(self, guild_id: DiscordSnowflake, next_track: Track | None) -> None:
         """Update the 'Next Up' field on the current Now Playing embed."""
         state = self._state_by_guild.get(guild_id)
         if state is None or state.now_playing is None:
@@ -284,14 +153,9 @@ class MessageStateManager:
 
         embed = message.embeds[0]
 
-        # Find and replace the "Next Up" field
-        next_up_value = (
-            truncate(next_track.title, 60)
-            if next_track
-            else _UP_NEXT_NONE
-        )
+        next_up_value = truncate(next_track.title, 60) if next_track else UIConstants.NEXT_UP_NONE
         for i, field in enumerate(embed.fields):
-            if field.name and _NEXT_UP_EMOJI in field.name:
+            if field.name and "Next Up" in field.name:
                 embed.set_field_at(i, name=field.name, value=next_up_value, inline=False)
                 break
 
@@ -302,42 +166,47 @@ class MessageStateManager:
 
     # ── Track-finished callback ─────────────────────────────────────
 
-    async def on_track_finished(self, guild_id: int, track: Track) -> None:
-        """Update Discord messages when a track finishes: collapse now-playing, promote next."""
+    async def on_track_finished(self, guild_id: DiscordSnowflake, track: Track) -> None:
+        """Post an auto-deleting 'Finished playing' message beneath the now-playing embed."""
         state = self._state_by_guild.get(guild_id)
         if state is None:
             return
 
         if state.now_playing is not None:
-            await self.edit_message_to_one_liner(
-                state.now_playing,
-                content=self.format_finished_line(track),
-            )
-            state.now_playing = None
+            channel = self._bot.get_channel(state.now_playing.channel_id)
+            if channel is not None and isinstance(channel, discord.abc.Messageable):
+                try:
+                    await channel.send(
+                        format_finished_line(track),
+                        delete_after=_FINISHED_DELETE_AFTER,
+                    )
+                except discord.HTTPException:
+                    logger.debug("Failed sending finished message for guild %s", guild_id)
 
     async def promote_next_track(
         self,
-        guild_id: int,
+        guild_id: DiscordSnowflake,
         next_track: Track,
         *,
         container: Container | None = None,
         upcoming_track: Track | None = None,
     ) -> None:
-        """Promote the queued message for the next track to a now-playing embed."""
+        """Update the now-playing embed in-place for the next track.
+
+        Priority: reuse the existing now-playing message by editing it.
+        Fallback: promote a queued message. If neither exists, do nothing
+        (PlaybackCog will send a fresh now-playing embed).
+        """
         state = self._state_by_guild.get(guild_id)
         if state is None:
             return
 
-        queued_msg = state.pop_matching_queued(next_track)
-        if queued_msg is None:
-            return
-
-        embed = self.build_now_playing_embed(next_track, next_track=upcoming_track)
+        embed = build_now_playing_embed(next_track, next_track=upcoming_track)
 
         if container is not None:
             from ..views.now_playing_view import NowPlayingView
 
-            view: discord.ui.View = NowPlayingView(
+            view: BaseInteractiveView = NowPlayingView(
                 webpage_url=next_track.webpage_url,
                 title=next_track.title,
                 guild_id=guild_id,
@@ -348,8 +217,21 @@ class MessageStateManager:
 
             view = DownloadView(webpage_url=next_track.webpage_url, title=next_track.title)
 
-        message = await self.edit_message_to_embed(queued_msg, embed=embed, view=view)
-        if message is not None:
-            if hasattr(view, "set_message"):
+        # Try reusing the existing now-playing message first
+        target = state.now_playing
+        if target is not None:
+            # Discard any queued message for this track since we're reusing now-playing
+            state.pop_matching_queued(next_track)
+            message = await self.edit_message_to_embed(target, embed=embed, view=view)
+            if message is not None:
                 view.set_message(message)
-            state.now_playing = queued_msg
+                # now_playing stays pointed at the same TrackedMessage
+                return
+
+        # Fallback: promote the queued message for this track
+        queued_msg = state.pop_matching_queued(next_track)
+        if queued_msg is not None:
+            message = await self.edit_message_to_embed(queued_msg, embed=embed, view=view)
+            if message is not None:
+                view.set_message(message)
+                state.now_playing = queued_msg

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -11,11 +10,10 @@ from discord import app_commands
 from discord.ext import commands
 
 from discord_music_player.domain.shared.constants import DiscordEmbedLimits, UIConstants
+from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 
 if TYPE_CHECKING:
     from ....config.container import Container
-
-logger = logging.getLogger(__name__)
 
 
 def _format_abs_rel(dt: datetime | None) -> str:
@@ -28,10 +26,9 @@ def _format_abs_rel(dt: datetime | None) -> str:
     return f"{abs_ts} ({rel_ts})"
 
 
-class InfoCog(commands.Cog):
+class InfoCog(BaseCog):
     def __init__(self, bot: commands.Bot, container: Container) -> None:
-        self.bot = bot
-        self.container = container
+        super().__init__(bot, container)
 
         self._user_info_ctx = app_commands.ContextMenu(
             name="User Info",
@@ -45,12 +42,12 @@ class InfoCog(commands.Cog):
     async def cog_load(self) -> None:
         self.bot.tree.add_command(self._user_info_ctx)
         self.bot.tree.add_command(self._message_info_ctx)
-        logger.info("Info cog loaded with context menus")
+        self.logger.info("Info cog loaded with context menus")
 
     async def cog_unload(self) -> None:
         self.bot.tree.remove_command(self._user_info_ctx.name, type=self._user_info_ctx.type)
         self.bot.tree.remove_command(self._message_info_ctx.name, type=self._message_info_ctx.type)
-        logger.info("Info cog unloaded, context menus removed")
+        self.logger.info("Info cog unloaded, context menus removed")
 
     # ─────────────────────────────────────────────────────────────────
     # Context Menus
@@ -89,7 +86,7 @@ class InfoCog(commands.Cog):
         embed.add_field(name="ID", value=str(user.id), inline=True)
         embed.add_field(name="Mention", value=user.mention, inline=True)
         embed.add_field(name="Type", value="Bot" if user.bot else "Human", inline=True)
-        embed.add_field(name="Created", value=_format_abs_rel(user.created_at), inline=False)
+        embed.add_field(name=UIConstants.FIELD_CREATED, value=_format_abs_rel(user.created_at), inline=False)
 
     def _add_member_guild_info(
         self, embed: discord.Embed, member: discord.Member, include_roles: bool
@@ -107,7 +104,7 @@ class InfoCog(commands.Cog):
     def _add_member_roles_field(self, embed: discord.Embed, member: discord.Member) -> None:
         roles = [r for r in member.roles if r.name != UIConstants.EVERYONE_ROLE]
         roles_sorted = sorted(roles, key=lambda r: r.position, reverse=True)
-        top_roles = roles_sorted[:10]
+        top_roles = roles_sorted[:UIConstants.MAX_DISPLAY_ROLES]
         roles_value = ", ".join(r.mention for r in top_roles) or "-"
         embed.add_field(name=f"Roles ({len(roles)})", value=roles_value, inline=False)
 
@@ -154,13 +151,13 @@ class InfoCog(commands.Cog):
         embed.add_field(name="Channel", value=ch_value, inline=True)
 
         embed.add_field(
-            name="Created",
+            name=UIConstants.FIELD_CREATED,
             value=_format_abs_rel(message.created_at),
             inline=False,
         )
 
         content = (message.content or "").strip()
-        snippet = (content[:DiscordEmbedLimits.MESSAGE_CONTENT_SNIPPET] + "…") if len(content) > DiscordEmbedLimits.MESSAGE_CONTENT_SNIPPET else content or "-"
+        snippet = (content[:DiscordEmbedLimits.MESSAGE_CONTENT_SNIPPET] + "\u2026") if len(content) > DiscordEmbedLimits.MESSAGE_CONTENT_SNIPPET else content or "-"
         embed.add_field(name="Content", value=snippet, inline=False)
 
         embed.add_field(name="Attachments", value=str(len(message.attachments)), inline=True)
@@ -203,7 +200,7 @@ class InfoCog(commands.Cog):
         embed.add_field(name="ID", value=str(guild.id), inline=True)
         if guild.owner:
             embed.add_field(name="Owner", value=guild.owner.mention, inline=True)
-        embed.add_field(name="Created", value=_format_abs_rel(guild.created_at), inline=False)
+        embed.add_field(name=UIConstants.FIELD_CREATED, value=_format_abs_rel(guild.created_at), inline=False)
 
     def _add_member_counts(self, embed: discord.Embed, guild: discord.Guild) -> None:
         humans = sum(1 for m in guild.members if not m.bot)
@@ -233,9 +230,9 @@ class InfoCog(commands.Cog):
         embed.add_field(name="Verification", value=str(guild.verification_level), inline=True)
 
         if guild.features:
-            features = ", ".join(sorted(guild.features)[:10])
-            if len(guild.features) > 10:
-                features += f" (+{len(guild.features) - 10} more)"
+            features = ", ".join(sorted(guild.features)[:UIConstants.MAX_DISPLAY_FEATURES])
+            if len(guild.features) > UIConstants.MAX_DISPLAY_FEATURES:
+                features += f" (+{len(guild.features) - UIConstants.MAX_DISPLAY_FEATURES} more)"
             embed.add_field(name="Features", value=features or "-", inline=False)
 
     @commands.hybrid_command(name="userinfo", description="Show user information.")
@@ -267,14 +264,9 @@ class InfoCog(commands.Cog):
         if avatar.is_animated():
             links.append(f"[GIF]({avatar.with_format('gif').url})")  # type: ignore
 
-        embed.description = " • ".join(links)
+        embed.description = " \u2022 ".join(links)
 
         await ctx.send(embed=embed, ephemeral=True)
 
 
-async def setup(bot: commands.Bot) -> None:
-    container = getattr(bot, "container", None)
-    if container is None:
-        raise RuntimeError("Container not found on bot instance")
-
-    await bot.add_cog(InfoCog(bot, container))
+setup = InfoCog.setup

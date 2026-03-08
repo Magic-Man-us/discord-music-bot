@@ -64,6 +64,9 @@ NonNegativeFloat = Annotated[float, Field(ge=0.0)]
 UnitInterval = Annotated[float, Field(ge=0.0, le=1.0)]
 """Float in [0.0, 1.0] — used for confidence scores."""
 
+PercentageInt = Annotated[int, Field(ge=0, le=100)]
+"""Integer percentage: 0 … 100."""
+
 VolumeFloat = Annotated[float, Field(ge=0.0, le=2.0)]
 """Audio volume multiplier in [0.0, 2.0]."""
 
@@ -151,3 +154,17 @@ UserIdField = DiscordSnowflake
 
 ChannelIdField = DiscordSnowflake
 """Alias — channel ID used as a plain Pydantic field."""
+
+
+# ── Genre classification types ─────────────────────────────────────
+
+class TrackForClassification(BaseModel):
+    """A track to be classified by the genre classifier."""
+
+    model_config = ConfigDict(frozen=True)
+
+    track_id: NonEmptyStr
+    description: str | None = None
+
+TrackGenreMap = dict[NonEmptyStr, NonEmptyStr]
+"""Mapping of track_id → genre name, as returned by the AI classifier and stored in the DB."""

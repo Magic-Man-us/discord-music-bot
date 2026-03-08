@@ -2,26 +2,21 @@
 
 from __future__ import annotations
 
-import logging
 import math
+
 import discord
 from discord import app_commands
-from discord.ext import commands
 
 from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.music.enums import LoopMode
-from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.domain.shared.constants import UIConstants
+from discord_music_player.domain.shared.types import DiscordSnowflake
+from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     ensure_voice,
 )
-from discord_music_player.infrastructure.discord.services.message_state_manager import (
-    MessageStateManager,
-)
+from discord_music_player.infrastructure.discord.services.embed_builder import format_requester
 from discord_music_player.utils.reply import format_duration, truncate
-
-logger = logging.getLogger(__name__)
 
 
 class QueueCog(BaseCog):
@@ -51,13 +46,13 @@ class QueueCog(BaseCog):
         start_idx = (page - 1) * per_page
 
         embed = discord.Embed(
-            title=f"📋 Queue ({queue_info.total_tracks} tracks) — Page {page}/{total_pages}",
+            title=f"Queue ({queue_info.total_tracks} tracks) — Page {page}/{total_pages}",
             color=discord.Color.blurple(),
         )
 
         if queue_info.current_track:
             ct = queue_info.current_track
-            requester = MessageStateManager.format_requester(ct)
+            requester = format_requester(ct)
             artist_or_uploader = ct.artist or ct.uploader
 
             np_parts = [f"[{truncate(ct.title, UIConstants.TITLE_TRUNCATION)}]({ct.webpage_url})"]
@@ -67,7 +62,7 @@ class QueueCog(BaseCog):
             np_parts.append(f"Duration: {format_duration(ct.duration_seconds)}")
 
             embed.add_field(
-                name="\U0001f3b5 Now Playing",
+                name="Now Playing",
                 value="\n".join(np_parts),
                 inline=False,
             )
@@ -99,7 +94,7 @@ class QueueCog(BaseCog):
 
         if shuffled:
             await interaction.response.send_message(
-                "🔀 Shuffled the queue.", ephemeral=True
+                "Shuffled the queue.", ephemeral=True
             )
         else:
             await interaction.response.send_message(
@@ -138,11 +133,11 @@ class QueueCog(BaseCog):
             await self.container.playback_service.start_playback(interaction.guild.id)
 
         await interaction.followup.send(
-            f"🔀 Shuffled and queued **{enqueued_count}** tracks from history.",
+            f"Shuffled and queued **{enqueued_count}** tracks from history.",
             ephemeral=True,
         )
 
-    async def _fetch_unique_history(self, guild_id: int, limit: int) -> list[Track]:
+    async def _fetch_unique_history(self, guild_id: DiscordSnowflake, limit: int) -> list[Track]:
         """Fetch recent tracks and deduplicate by track ID."""
         tracks = await self.container.history_repository.get_recent(guild_id, limit=limit)
         seen: set[str] = set()
@@ -155,7 +150,7 @@ class QueueCog(BaseCog):
 
     async def _enqueue_batch(
         self,
-        guild_id: int,
+        guild_id: DiscordSnowflake,
         tracks: list[Track],
         user: discord.User | discord.Member,
     ) -> tuple[int, bool]:
@@ -188,24 +183,14 @@ class QueueCog(BaseCog):
         queue_service = self.container.queue_service
         mode = await queue_service.toggle_loop(interaction.guild.id)
 
-        match mode:
-            case LoopMode.OFF:
-                emoji = "\u27a1\ufe0f"
-            case LoopMode.TRACK:
-                emoji = "\U0001f502"
-            case LoopMode.QUEUE:
-                emoji = "\U0001f501"
-            case _:
-                emoji = "\u27a1\ufe0f"
-
         await interaction.response.send_message(
-            f"{emoji} Loop mode: **{mode.value}**",
+            f"Loop mode: **{mode.value}**",
             ephemeral=True,
         )
 
     @app_commands.command(name="remove", description="Remove a track from the queue.")
     @app_commands.describe(position="Position in queue (1-based)")
-    async def remove(self, interaction: discord.Interaction, position: int) -> None:
+    async def remove(self, interaction: discord.Interaction, position: app_commands.Range[int, 1]) -> None:
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker
         ):
@@ -213,18 +198,12 @@ class QueueCog(BaseCog):
 
         assert interaction.guild is not None
 
-        if position < 1:
-            await interaction.response.send_message(
-                "Position must be 1 or greater.", ephemeral=True
-            )
-            return
-
         queue_service = self.container.queue_service
         track = await queue_service.remove(interaction.guild.id, position - 1)
 
         if track:
             await interaction.response.send_message(
-                f"🗑️ Removed: **{track.title}**",
+                f"Removed: **{track.title}**",
                 ephemeral=True,
             )
         else:
@@ -248,7 +227,7 @@ class QueueCog(BaseCog):
         if count > 0:
             self.container.message_state_manager.reset(interaction.guild.id)
             await interaction.response.send_message(
-                f"🗑️ Cleared {count} tracks from the queue.", ephemeral=True
+                f"Cleared {count} tracks from the queue.", ephemeral=True
             )
         else:
             await interaction.response.send_message(
@@ -256,9 +235,4 @@ class QueueCog(BaseCog):
             )
 
 
-async def setup(bot: commands.Bot) -> None:
-    container = getattr(bot, "container", None)
-    if container is None:
-        raise RuntimeError("Container not found on bot instance")
-
-    await bot.add_cog(QueueCog(bot, container))
+setup = QueueCog.setup

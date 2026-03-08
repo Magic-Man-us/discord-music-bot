@@ -45,6 +45,7 @@ class SQLPragmas:
     TABLE_INFO = "PRAGMA table_info({table})"
     PAGE_COUNT = "PRAGMA page_count"
     PAGE_SIZE = "PRAGMA page_size"
+    EXPECTED_JOURNAL_MODE = "wal"
 
 
 class AudioConstants:
@@ -174,13 +175,21 @@ class AnalyticsConstants:
     """Analytics and charting defaults."""
 
     BLURPLE = 0x5865F2
-    WEEKDAY_NAMES = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
     CHART_LABEL_TRUNCATION = 40
     LEADERBOARD_LINE_TRUNCATION = 50
     DEFAULT_LEADERBOARD_LIMIT = 10
     ACTIVITY_CHART_FILENAME = "activity.png"
     GENRE_TOP_N = 10
     ACTIVITY_DAYS_WINDOW = 30
+
+    CHART_BG_COLOR = "#2C2F33"
+    CHART_TEXT_COLOR = "#FFFFFF"
+    CHART_ACCENT_COLOR = "#5865F2"
+    CHART_GRID_COLOR = "#40444B"
+    CHART_DPI = 100
+    CHART_LABEL_FONTSIZE = 9
+    CHART_TITLE_FONTSIZE = 14
+    CHART_VALUE_LABEL_OFFSET = 0.01
 
 
 class PlaylistConstants:
@@ -198,3 +207,20 @@ class UIConstants:
     UNKNOWN_FALLBACK = "Unknown"
     EVERYONE_ROLE = "@everyone"
     MS_PER_SECOND = 1000
+
+    # Embed field names
+    FIELD_CREATED = "Created"
+
+    # Display limits
+    MAX_DISPLAY_ROLES = 10
+    MAX_DISPLAY_FEATURES = 10
+
+    # Embed text
+    NEXT_UP_NONE = "No Track Queued"
+
+    # Auto-delete timers (seconds)
+    FINISHED_DELETE_AFTER = 30.0
+    QUEUED_DELETE_AFTER = 15.0
+
+    # Voice guard messages
+    NOT_IN_VOICE = "You need to be in a voice channel first."

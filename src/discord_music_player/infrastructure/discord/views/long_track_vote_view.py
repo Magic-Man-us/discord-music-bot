@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from discord_music_player.domain.shared.types import DiscordSnowflake
 from discord_music_player.infrastructure.discord.guards.voice_guards import check_user_in_voice
 from discord_music_player.infrastructure.discord.views.base_view import BaseInteractiveView
 from discord_music_player.utils.reply import format_duration, truncate
@@ -24,9 +25,9 @@ class LongTrackVoteView(BaseInteractiveView):
     def __init__(
         self,
         *,
-        guild_id: int,
+        guild_id: DiscordSnowflake,
         track: Track,
-        requester_id: int,
+        requester_id: DiscordSnowflake,
         requester_name: str,
         container: Container,
     ) -> None:
@@ -42,7 +43,7 @@ class LongTrackVoteView(BaseInteractiveView):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return await check_user_in_voice(interaction, self._guild_id)
 
-    @discord.ui.button(label="\u2705 Accept", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="Accept", style=discord.ButtonStyle.green)
     async def accept_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[LongTrackVoteView]
     ) -> None:
@@ -55,7 +56,7 @@ class LongTrackVoteView(BaseInteractiveView):
         await interaction.response.defer()
         await self._check_vote_result()
 
-    @discord.ui.button(label="\u274c Reject", style=discord.ButtonStyle.red)
+    @discord.ui.button(label="Reject", style=discord.ButtonStyle.red)
     async def reject_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[LongTrackVoteView]
     ) -> None:
@@ -96,9 +97,8 @@ class LongTrackVoteView(BaseInteractiveView):
 
     async def _accept_track(self) -> None:
         """Accept the track into the queue."""
-        self._resolved = True
-        self.stop()
-        self._disable_buttons()
+        if not self._finish_view():
+            return
 
         # Enqueue the track
         queue_service = self._container.queue_service
@@ -116,19 +116,18 @@ class LongTrackVoteView(BaseInteractiveView):
 
         if self._message:
             await self._message.edit(
-                content=f"\u2705 Vote passed! Queued: **{truncate(self._track.title, 60)}** ({format_duration(self._track.duration_seconds)})",
+                content=f"Vote passed! Queued: **{truncate(self._track.title, 60)}** ({format_duration(self._track.duration_seconds)})",
                 view=self,
             )
 
     async def _reject_track(self) -> None:
         """Reject the track."""
-        self._resolved = True
-        self.stop()
-        self._disable_buttons()
+        if not self._finish_view():
+            return
 
         if self._message:
             await self._message.edit(
-                content=f"\u274c Vote failed. Rejected: **{truncate(self._track.title, 60)}**",
+                content=f"Vote failed. Rejected: **{truncate(self._track.title, 60)}**",
                 view=self,
             )
 
@@ -141,7 +140,7 @@ class LongTrackVoteView(BaseInteractiveView):
         if self._message:
             try:
                 await self._message.edit(
-                    content=f"\u274c Vote timed out. Rejected: **{truncate(self._track.title, 60)}**",
+                    content=f"Vote timed out. Rejected: **{truncate(self._track.title, 60)}**",
                     view=self,
                 )
             except discord.HTTPException:

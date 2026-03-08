@@ -6,37 +6,44 @@ import urllib.parse
 
 import discord
 
+from discord_music_player.domain.shared.types import HttpUrlStr, NonEmptyStr
+from discord_music_player.infrastructure.discord.views.base_view import BaseInteractiveView
 
-class DownloadView(discord.ui.View):
+
+def build_cobalt_url(video_url: str) -> str:
+    """Build a Cobalt download URL for a given video URL."""
+    return f"https://cobalt.tools/#{urllib.parse.quote(video_url, safe='')}"
+
+
+def add_track_link_buttons(view: discord.ui.View, webpage_url: str) -> None:
+    """Add YouTube and Download link buttons to any view."""
+    view.add_item(
+        discord.ui.Button(
+            style=discord.ButtonStyle.link,
+            label="YouTube",
+            url=webpage_url,
+        )
+    )
+    view.add_item(
+        discord.ui.Button(
+            style=discord.ButtonStyle.link,
+            label="Download",
+            url=build_cobalt_url(webpage_url),
+        )
+    )
+
+
+class DownloadView(BaseInteractiveView):
+    """Link-only view for tracks (YouTube + Download buttons)."""
+
     def __init__(
         self,
-        webpage_url: str,
-        title: str,
+        webpage_url: HttpUrlStr,
+        title: NonEmptyStr,
         timeout: float = 300.0,
     ) -> None:
         super().__init__(timeout=timeout)
 
         self.webpage_url = webpage_url
         self.title = title
-        self._add_buttons()
-
-    def _add_buttons(self) -> None:
-        self.add_item(
-            discord.ui.Button(
-                style=discord.ButtonStyle.link,
-                label="📺 YouTube",
-                url=self.webpage_url,
-            )
-        )
-
-        cobalt_url = f"https://cobalt.tools/#{self._encode_url(self.webpage_url)}"
-        self.add_item(
-            discord.ui.Button(
-                style=discord.ButtonStyle.link,
-                label="⬇️ Download",
-                url=cobalt_url,
-            )
-        )
-
-    def _encode_url(self, url: str) -> str:
-        return urllib.parse.quote(url, safe="")
+        add_track_link_buttons(self, webpage_url)

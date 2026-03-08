@@ -2,25 +2,16 @@
 
 from __future__ import annotations
 
-import logging
-from typing import TYPE_CHECKING
-
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from discord_music_player.domain.voting.enums import VoteResult
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     can_force_skip,
     ensure_user_in_voice_and_warm,
     send_ephemeral,
 )
-
-if TYPE_CHECKING:
-    from ....application.commands.vote_skip import VoteSkipResult
-
-logger = logging.getLogger(__name__)
 
 
 class SkipCog(BaseCog):
@@ -50,6 +41,8 @@ class SkipCog(BaseCog):
     async def _handle_force_skip(
         self, interaction: discord.Interaction, user: discord.Member
     ) -> None:
+        assert interaction.guild is not None
+
         if not can_force_skip(user, self.container.settings.discord.owner_ids):
             await interaction.response.send_message(
                 "Force skip requires administrator permission.", ephemeral=True
@@ -57,11 +50,12 @@ class SkipCog(BaseCog):
             return
 
         playback_service = self.container.playback_service
-        track = await playback_service.skip_track(interaction.guild.id)  # type: ignore
+        track = await playback_service.skip_track(interaction.guild.id)
 
         if track:
             await interaction.response.send_message(
-                f"⏭️ Force skipped: **{track.title}**", ephemeral=True
+                f"Force skipped: **{track.title}**",
+                ephemeral=True,
             )
         else:
             await interaction.response.send_message(
@@ -71,6 +65,8 @@ class SkipCog(BaseCog):
     async def _handle_vote_skip(
         self, interaction: discord.Interaction, user: discord.Member
     ) -> None:
+        assert interaction.guild is not None
+
         user_channel_id = None
         if user.voice and user.voice.channel:
             user_channel_id = user.voice.channel.id
@@ -78,7 +74,7 @@ class SkipCog(BaseCog):
         from ....application.commands.vote_skip import VoteSkipCommand
 
         command = VoteSkipCommand(
-            guild_id=interaction.guild.id,  # type: ignore
+            guild_id=interaction.guild.id,
             user_id=user.id,
             user_channel_id=user_channel_id,
         )
@@ -87,50 +83,15 @@ class SkipCog(BaseCog):
         result = await handler.handle(command)
 
         if result.action_executed:
-            await self._send_skip_success(interaction, result)
+            skipped_track = await self.container.playback_service.skip_track(
+                interaction.guild.id
+            )
+            track_title = skipped_track.title if skipped_track else "track"
+            msg = result.format_display(track_title)
         else:
-            await self._send_skip_failure(interaction, result)
-
-    async def _send_skip_success(
-        self, interaction: discord.Interaction, result: VoteSkipResult
-    ) -> None:
-        playback_service = self.container.playback_service
-        skipped_track = await playback_service.skip_track(interaction.guild.id)  # type: ignore
-        track_title = skipped_track.title if skipped_track else "track"
-
-        match result.result:
-            case VoteResult.THRESHOLD_MET:
-                msg = f"⏭️ Skip threshold met ({result.votes_current}/{result.votes_needed}). Skipped: **{track_title}**"
-            case VoteResult.REQUESTER_SKIP:
-                msg = f"⏭️ Requester skipped: **{track_title}**"
-            case VoteResult.AUTO_SKIP:
-                msg = f"⏭️ Auto-skipped (small audience): **{track_title}**"
-            case _:
-                msg = f"⏭️ Skipped: **{track_title}**"
-
-        await interaction.response.send_message(msg, ephemeral=True)
-
-    async def _send_skip_failure(
-        self, interaction: discord.Interaction, result: VoteSkipResult
-    ) -> None:
-        match result.result:
-            case VoteResult.NO_PLAYING:
-                msg = "Nothing is playing."
-            case VoteResult.NOT_IN_CHANNEL:
-                msg = "Join my voice channel to vote skip."
-            case VoteResult.ALREADY_VOTED:
-                msg = f"You already voted. Votes: {result.votes_current}/{result.votes_needed}"
-            case VoteResult.VOTE_RECORDED:
-                msg = f"Vote recorded ({result.votes_current}/{result.votes_needed})."
-            case _:
-                msg = "Skip request processed."
+            msg = result.message
 
         await interaction.response.send_message(msg, ephemeral=True)
 
 
-async def setup(bot: commands.Bot) -> None:
-    container = getattr(bot, "container", None)
-    if container is None:
-        raise RuntimeError("Container not found on bot instance")
-
-    await bot.add_cog(SkipCog(bot, container))
+setup = SkipCog.setup

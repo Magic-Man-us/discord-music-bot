@@ -106,7 +106,7 @@ class TestDownloadView:
         assert youtube_button.style == discord.ButtonStyle.link
         assert youtube_button.url == sample_url
         assert youtube_button.label is not None
-        assert "📺" in youtube_button.label
+        assert "YouTube" in youtube_button.label
 
     def test_download_button_created(self, sample_url, sample_title):
         """Should create Download button with Cobalt URL."""
@@ -126,7 +126,7 @@ class TestDownloadView:
         assert download_button.style == discord.ButtonStyle.link
         assert "cobalt.tools" in download_button.url
         assert download_button.label is not None
-        assert "⬇️" in download_button.label
+        assert "Download" in download_button.label
 
     def test_cobalt_url_encoding(self, sample_url, sample_title):
         """Should properly encode URL for Cobalt service."""
@@ -151,41 +151,33 @@ class TestDownloadView:
 
     def test_encode_url_basic(self, sample_title):
         """Test URL encoding with basic URL."""
-        view = DownloadView(
-            webpage_url="https://example.com/test",
-            title=sample_title,
-        )
+        from discord_music_player.infrastructure.discord.views.download_view import build_cobalt_url
 
-        encoded = view._encode_url("https://example.com/test")
-        assert encoded == urllib.parse.quote("https://example.com/test", safe="")
+        result = build_cobalt_url("https://example.com/test")
+        expected_encoded = urllib.parse.quote("https://example.com/test", safe="")
+        assert result == f"https://cobalt.tools/#{expected_encoded}"
 
     def test_encode_url_with_special_characters(self, sample_title):
         """Test URL encoding with special characters."""
-        url_with_special = "https://example.com/test?param=value&other=123"
-        view = DownloadView(
-            webpage_url=url_with_special,
-            title=sample_title,
-        )
+        from discord_music_player.infrastructure.discord.views.download_view import build_cobalt_url
 
-        encoded = view._encode_url(url_with_special)
-        # Should encode all special characters
-        assert "?" not in encoded
-        assert "&" not in encoded
-        assert "=" not in encoded
+        url_with_special = "https://example.com/test?param=value&other=123"
+        result = build_cobalt_url(url_with_special)
+        # The fragment portion should have all special characters encoded
+        fragment = result.split("#", 1)[1]
+        assert "?" not in fragment
+        assert "&" not in fragment
+        assert "=" not in fragment
 
     def test_encode_url_with_unicode(self, sample_title):
         """Test URL encoding with Unicode characters."""
-        url_with_unicode = "https://example.com/音楽"
-        view = DownloadView(
-            webpage_url=url_with_unicode,
-            title=sample_title,
-        )
+        from discord_music_player.infrastructure.discord.views.download_view import build_cobalt_url
 
-        encoded = view._encode_url(url_with_unicode)
-        # Should be properly encoded
-        assert isinstance(encoded, str)
-        # Unicode should be percent-encoded
-        assert "音楽" not in encoded
+        url_with_unicode = "https://example.com/音楽"
+        result = build_cobalt_url(url_with_unicode)
+        assert isinstance(result, str)
+        fragment = result.split("#", 1)[1]
+        assert "音楽" not in fragment
 
     # Button Properties Tests
 

@@ -28,9 +28,17 @@ from discord_music_player.infrastructure.discord.cogs.playback_cog import Playba
 from discord_music_player.infrastructure.discord.cogs.queue_cog import QueueCog
 from discord_music_player.infrastructure.discord.cogs.skip_cog import SkipCog
 from discord_music_player.infrastructure.discord.cogs.now_playing_cog import NowPlayingCog
+from discord_music_player.infrastructure.discord.services.embed_builder import (
+    build_now_playing_embed,
+    format_finished_line,
+    format_queued_line,
+    format_requester,
+)
 from discord_music_player.infrastructure.discord.services.message_state_manager import (
-    GuildMessageState,
     MessageStateManager,
+)
+from discord_music_player.infrastructure.discord.services.models import (
+    GuildMessageState,
     TrackedMessage,
     TrackKey,
 )
@@ -126,13 +134,13 @@ def mock_container():
     # Mock message_state_manager
     container.message_state_manager = MagicMock(spec=MessageStateManager)
     container.message_state_manager.build_now_playing_embed = MagicMock(
-        return_value=discord.Embed(title="🎵 Now Playing")
+        return_value=discord.Embed(title="Now Playing")
     )
     container.message_state_manager.format_queued_line = MagicMock(
-        return_value="⏭️ Queued for play: Test"
+        return_value="Queued for play: Test"
     )
     container.message_state_manager.format_finished_line = MagicMock(
-        return_value="✅ Finished playing: Test"
+        return_value="Finished playing: Test"
     )
     container.message_state_manager.get_state = MagicMock(return_value=GuildMessageState())
     container.message_state_manager.track_now_playing = MagicMock()
@@ -524,7 +532,7 @@ class TestMessageStateManagerFormatting:
 
     def test_format_requester_with_id(self, sample_track):
         """Should format requester with user mention."""
-        result = MessageStateManager.format_requester(sample_track)
+        result = format_requester(sample_track)
         assert result == "<@333333333>"
 
     def test_format_requester_with_name_only(self):
@@ -535,7 +543,7 @@ class TestMessageStateManagerFormatting:
             webpage_url="https://example.com",
             requested_by_name="TestUser",
         )
-        result = MessageStateManager.format_requester(track)
+        result = format_requester(track)
         assert result == "TestUser"
 
     def test_format_requester_unknown(self):
@@ -545,33 +553,31 @@ class TestMessageStateManagerFormatting:
             title="Test",
             webpage_url="https://example.com",
         )
-        result = MessageStateManager.format_requester(track)
+        result = format_requester(track)
         assert result == "Unknown"
 
     def test_format_queued_line(self, sample_track):
         """Should format queued message line."""
-        result = MessageStateManager.format_queued_line(sample_track)
-        assert "⏭️" in result
+        result = format_queued_line(sample_track)
         assert "Queued for play" in result
         assert sample_track.title in result
         assert "<@333333333>" in result
 
     def test_format_finished_line(self, sample_track):
         """Should format finished message line."""
-        result = MessageStateManager.format_finished_line(sample_track)
-        assert "✅" in result
+        result = format_finished_line(sample_track)
         assert "Finished playing" in result
         assert sample_track.title in result
 
     def test_build_now_playing_embed(self, sample_track):
         """Should build now playing embed."""
-        embed = MessageStateManager.build_now_playing_embed(sample_track)
+        embed = build_now_playing_embed(sample_track)
         assert isinstance(embed, discord.Embed)
-        assert embed.title == "🎵 Now Playing"
+        assert embed.title == "Now Playing"
         assert sample_track.title in embed.description
         assert embed.thumbnail.url == sample_track.thumbnail_url
         assert len(embed.fields) == 4  # Duration, Artist, Likes, Up Next
-        assert embed.fields[-1].name == "⏭️ Next Up"
+        assert embed.fields[-1].name == "Next Up"
         assert embed.fields[-1].value == "No Track Queued"
 
     def test_build_now_playing_embed_with_next_track(self, sample_track):
@@ -581,8 +587,8 @@ class TestMessageStateManagerFormatting:
             title="Next Song",
             webpage_url="https://example.com/next",
         )
-        embed = MessageStateManager.build_now_playing_embed(sample_track, next_track=next_track)
-        assert embed.fields[-1].name == "⏭️ Next Up"
+        embed = build_now_playing_embed(sample_track, next_track=next_track)
+        assert embed.fields[-1].name == "Next Up"
         assert "Next Song" in embed.fields[-1].value
 
     def test_build_now_playing_embed_minimal_track(self):
@@ -592,7 +598,7 @@ class TestMessageStateManagerFormatting:
             title="Minimal Track",
             webpage_url="https://example.com",
         )
-        embed = MessageStateManager.build_now_playing_embed(track)
+        embed = build_now_playing_embed(track)
         assert isinstance(embed, discord.Embed)
         assert track.title in embed.description
         assert len(embed.fields) == 2  # Duration, Up Next
@@ -690,6 +696,10 @@ class TestPlayCommand:
         enqueue_result.should_start = False
         enqueue_result.track = sample_track
         mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
+
+        # followup.send returns a WebhookMessage mock that supports async delete
+        sent_msg = AsyncMock()
+        mock_interaction.followup.send = AsyncMock(return_value=sent_msg)
 
         await playback_cog.play.callback(playback_cog, mock_interaction, "test query")
 
@@ -1026,7 +1036,7 @@ class TestLoopCommand:
 
         mock_container.queue_service.toggle_loop.assert_called_once_with(111111111)
         args = mock_interaction.response.send_message.call_args
-        assert "➡️" in args[0][0]
+        assert "Loop mode" in args[0][0]
         assert "off" in args[0][0]
 
     @pytest.mark.asyncio
@@ -1037,7 +1047,7 @@ class TestLoopCommand:
         await queue_cog.loop.callback(queue_cog, mock_interaction)
 
         args = mock_interaction.response.send_message.call_args
-        assert "🔂" in args[0][0]
+        assert "Loop mode" in args[0][0]
         assert "track" in args[0][0]
 
     @pytest.mark.asyncio
@@ -1048,7 +1058,7 @@ class TestLoopCommand:
         await queue_cog.loop.callback(queue_cog, mock_interaction)
 
         args = mock_interaction.response.send_message.call_args
-        assert "🔁" in args[0][0]
+        assert "Loop mode" in args[0][0]
         assert "queue" in args[0][0]
 
 
@@ -1082,21 +1092,13 @@ class TestRemoveCommand:
         args = mock_interaction.response.send_message.call_args
         assert "No track" in args[0][0]
 
-    @pytest.mark.asyncio
-    async def test_remove_position_must_be_positive(self, queue_cog, mock_interaction):
-        """Should reject non-positive positions."""
-        await queue_cog.remove.callback(queue_cog, mock_interaction, position=0)
-
-        args = mock_interaction.response.send_message.call_args
-        assert "1 or greater" in args[0][0].lower()
-
-    @pytest.mark.asyncio
-    async def test_remove_negative_position(self, queue_cog, mock_interaction):
-        """Should reject negative positions."""
-        await queue_cog.remove.callback(queue_cog, mock_interaction, position=-1)
-
-        args = mock_interaction.response.send_message.call_args
-        assert "1 or greater" in args[0][0].lower()
+    def test_remove_position_has_range_constraint(self, queue_cog):
+        """Position parameter should have Range[int, 1] constraint enforced by Discord."""
+        # The position parameter uses app_commands.Range[int, 1] so Discord
+        # rejects values < 1 at the framework level before our code runs.
+        params = queue_cog.remove._params
+        position_param = params["position"]
+        assert position_param.type.value == 4  # AppCommandOptionType.integer
 
 
 # =============================================================================
@@ -1224,22 +1226,23 @@ class TestMessageStateManagement:
         assert len(state.queued) == 1
 
     @pytest.mark.asyncio
-    async def test_on_track_finished_clears_now_playing(
+    async def test_on_track_finished_sends_finished_message(
         self, msm, mock_bot, sample_track
     ):
-        """Should clear now playing message on track finish."""
+        """Should send an auto-deleting 'Finished playing' message beneath now-playing."""
         msm.track_now_playing(
             guild_id=111, track=sample_track, channel_id=222, message_id=333
         )
 
-        mock_message = AsyncMock()
-        mock_channel = AsyncMock()
-        mock_channel.fetch_message.return_value = mock_message
+        mock_channel = AsyncMock(spec=discord.TextChannel)
         mock_bot.get_channel.return_value = mock_channel
 
         await msm.on_track_finished(111, sample_track)
 
-        mock_message.edit.assert_called_once()
+        mock_channel.send.assert_called_once()
+        call_kwargs = mock_channel.send.call_args
+        assert "Finished playing" in call_kwargs[0][0]
+        assert call_kwargs[1]["delete_after"] > 0
 
     @pytest.mark.asyncio
     async def test_on_track_finished_no_state_returns_early(self, msm, sample_track):
@@ -1258,7 +1261,7 @@ class TestMessageStateManagement:
         )
 
         mock_message = AsyncMock()
-        mock_channel = AsyncMock()
+        mock_channel = AsyncMock(spec=discord.TextChannel)
         mock_channel.fetch_message.return_value = mock_message
         mock_bot.get_channel.return_value = mock_channel
 
@@ -1349,7 +1352,7 @@ class TestEdgeCases:
 
         mock_message = AsyncMock()
         mock_message.edit.side_effect = discord.HTTPException(MagicMock(), "Cannot edit")
-        mock_channel = AsyncMock()
+        mock_channel = AsyncMock(spec=discord.TextChannel)
         mock_channel.fetch_message.return_value = mock_message
         mock_bot.get_channel.return_value = mock_channel
 

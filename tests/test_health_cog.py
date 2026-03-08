@@ -16,8 +16,8 @@ Test Coverage:
 2. TestHelperMethods (16 tests):
    - Uptime formatting (various durations)
    - Latency conversion to milliseconds
-   - Latency emoji selection based on thresholds
-   - Connection status emoji
+   - Latency label selection based on thresholds
+   - Connection status label
    - Embed color selection for latency
    - Audio snapshot retrieval
    - Atomic file writing
@@ -48,9 +48,9 @@ Test Coverage:
 
 6. TestPingCommand (4 tests):
    - Latency display
-   - Emoji inclusion based on latency
+   - Label inclusion based on latency
    - Ephemeral response
-   - High latency emoji handling
+   - High latency label handling
 
 7. TestHealthCommand (10 tests):
    - Embed response structure
@@ -86,6 +86,7 @@ from discord.ext import tasks
 
 from discord_music_player.domain.shared.constants import HealthConstants
 from discord_music_player.infrastructure.discord.cogs.health_cog import (
+    BasicStats,
     DetailedStats,
     HealthCog,
 )
@@ -301,40 +302,40 @@ class TestHelperMethods:
         result = health_cog._latency_ms()
         assert result == 0.0
 
-    def test_latency_emoji_green_for_low(self, health_cog):
-        """Should return green emoji for low latency."""
-        result = health_cog._latency_emoji(50)
-        assert result == "🟢"
+    def test_latency_label_ok_for_low(self, health_cog):
+        """Should return OK label for low latency."""
+        result = health_cog._latency_label(50)
+        assert result == "OK"
 
-    def test_latency_emoji_orange_for_medium(self, health_cog):
-        """Should return orange emoji for medium latency."""
-        result = health_cog._latency_emoji(500)
-        assert result == "🟠"
+    def test_latency_label_slow_for_medium(self, health_cog):
+        """Should return Slow label for medium latency."""
+        result = health_cog._latency_label(500)
+        assert result == "Slow"
 
-    def test_latency_emoji_red_for_high(self, health_cog):
-        """Should return red emoji for high latency."""
-        result = health_cog._latency_emoji(1000)
-        assert result == "🔴"
+    def test_latency_label_critical_for_high(self, health_cog):
+        """Should return Critical label for high latency."""
+        result = health_cog._latency_label(1000)
+        assert result == "Critical"
 
-    def test_latency_emoji_boundary_ok(self, health_cog):
-        """Should use green at OK threshold boundary."""
-        result = health_cog._latency_emoji(LATENCY_OK_MS - 1)
-        assert result == "🟢"
+    def test_latency_label_boundary_ok(self, health_cog):
+        """Should use OK at OK threshold boundary."""
+        result = health_cog._latency_label(LATENCY_OK_MS - 1)
+        assert result == "OK"
 
-    def test_latency_emoji_boundary_warn(self, health_cog):
-        """Should use orange at warn threshold boundary."""
-        result = health_cog._latency_emoji(LATENCY_WARN_MS - 1)
-        assert result == "🟠"
+    def test_latency_label_boundary_warn(self, health_cog):
+        """Should use Slow at warn threshold boundary."""
+        result = health_cog._latency_label(LATENCY_WARN_MS - 1)
+        assert result == "Slow"
 
-    def test_status_emoji_connected(self, health_cog):
-        """Should return green emoji when connected."""
-        result = health_cog._status_emoji(True)
-        assert result == "🟢"
+    def test_status_label_connected(self, health_cog):
+        """Should return Online label when connected."""
+        result = health_cog._status_label(True)
+        assert result == "Online"
 
-    def test_status_emoji_disconnected(self, health_cog):
-        """Should return red emoji when disconnected."""
-        result = health_cog._status_emoji(False)
-        assert result == "🔴"
+    def test_status_label_disconnected(self, health_cog):
+        """Should return Offline label when disconnected."""
+        result = health_cog._status_label(False)
+        assert result == "Offline"
 
     def test_embed_color_green_for_low_latency(self, health_cog):
         """Should return green color for low latency."""
@@ -361,19 +362,40 @@ class TestHelperMethods:
     def test_atomic_write_creates_file(self, health_cog, tmp_path):
         """Should atomically write JSON to file."""
         test_file = tmp_path / "test.json"
-        payload = {"test": "data", "number": 123}
+        payload = BasicStats(
+            ts="2024-01-01T00:00:00Z",
+            uptime_s=100,
+            uptime_human="1m 40s",
+            latency_ms=50.0,
+            latency_human="50.0 ms",
+            queue_len=0,
+            current=None,
+            connected=True,
+            status="online",
+        )
 
         health_cog._atomic_write(test_file, payload)
 
         assert test_file.exists()
         with open(test_file) as f:
             data = json.load(f)
-        assert data == payload
+        assert data["ts"] == "2024-01-01T00:00:00Z"
+        assert data["uptime_s"] == 100
 
     def test_atomic_write_uses_temp_file(self, health_cog, tmp_path):
         """Should write to temp file then rename."""
         test_file = tmp_path / "test.json"
-        payload = {"test": "data"}
+        payload = BasicStats(
+            ts="2024-01-01T00:00:00Z",
+            uptime_s=0,
+            uptime_human="0s",
+            latency_ms=0.0,
+            latency_human="0.0 ms",
+            queue_len=0,
+            current=None,
+            connected=True,
+            status="online",
+        )
 
         with patch("pathlib.Path.open", mock_open()) as mock_file:
             with patch("pathlib.Path.replace") as mock_replace:
@@ -395,24 +417,24 @@ class TestBasicStatsCollection:
         """Should collect all required basic stats fields."""
         stats = health_cog._collect_basic_stats()
 
-        assert "ts" in stats
-        assert "uptime_s" in stats
-        assert "uptime_human" in stats
-        assert "latency_ms" in stats
-        assert "latency_human" in stats
-        assert "queue_len" in stats
-        assert "current" in stats
-        assert "connected" in stats
-        assert "status" in stats
+        assert isinstance(stats, BasicStats)
+        assert stats.ts is not None
+        assert stats.uptime_s is not None
+        assert stats.uptime_human is not None
+        assert stats.latency_ms is not None
+        assert stats.latency_human is not None
+        assert stats.queue_len is not None
+        assert stats.connected is not None
+        assert stats.status is not None
 
     def test_collect_basic_stats_timestamp_format(self, health_cog):
         """Should include ISO timestamp."""
         stats = health_cog._collect_basic_stats()
 
         # Should be ISO format
-        assert "T" in stats["ts"]
+        assert "T" in stats.ts
         # Should be parseable
-        datetime.fromisoformat(stats["ts"])
+        datetime.fromisoformat(stats.ts)
 
     def test_collect_basic_stats_uptime(self, health_cog):
         """Should calculate uptime correctly."""
@@ -421,8 +443,8 @@ class TestBasicStatsCollection:
 
         stats = health_cog._collect_basic_stats()
 
-        assert stats["uptime_s"] >= 4
-        assert stats["uptime_s"] <= 6
+        assert stats.uptime_s >= 4
+        assert stats.uptime_s <= 6
 
     def test_collect_basic_stats_latency(self, health_cog, mock_bot):
         """Should include latency in milliseconds."""
@@ -430,8 +452,8 @@ class TestBasicStatsCollection:
 
         stats = health_cog._collect_basic_stats()
 
-        assert stats["latency_ms"] == 75.0
-        assert "75.0 ms" in stats["latency_human"]
+        assert stats.latency_ms == 75.0
+        assert "75.0 ms" in stats.latency_human
 
     def test_collect_basic_stats_connection_online(self, health_cog, mock_bot):
         """Should report online status when connected."""
@@ -439,8 +461,8 @@ class TestBasicStatsCollection:
 
         stats = health_cog._collect_basic_stats()
 
-        assert stats["connected"] is True
-        assert stats["status"] == "online"
+        assert stats.connected is True
+        assert stats.status == "online"
 
     def test_collect_basic_stats_connection_offline(self, health_cog, mock_bot):
         """Should report offline status when disconnected."""
@@ -448,15 +470,15 @@ class TestBasicStatsCollection:
 
         stats = health_cog._collect_basic_stats()
 
-        assert stats["connected"] is False
-        assert stats["status"] == "offline"
+        assert stats.connected is False
+        assert stats.status == "offline"
 
     def test_collect_basic_stats_queue_defaults(self, health_cog):
         """Should have default queue values."""
         stats = health_cog._collect_basic_stats()
 
-        assert stats["queue_len"] == 0
-        assert stats["current"] is None
+        assert stats.queue_len == 0
+        assert stats.current is None
 
 
 # =============================================================================
@@ -472,11 +494,11 @@ class TestDetailedStatsCollection:
         """Should include all basic stats in detailed stats."""
         stats = await health_cog._collect_detailed_stats()
 
-        # All basic fields should be present
-        assert "ts" in stats
-        assert "uptime_s" in stats
-        assert "latency_ms" in stats
-        assert "connected" in stats
+        assert isinstance(stats, DetailedStats)
+        assert stats.ts is not None
+        assert stats.uptime_s is not None
+        assert stats.latency_ms is not None
+        assert stats.connected is not None
 
     @pytest.mark.asyncio
     async def test_collect_detailed_stats_guild_count(self, health_cog, mock_bot):
@@ -485,7 +507,7 @@ class TestDetailedStatsCollection:
 
         stats = await health_cog._collect_detailed_stats()
 
-        assert stats["guild_count"] == 3
+        assert stats.guild_count == 3
 
     @pytest.mark.asyncio
     async def test_collect_detailed_stats_voice_connections(self, health_cog, mock_bot):
@@ -494,7 +516,7 @@ class TestDetailedStatsCollection:
 
         stats = await health_cog._collect_detailed_stats()
 
-        assert stats["voice_connections"] == 2
+        assert stats.voice_connections == 2
 
     @pytest.mark.asyncio
     async def test_collect_detailed_stats_memory_with_psutil(self, health_cog):
@@ -510,10 +532,8 @@ class TestDetailedStatsCollection:
         with patch("psutil.Process", return_value=mock_process):
             stats = await health_cog._collect_detailed_stats()
 
-        assert "rss_mb" in stats
-        assert stats["rss_mb"] == 100.0
-        assert "vms_mb" in stats
-        assert stats["vms_mb"] == 200.0
+        assert stats.rss_mb == 100.0
+        assert stats.vms_mb == 200.0
 
     @pytest.mark.asyncio
     async def test_collect_detailed_stats_memory_without_psutil(self, health_cog):
@@ -521,9 +541,9 @@ class TestDetailedStatsCollection:
         with patch("psutil.Process", side_effect=ImportError):
             stats = await health_cog._collect_detailed_stats()
 
-        # Should not have memory fields
-        assert "rss_mb" not in stats
-        assert "vms_mb" not in stats
+        # Should not have memory fields set
+        assert stats.rss_mb is None
+        assert stats.vms_mb is None
 
     @pytest.mark.asyncio
     async def test_collect_detailed_stats_database(self, health_cog, mock_container):
@@ -534,8 +554,8 @@ class TestDetailedStatsCollection:
 
         stats = await health_cog._collect_detailed_stats()
 
-        assert stats["db_initialized"] is True
-        assert stats["db_size_mb"] == 5.2
+        assert stats.db_initialized is True
+        assert stats.db_size_mb == 5.2
 
     @pytest.mark.asyncio
     async def test_collect_detailed_stats_database_error(self, health_cog, mock_container):
@@ -544,9 +564,9 @@ class TestDetailedStatsCollection:
 
         stats = await health_cog._collect_detailed_stats()
 
-        # Should not have db fields
-        assert "db_initialized" not in stats
-        assert "db_size_mb" not in stats
+        # Should not have db fields set
+        assert stats.db_initialized is None
+        assert stats.db_size_mb is None
 
 
 # =============================================================================
@@ -689,14 +709,14 @@ class TestPingCommand:
         assert "50.0" in call_args
 
     @pytest.mark.asyncio
-    async def test_ping_includes_emoji(self, health_cog, mock_context, mock_bot):
-        """Should include status emoji based on latency."""
+    async def test_ping_includes_label(self, health_cog, mock_context, mock_bot):
+        """Should include status label based on latency."""
         mock_bot.latency = 0.05  # 50ms - low
 
         await health_cog.ping.callback(health_cog, mock_context)
 
         call_args = mock_context.send.call_args[0][0]
-        assert "🟢" in call_args
+        assert "OK" in call_args
 
     @pytest.mark.asyncio
     async def test_ping_ephemeral_response(self, health_cog, mock_context):
@@ -707,14 +727,14 @@ class TestPingCommand:
         assert call_kwargs.get("ephemeral") is True
 
     @pytest.mark.asyncio
-    async def test_ping_high_latency_emoji(self, health_cog, mock_context, mock_bot):
-        """Should show red emoji for high latency."""
+    async def test_ping_high_latency_label(self, health_cog, mock_context, mock_bot):
+        """Should show Critical label for high latency."""
         mock_bot.latency = 1.0  # 1000ms - high
 
         await health_cog.ping.callback(health_cog, mock_context)
 
         call_args = mock_context.send.call_args[0][0]
-        assert "🔴" in call_args
+        assert "Critical" in call_args
 
 
 # =============================================================================
@@ -846,17 +866,17 @@ class TestEmbedBuilding:
 
     def test_build_health_embed_basic_structure(self, health_cog):
         """Should build embed with basic structure."""
-        payload: DetailedStats = {
-            "ts": "2024-01-01T00:00:00Z",
-            "uptime_s": 3600,
-            "uptime_human": "1h 0m 0s",
-            "latency_ms": 50.0,
-            "latency_human": "50.0 ms",
-            "queue_len": 0,
-            "current": None,
-            "connected": True,
-            "status": "online",
-        }
+        payload = DetailedStats(
+            ts="2024-01-01T00:00:00Z",
+            uptime_s=3600,
+            uptime_human="1h 0m 0s",
+            latency_ms=50.0,
+            latency_human="50.0 ms",
+            queue_len=0,
+            current=None,
+            connected=True,
+            status="online",
+        )
 
         embed = health_cog._build_health_embed(payload, False)
 
@@ -866,23 +886,23 @@ class TestEmbedBuilding:
 
     def test_build_health_embed_with_admin_info(self, health_cog):
         """Should include admin fields when requested."""
-        payload: DetailedStats = {
-            "ts": "2024-01-01T00:00:00Z",
-            "uptime_s": 3600,
-            "uptime_human": "1h 0m 0s",
-            "latency_ms": 50.0,
-            "latency_human": "50.0 ms",
-            "queue_len": 0,
-            "current": None,
-            "connected": True,
-            "status": "online",
-            "guild_count": 5,
-            "voice_connections": 2,
-            "rss_mb": 100.0,
-            "vms_mb": 200.0,
-            "db_initialized": True,
-            "db_size_mb": 5.5,
-        }
+        payload = DetailedStats(
+            ts="2024-01-01T00:00:00Z",
+            uptime_s=3600,
+            uptime_human="1h 0m 0s",
+            latency_ms=50.0,
+            latency_human="50.0 ms",
+            queue_len=0,
+            current=None,
+            connected=True,
+            status="online",
+            guild_count=5,
+            voice_connections=2,
+            rss_mb=100.0,
+            vms_mb=200.0,
+            db_initialized=True,
+            db_size_mb=5.5,
+        )
 
         embed = health_cog._build_health_embed(payload, True)
 
@@ -918,19 +938,19 @@ class TestEmbedBuilding:
 
     def test_format_memory_stats_with_both(self, health_cog):
         """Should format both RSS and VMS memory stats."""
-        payload: DetailedStats = {
-            "ts": "2024-01-01T00:00:00Z",
-            "uptime_s": 0,
-            "uptime_human": "0s",
-            "latency_ms": 0.0,
-            "latency_human": "0.0 ms",
-            "queue_len": 0,
-            "current": None,
-            "connected": True,
-            "status": "online",
-            "rss_mb": 100.5,
-            "vms_mb": 250.3,
-        }
+        payload = DetailedStats(
+            ts="2024-01-01T00:00:00Z",
+            uptime_s=0,
+            uptime_human="0s",
+            latency_ms=0.0,
+            latency_human="0.0 ms",
+            queue_len=0,
+            current=None,
+            connected=True,
+            status="online",
+            rss_mb=100.5,
+            vms_mb=250.3,
+        )
 
         result = health_cog._format_memory_stats(payload)
 
@@ -940,18 +960,18 @@ class TestEmbedBuilding:
 
     def test_format_memory_stats_rss_only(self, health_cog):
         """Should format RSS only when VMS not available."""
-        payload: DetailedStats = {
-            "ts": "2024-01-01T00:00:00Z",
-            "uptime_s": 0,
-            "uptime_human": "0s",
-            "latency_ms": 0.0,
-            "latency_human": "0.0 ms",
-            "queue_len": 0,
-            "current": None,
-            "connected": True,
-            "status": "online",
-            "rss_mb": 100.5,
-        }
+        payload = DetailedStats(
+            ts="2024-01-01T00:00:00Z",
+            uptime_s=0,
+            uptime_human="0s",
+            latency_ms=0.0,
+            latency_human="0.0 ms",
+            queue_len=0,
+            current=None,
+            connected=True,
+            status="online",
+            rss_mb=100.5,
+        )
 
         result = health_cog._format_memory_stats(payload)
 
@@ -960,17 +980,17 @@ class TestEmbedBuilding:
 
     def test_format_memory_stats_empty_when_none(self, health_cog):
         """Should return empty list when no memory stats."""
-        payload: DetailedStats = {
-            "ts": "2024-01-01T00:00:00Z",
-            "uptime_s": 0,
-            "uptime_human": "0s",
-            "latency_ms": 0.0,
-            "latency_human": "0.0 ms",
-            "queue_len": 0,
-            "current": None,
-            "connected": True,
-            "status": "online",
-        }
+        payload = DetailedStats(
+            ts="2024-01-01T00:00:00Z",
+            uptime_s=0,
+            uptime_human="0s",
+            latency_ms=0.0,
+            latency_human="0.0 ms",
+            queue_len=0,
+            current=None,
+            connected=True,
+            status="online",
+        )
 
         result = health_cog._format_memory_stats(payload)
 
@@ -992,7 +1012,7 @@ class TestSetupFunction:
 
         mock_bot.container = None
 
-        with pytest.raises(RuntimeError, match="Container not found"):
+        with pytest.raises(RuntimeError, match="container not found"):
             await setup(mock_bot)
 
     @pytest.mark.asyncio
