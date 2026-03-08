@@ -94,7 +94,6 @@ class EventBus:
 
     def __init__(self) -> None:
         self._handlers: dict[type[DomainEvent], list[EventHandler[Any]]] = defaultdict(list)
-        self._lock = asyncio.Lock()
 
     def subscribe(self, event_type: type[T], handler: EventHandler[T]) -> None:
         self._handlers[event_type].append(handler)

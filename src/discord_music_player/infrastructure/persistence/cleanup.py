@@ -86,7 +86,7 @@ class CleanupJob:
         except Exception as e:
             logger.error("Failed to cleanup sessions: %r", e)
 
-        history_cutoff = utcnow() - timedelta(days=30)
+        history_cutoff = utcnow() - timedelta(days=self._settings.history_retention_days)
         try:
             stats.history_cleaned = await self._history_repo.cleanup_old(history_cutoff)
         except Exception as e:
@@ -121,7 +121,7 @@ class CleanupJob:
 class CleanupStats(BaseModel):
     """Accumulator for cleanup operation results."""
 
-    model_config = ConfigDict()
+    model_config = ConfigDict(validate_assignment=True)
 
     sessions_cleaned: NonNegativeInt = 0
     history_cleaned: NonNegativeInt = 0

@@ -80,8 +80,12 @@ class LongTrackVoteView(BaseInteractiveView):
 
         threshold = VotingDomainService.calculate_threshold(listener_count)
 
-        accept_count = len(self._votes_accept)
-        reject_count = len(self._votes_reject)
+        # Invalidate votes from users who left the voice channel
+        listener_ids = set(listeners)
+        active_accepts = self._votes_accept & listener_ids
+        active_rejects = self._votes_reject & listener_ids
+        accept_count = len(active_accepts)
+        reject_count = len(active_rejects)
 
         # Check if accept threshold met
         if accept_count >= threshold:

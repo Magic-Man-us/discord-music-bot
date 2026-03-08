@@ -214,14 +214,16 @@ class TestWarmupRetryView:
 # =============================================================================
 
 
-def _make_vote_view(listener_count: int = 1):
+def _make_vote_view(listener_count: int = 1, voter_id: int = 42):
     from discord_music_player.infrastructure.discord.views.long_track_vote_view import (
         LongTrackVoteView,
     )
 
+    # Include the voter in the listener list so their vote counts
+    listeners = [voter_id] + list(range(1000, 1000 + listener_count - 1))
     container = MagicMock()
     container.voice_adapter = MagicMock()
-    container.voice_adapter.get_listeners = AsyncMock(return_value=[MagicMock()] * listener_count)
+    container.voice_adapter.get_listeners = AsyncMock(return_value=listeners)
 
     container.queue_service = MagicMock()
     container.queue_service.enqueue = AsyncMock()

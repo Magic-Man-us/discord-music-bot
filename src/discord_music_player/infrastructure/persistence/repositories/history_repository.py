@@ -51,8 +51,6 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         if played_at is None:
             played_at = UtcDateTime.now().dt
 
-        track_dict = track.model_dump()
-
         await self._db.execute(
             """
             INSERT INTO track_history (
@@ -64,15 +62,15 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             (
                 guild_id,
                 track.id.value,
-                track_dict["title"],
-                track_dict["webpage_url"],
-                track_dict["duration_seconds"],
-                track_dict["artist"],
-                track_dict["uploader"],
-                track_dict["like_count"],
-                track_dict["view_count"],
-                track_dict["requested_by_id"],
-                track_dict["requested_by_name"],
+                track.title,
+                track.webpage_url,
+                track.duration_seconds,
+                track.artist,
+                track.uploader,
+                track.like_count,
+                track.view_count,
+                track.requested_by_id,
+                track.requested_by_name,
                 UtcDateTime(played_at).iso,
             ),
         )
@@ -86,8 +84,11 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         return await self.get_recent(guild_id, limit=limit)
 
     async def get_recent_titles(self, guild_id: int, limit: int = 10) -> list[str]:
-        tracks = await self.get_recent(guild_id, limit=limit)
-        return [t.title for t in tracks]
+        rows = await self._db.fetch_all(
+            "SELECT title FROM track_history WHERE guild_id = ? ORDER BY played_at DESC LIMIT ?",
+            (guild_id, limit),
+        )
+        return [row["title"] for row in rows]
 
     async def cleanup_old(
         self,

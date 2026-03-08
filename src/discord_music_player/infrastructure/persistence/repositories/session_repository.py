@@ -113,22 +113,20 @@ class SQLiteSessionRepository(SessionRepository):
         logger.debug("Saved session for guild %s", session.guild_id)
 
     async def delete(self, guild_id: int) -> bool:
-        exists = await self.exists(guild_id)
-        if not exists:
-            return False
-
         async with self._db.transaction() as conn:
             await conn.execute(
                 "DELETE FROM queue_tracks WHERE guild_id = ?",
                 (guild_id,),
             )
-            await conn.execute(
+            cursor = await conn.execute(
                 "DELETE FROM guild_sessions WHERE guild_id = ?",
                 (guild_id,),
             )
+            deleted = cursor.rowcount > 0
 
-        logger.debug("Deleted session for guild %s", guild_id)
-        return True
+        if deleted:
+            logger.debug("Deleted session for guild %s", guild_id)
+        return deleted
 
     async def exists(self, guild_id: int) -> bool:
         row = await self._db.fetch_one(
@@ -231,23 +229,21 @@ class SQLiteSessionRepository(SessionRepository):
 
     def _track_to_params(
         self, track: Track, guild_id: int, position: int, is_current: bool
-    ) -> tuple:
-        track_dict = track.model_dump()
-
+    ) -> tuple[object, ...]:
         return (
             guild_id,
             track.id.value,
-            track_dict["title"],
-            track_dict["webpage_url"],
-            track_dict["stream_url"],
-            track_dict["duration_seconds"],
-            track_dict["thumbnail_url"],
-            track_dict["artist"],
-            track_dict["uploader"],
-            track_dict["like_count"],
-            track_dict["view_count"],
-            track_dict["requested_by_id"],
-            track_dict["requested_by_name"],
+            track.title,
+            track.webpage_url,
+            track.stream_url,
+            track.duration_seconds,
+            track.thumbnail_url,
+            track.artist,
+            track.uploader,
+            track.like_count,
+            track.view_count,
+            track.requested_by_id,
+            track.requested_by_name,
             UtcDateTime(track.requested_at).iso if track.requested_at else None,
             position,
             is_current,

@@ -210,31 +210,25 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
         return row["count"] if row else 0
 
     async def get_stats(self) -> CacheStats:
-        total = await self.count()
+        now = UtcDateTime.now().iso
+        row = await self._db.fetch_one(
+            """
+            SELECT
+                COUNT(*) as total,
+                COALESCE(SUM(CASE WHEN expires_at < ? THEN 1 ELSE 0 END), 0) as expired,
+                MIN(generated_at) as oldest,
+                MAX(generated_at) as newest
+            FROM recommendation_cache
+            """,
+            (now,),
+        )
+        if not row or row["total"] == 0:
+            return CacheStats()
 
-        expired_row = await self._db.fetch_one(
-            "SELECT COUNT(*) as count FROM recommendation_cache WHERE expires_at < ?",
-            (UtcDateTime.now().iso,),
-        )
-        expired = expired_row["count"] if expired_row else 0
-
-        oldest_row = await self._db.fetch_one(
-            "SELECT MIN(generated_at) as oldest FROM recommendation_cache"
-        )
-        oldest = (
-            UtcDateTime.from_iso(oldest_row["oldest"]).dt
-            if oldest_row and oldest_row.get("oldest")
-            else None
-        )
-
-        newest_row = await self._db.fetch_one(
-            "SELECT MAX(generated_at) as newest FROM recommendation_cache"
-        )
-        newest = (
-            UtcDateTime.from_iso(newest_row["newest"]).dt
-            if newest_row and newest_row.get("newest")
-            else None
-        )
+        total: int = row["total"]
+        expired: int = row["expired"]
+        oldest = UtcDateTime.from_iso(row["oldest"]).dt if row.get("oldest") else None
+        newest = UtcDateTime.from_iso(row["newest"]).dt if row.get("newest") else None
 
         return CacheStats(
             total_entries=total,

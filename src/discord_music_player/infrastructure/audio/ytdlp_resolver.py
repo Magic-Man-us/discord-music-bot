@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import logging
 import re
+import threading
 import time
 from typing import Any, Final, cast
 
@@ -44,6 +45,7 @@ logger = logging.getLogger(__name__)
 # ── Module-level state and patterns ────────────────────────────────────
 
 _info_cache: dict[HttpUrlStr, CacheEntry] = {}
+_cache_lock = threading.Lock()
 
 URL_PATTERNS: Final[list[re.Pattern[str]]] = [
     re.compile(r"https?://"),
@@ -170,30 +172,37 @@ class YtDlpResolver(AudioResolver):
 
     def _extract_info_sync(self, url: HttpUrlStr) -> YtDlpTrackInfo | None:
         now = time.time()
-        cached = _info_cache.get(url)
-        if cached is not None:
-            if now - cached.cached_at < CACHE_TTL:
-                logger.debug("Cache hit for URL: %s", url[:LOG_URL_TRUNCATE])
-                return cached.info
-            _info_cache.pop(url, None)
+        with _cache_lock:
+            cached = _info_cache.get(url)
+            if cached is not None:
+                if now - cached.cached_at < CACHE_TTL:
+                    logger.debug("Cache hit for URL: %s", url[:LOG_URL_TRUNCATE])
+                    return cached.info
+                _info_cache.pop(url, None)
 
         try:
             with YoutubeDL(params=cast(Any, self._get_opts().model_dump())) as ydl:
                 data = ydl.extract_info(url, download=False)
                 result = self._parse_single_result(data)
 
-                _info_cache[url] = CacheEntry(info=result, cached_at=now)
+                with _cache_lock:
+                    _info_cache[url] = CacheEntry(info=result, cached_at=now)
 
-                if len(_info_cache) > CACHE_MAX_SIZE:
-                    expired = [
-                        k
-                        for k, entry in _info_cache.items()
-                        if now - entry.cached_at >= CACHE_TTL
-                    ]
-                    for k in expired:
-                        _info_cache.pop(k, None)
-                    if expired:
-                        logger.debug("Cleaned %d expired cache entries", len(expired))
+                    if len(_info_cache) > CACHE_MAX_SIZE:
+                        expired = [
+                            k
+                            for k, entry in _info_cache.items()
+                            if now - entry.cached_at >= CACHE_TTL
+                        ]
+                        if not expired and len(_info_cache) > CACHE_MAX_SIZE:
+                            # All entries are fresh — evict oldest
+                            oldest_key = min(_info_cache, key=lambda k: _info_cache[k].cached_at)
+                            _info_cache.pop(oldest_key, None)
+                        else:
+                            for k in expired:
+                                _info_cache.pop(k, None)
+                        if expired:
+                            logger.debug("Cleaned %d expired cache entries", len(expired))
 
                 return result
         except Exception:

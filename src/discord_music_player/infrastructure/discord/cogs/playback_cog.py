@@ -279,10 +279,10 @@ class PlaybackCog(BaseCog):
                 upcoming = session.peek() if session else None
                 await msm.update_next_up(interaction.guild.id, upcoming)
 
-        except Exception as e:
+        except Exception:
             logger.exception("Error in play command")
             await interaction.followup.send(
-                DiscordUIMessages.ERROR_OCCURRED.format(error=e), ephemeral=True
+                DiscordUIMessages.ERROR_COMMAND_FAILED_SEE_LOGS, ephemeral=True
             )
 
     # ─────────────────────────────────────────────────────────────────

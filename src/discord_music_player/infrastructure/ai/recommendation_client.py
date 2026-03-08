@@ -96,12 +96,7 @@ class AIRecommendationClient(AIClient):
             raise
 
     def _handle_api_error(self, error: Exception) -> None:
-        logger.warning(
-            "AI API error attempt=%d/%d: %s",
-            1,
-            1,
-            error.__class__.__name__,
-        )
+        logger.warning("AI API error: %s", error.__class__.__name__)
 
     async def _fetch_recommendations_raw(
         self, request: RecommendationRequest

@@ -112,7 +112,7 @@ class QueueCog(BaseCog):
         name="shuffle_history", description="Queue and shuffle all previously played tracks."
     )
     @app_commands.describe(limit="Max number of tracks to fetch (default: 100)")
-    async def shuffle_history(self, interaction: discord.Interaction, limit: int = 100) -> None:
+    async def shuffle_history(self, interaction: discord.Interaction, limit: app_commands.Range[int, 1, 500] = 100) -> None:
         if not await ensure_voice(
             interaction, self.container.voice_warmup_tracker, self.container.voice_adapter
         ):

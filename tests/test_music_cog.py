@@ -705,7 +705,7 @@ class TestPlayCommand:
 
         mock_interaction.followup.send.assert_called_once()
         args = mock_interaction.followup.send.call_args
-        assert "error" in args[0][0].lower()
+        assert "failed" in args[0][0].lower()
 
 
 # =============================================================================

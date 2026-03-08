@@ -163,6 +163,7 @@ class CleanupSettings(BaseModel):
 
     stale_session_hours: PositiveInt = 24
     cleanup_interval_minutes: PositiveInt = 30
+    history_retention_days: PositiveInt = 30
 
 
 class Settings(BaseSettings):
