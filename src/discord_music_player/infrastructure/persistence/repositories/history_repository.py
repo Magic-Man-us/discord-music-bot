@@ -13,11 +13,19 @@ from discord_music_player.domain.music.repository import TrackHistoryRepository
 from discord_music_player.domain.music.value_objects import TrackId
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
 from discord_music_player.domain.shared.types import NonEmptyStr, NonNegativeInt, UnitInterval
+from discord_music_player.infrastructure.persistence.models import TrackRow
 
 if TYPE_CHECKING:
     from ..database import Database
 
 logger = logging.getLogger(__name__)
+
+
+# SQL result-set column aliases used across multiple analytics queries.
+_COUNT: str = "count"
+_TOTAL: str = "total"
+_TITLE: str = "title"
+_TOTAL_TRACKS: str = "total_tracks"
 
 
 class UserStats(BaseModel):
@@ -88,7 +96,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             "SELECT title FROM track_history WHERE guild_id = ? ORDER BY played_at DESC LIMIT ?",
             (guild_id, limit),
         )
-        return [row["title"] for row in rows]
+        return [row[_TITLE] for row in rows]
 
     async def cleanup_old(
         self,
@@ -105,7 +113,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             "SELECT COUNT(*) as count FROM track_history WHERE played_at < ?",
             (older_than.isoformat(),),
         )
-        count = count_row["count"] if count_row else 0
+        count = count_row[_COUNT] if count_row else 0
 
         await self._db.execute(
             "DELETE FROM track_history WHERE played_at < ?",
@@ -127,7 +135,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             """,
             (guild_id, limit),
         )
-        return [self._row_to_track(row) for row in rows]
+        return [TrackRow.model_validate(row).to_track() for row in rows]
 
     async def get_play_count(self, guild_id: int, track_id: TrackId) -> int:
         row = await self._db.fetch_one(
@@ -137,7 +145,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             """,
             (guild_id, track_id.value),
         )
-        return row["count"] if row else 0
+        return row[_COUNT] if row else 0
 
     async def get_most_played(self, guild_id: int, limit: int = 10) -> list[tuple[Track, int]]:
         rows = await self._db.fetch_all(
@@ -151,14 +159,14 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             """,
             (guild_id, limit),
         )
-        return [(self._row_to_track(row), row["play_count"]) for row in rows]
+        return [(TrackRow.model_validate(row).to_track(), row["play_count"]) for row in rows]
 
     async def clear_history(self, guild_id: int) -> int:
         count_row = await self._db.fetch_one(
             "SELECT COUNT(*) as count FROM track_history WHERE guild_id = ?",
             (guild_id,),
         )
-        count = count_row["count"] if count_row else 0
+        count = count_row[_COUNT] if count_row else 0
 
         await self._db.execute(
             "DELETE FROM track_history WHERE guild_id = ?",
@@ -190,21 +198,21 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             "SELECT COUNT(*) as count FROM track_history WHERE guild_id = ?",
             (guild_id,),
         )
-        return row["count"] if row else 0
+        return row[_COUNT] if row else 0
 
     async def get_unique_tracks(self, guild_id: int) -> int:
         row = await self._db.fetch_one(
             "SELECT COUNT(DISTINCT track_id) as count FROM track_history WHERE guild_id = ?",
             (guild_id,),
         )
-        return row["count"] if row else 0
+        return row[_COUNT] if row else 0
 
     async def get_total_listen_time(self, guild_id: int) -> int:
         row = await self._db.fetch_one(
             "SELECT COALESCE(SUM(duration_seconds), 0) as total FROM track_history WHERE guild_id = ?",
             (guild_id,),
         )
-        return row["total"] if row else 0
+        return row[_TOTAL] if row else 0
 
     async def get_top_requesters(
         self, guild_id: int, limit: int = 10
@@ -221,7 +229,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             (guild_id, limit),
         )
         return [
-            (row["requested_by_id"], row["requested_by_name"] or "Unknown", row["count"])
+            (row["requested_by_id"], row["requested_by_name"] or "Unknown", row[_COUNT])
             for row in rows
         ]
 
@@ -236,9 +244,9 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             """,
             (guild_id,),
         )
-        if not row or row["total"] == 0:
+        if not row or row[_TOTAL] == 0:
             return 0.0
-        return row["skipped"] / row["total"]
+        return row["skipped"] / row[_TOTAL]
 
     async def get_most_skipped(self, guild_id: int, limit: int = 10) -> list[tuple[str, int]]:
         rows = await self._db.fetch_all(
@@ -252,7 +260,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             """,
             (guild_id, limit),
         )
-        return [(row["title"], row["count"]) for row in rows]
+        return [(row[_TITLE], row[_COUNT]) for row in rows]
 
     async def get_user_stats(self, guild_id: int, user_id: int) -> UserStats:
         row = await self._db.fetch_one(
@@ -267,14 +275,14 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             """,
             (guild_id, user_id),
         )
-        if not row or row["total_tracks"] == 0:
+        if not row or row[_TOTAL_TRACKS] == 0:
             return UserStats()
 
         return UserStats(
-            total_tracks=row["total_tracks"],
+            total_tracks=row[_TOTAL_TRACKS],
             unique_tracks=row["unique_tracks"],
             total_listen_time=row["total_listen_time"],
-            skip_rate=row["skipped_count"] / row["total_tracks"],
+            skip_rate=row["skipped_count"] / row[_TOTAL_TRACKS],
         )
 
     async def get_user_top_tracks(
@@ -291,7 +299,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             """,
             (guild_id, user_id, limit),
         )
-        return [(row["title"], row["count"]) for row in rows]
+        return [(row[_TITLE], row[_COUNT]) for row in rows]
 
     async def get_activity_by_day(self, guild_id: int, days: int = 30) -> list[tuple[str, int]]:
         rows = await self._db.fetch_all(
@@ -304,7 +312,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             """,
             (guild_id, f"-{days} days"),
         )
-        return [(row["day"], row["count"]) for row in rows]
+        return [(row["day"], row[_COUNT]) for row in rows]
 
     async def get_activity_by_hour(self, guild_id: int) -> list[tuple[int, int]]:
         rows = await self._db.fetch_all(
@@ -317,7 +325,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             """,
             (guild_id,),
         )
-        return [(row["hour"], row["count"]) for row in rows]
+        return [(row["hour"], row[_COUNT]) for row in rows]
 
     async def get_activity_by_weekday(self, guild_id: int) -> list[tuple[int, int]]:
         rows = await self._db.fetch_all(
@@ -330,7 +338,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             """,
             (guild_id,),
         )
-        return [(row["weekday"], row["count"]) for row in rows]
+        return [(row["weekday"], row[_COUNT]) for row in rows]
 
     async def get_user_tracks_for_genre(
         self, guild_id: int, user_id: int
@@ -346,31 +354,8 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         return [
             GenreTrackInfo(
                 track_id=row["track_id"],
-                title=row["title"],
+                title=row[_TITLE],
                 artist=row.get("artist"),
             )
             for row in rows
         ]
-
-    def _row_to_track(self, row: dict) -> Track:
-        requested_at = None
-        if row.get("requested_at"):
-            requested_at = UtcDateTime.from_iso(row["requested_at"]).dt
-
-        track_data = {
-            "id": TrackId(row["track_id"]),
-            "title": row["title"],
-            "webpage_url": row["webpage_url"],
-            "stream_url": None,
-            "duration_seconds": row.get("duration_seconds"),
-            "thumbnail_url": None,
-            "artist": row.get("artist"),
-            "uploader": row.get("uploader"),
-            "like_count": row.get("like_count"),
-            "view_count": row.get("view_count"),
-            "requested_by_id": row.get("requested_by_id"),
-            "requested_by_name": row.get("requested_by_name"),
-            "requested_at": requested_at,
-        }
-
-        return Track.model_validate(track_data)

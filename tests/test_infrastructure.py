@@ -152,6 +152,7 @@ class TestCleanupJob:
         settings = MagicMock()
         settings.cleanup_interval_minutes = 60
         settings.stale_session_hours = 24
+        settings.history_retention_days = 30
         return settings
 
     @pytest.fixture

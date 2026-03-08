@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
 from discord_music_player.domain.music.repository import SessionRepository
-from discord_music_player.domain.music.value_objects import LoopMode, PlaybackState, TrackId
+from discord_music_player.domain.music.value_objects import LoopMode, PlaybackState
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
+from discord_music_player.infrastructure.persistence.models import TrackRow, track_to_queue_params
 
 if TYPE_CHECKING:
     from ..database import Database
@@ -32,8 +33,8 @@ class SQLiteSessionRepository(SessionRepository):
 
         queue_rows = await self._db.fetch_all(
             """
-            SELECT * FROM queue_tracks 
-            WHERE guild_id = ? 
+            SELECT * FROM queue_tracks
+            WHERE guild_id = ?
             ORDER BY position ASC
             """,
             (guild_id,),
@@ -42,9 +43,10 @@ class SQLiteSessionRepository(SessionRepository):
         queue: list[Track] = []
         current_track: Track | None = None
 
-        for row in queue_rows:
-            track = self._row_to_track(row)
-            if row["is_current"]:
+        for raw_row in queue_rows:
+            row = TrackRow.model_validate(raw_row)
+            track = row.to_track(id_from_url=True)
+            if raw_row["is_current"]:
                 current_track = track
             else:
                 queue.append(track)
@@ -94,7 +96,7 @@ class SQLiteSessionRepository(SessionRepository):
                         requested_at, position, is_current
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    self._track_to_params(session.current_track, session.guild_id, -1, True),
+                    track_to_queue_params(session.current_track, session.guild_id, -1, is_current=True),
                 )
 
             for position, track in enumerate(session.queue):
@@ -107,7 +109,7 @@ class SQLiteSessionRepository(SessionRepository):
                         requested_at, position, is_current
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    self._track_to_params(track, session.guild_id, position, False),
+                    track_to_queue_params(track, session.guild_id, position, is_current=False),
                 )
 
         logger.debug("Saved session for guild %s", session.guild_id)
@@ -202,49 +204,4 @@ class SQLiteSessionRepository(SessionRepository):
         await self._db.execute(
             "UPDATE guild_sessions SET last_activity = ? WHERE guild_id = ?",
             (UtcDateTime.now().iso, guild_id),
-        )
-
-    def _row_to_track(self, row: dict) -> Track:
-        requested_at = None
-        if row.get("requested_at"):
-            requested_at = UtcDateTime.from_iso(row["requested_at"]).dt
-
-        track_data = {
-            "id": TrackId.from_url(row["webpage_url"]),
-            "title": row["title"],
-            "webpage_url": row["webpage_url"],
-            "stream_url": row.get("stream_url"),
-            "duration_seconds": row.get("duration_seconds"),
-            "thumbnail_url": row.get("thumbnail_url"),
-            "artist": row.get("artist"),
-            "uploader": row.get("uploader"),
-            "like_count": row.get("like_count"),
-            "view_count": row.get("view_count"),
-            "requested_by_id": row.get("requested_by_id"),
-            "requested_by_name": row.get("requested_by_name"),
-            "requested_at": requested_at,
-        }
-
-        return Track.model_validate(track_data)
-
-    def _track_to_params(
-        self, track: Track, guild_id: int, position: int, is_current: bool
-    ) -> tuple[object, ...]:
-        return (
-            guild_id,
-            track.id.value,
-            track.title,
-            track.webpage_url,
-            track.stream_url,
-            track.duration_seconds,
-            track.thumbnail_url,
-            track.artist,
-            track.uploader,
-            track.like_count,
-            track.view_count,
-            track.requested_by_id,
-            track.requested_by_name,
-            UtcDateTime(track.requested_at).iso if track.requested_at else None,
-            position,
-            is_current,
         )

@@ -272,10 +272,10 @@ class YtDlpResolver(AudioResolver):
                         if result is not None:
                             tracks.append(result)
                     except Exception as e:
-                        logger.warning("Resolution failed: {error}".format(error=e))
+                        logger.warning("Resolution failed: %s", e)
             except* Exception as eg:
                 for exc in eg.exceptions:
-                    logger.warning("Resolution failed: {error}".format(error=exc))
+                    logger.warning("Resolution failed: %s", exc)
 
             if i + RESOLVE_BATCH_SIZE < len(queries):
                 await asyncio.sleep(RESOLVE_BATCH_DELAY)
