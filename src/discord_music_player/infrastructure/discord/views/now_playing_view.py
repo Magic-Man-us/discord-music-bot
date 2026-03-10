@@ -1,4 +1,4 @@
-"""Now-playing view with YouTube, Download, and AI Similar-track buttons."""
+"""Now-playing view with YouTube, Download, and AI buttons (+1 Similar / Radio)."""
 
 from __future__ import annotations
 
@@ -22,15 +22,16 @@ from discord_music_player.infrastructure.discord.views.download_view import (
 from discord_music_player.utils.reply import truncate
 
 if TYPE_CHECKING:
+    from ....application.services.radio_models import RadioToggleResult
     from ....config.container import Container
+    from ....domain.music.entities import Track
 
 logger = logging.getLogger(__name__)
 
 
 class NowPlayingView(BaseInteractiveView):
-    """Adds an AI-powered "Similar" button alongside the standard YouTube/Download links."""
+    """YouTube/Download links plus AI-powered '+1 Similar' and 'Radio' buttons."""
 
-    _SIMILAR_LABEL: ClassVar[str] = "Similar"
     _MAX_GUILD_LOCKS: ClassVar[int] = 256
     _guild_locks: ClassVar[dict[DiscordSnowflake, asyncio.Lock]] = {}
 
@@ -51,6 +52,10 @@ class NowPlayingView(BaseInteractiveView):
 
         add_track_link_buttons(self, webpage_url)
 
+        if not container.ai_enabled:
+            self.remove_item(self.similar_button)
+            self.remove_item(self.radio_button)
+
     @classmethod
     def _get_lock(cls, guild_id: DiscordSnowflake) -> asyncio.Lock:
         if guild_id not in cls._guild_locks:
@@ -64,7 +69,9 @@ class NowPlayingView(BaseInteractiveView):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return await check_user_in_voice(interaction, self.guild_id)
 
-    @discord.ui.button(label=_SIMILAR_LABEL, style=discord.ButtonStyle.primary)
+    # ── +1 Similar: quick-add one track ────────────────────────────────
+
+    @discord.ui.button(label="+1 Similar", style=discord.ButtonStyle.primary)
     async def similar_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[NowPlayingView]
     ) -> None:
@@ -82,17 +89,12 @@ class NowPlayingView(BaseInteractiveView):
             edited = False
             try:
                 button.disabled = True
-                button.label = "Thinking..."
+                button.label = "Finding..."
                 await self._try_edit_message()
 
-                session = await self._container.session_repository.get(self.guild_id)
-                if session is None or session.current_track is None:
-                    await interaction.followup.send(
-                        "Nothing is playing.", ephemeral=True
-                    )
+                current = await self._get_current_track(interaction)
+                if current is None:
                     return
-
-                current = session.current_track
 
                 request = RecommendationRequest(
                     base_track_title=current.title,
@@ -142,7 +144,7 @@ class NowPlayingView(BaseInteractiveView):
                 )
 
                 button.disabled = False
-                button.label = self._SIMILAR_LABEL
+                button.label = "+1 Similar"
                 if self._message:
                     from ..services.embed_builder import build_now_playing_embed
 
@@ -161,8 +163,88 @@ class NowPlayingView(BaseInteractiveView):
             finally:
                 if not edited:
                     button.disabled = False
-                    button.label = self._SIMILAR_LABEL
+                    button.label = "+1 Similar"
                     await self._try_edit_message()
+
+    # ── Radio: seed from current track, show RadioView with rerolls ───
+
+    @discord.ui.button(label="Radio", style=discord.ButtonStyle.secondary)
+    async def radio_button(
+        self, interaction: discord.Interaction, _button: discord.ui.Button[NowPlayingView]
+    ) -> None:
+        lock = self._get_lock(self.guild_id)
+
+        if lock.locked():
+            await interaction.response.send_message(
+                "A similar track search is already in progress, please wait.", ephemeral=True
+            )
+            return
+
+        await interaction.response.defer()
+
+        async with lock:
+            try:
+                radio_service = self._container.radio_service
+
+                # If radio is already on, tell the user
+                if radio_service.is_enabled(self.guild_id):
+                    await interaction.followup.send(
+                        "Radio is already active. Use `/radio` to manage it.",
+                        ephemeral=True,
+                    )
+                    return
+
+                user = interaction.user
+                result = await radio_service.toggle_radio(
+                    guild_id=self.guild_id,
+                    user_id=user.id,
+                    user_name=user.display_name,
+                    channel_id=interaction.channel_id,
+                )
+
+                if not result.enabled:
+                    msg = result.message or "Couldn't enable radio."
+                    await interaction.followup.send(msg, ephemeral=True)
+                    return
+
+                await self._send_radio_view(interaction, result)
+
+            except Exception:
+                logger.exception("Error in radio button handler")
+                await interaction.followup.send(
+                    "An error occurred while starting radio. Please try again.",
+                    ephemeral=True,
+                )
+
+    async def _send_radio_view(
+        self, interaction: discord.Interaction, result: RadioToggleResult
+    ) -> None:
+        """Send the RadioView with reroll buttons, same as RadioCog does."""
+        from ..views.radio_view import RadioView, build_up_next_embed
+
+        queue_info = await self._container.queue_service.get_queue(self.guild_id)
+        queue_start = max(0, queue_info.total_length - len(result.generated_tracks))
+
+        embed = build_up_next_embed(result.generated_tracks, result.seed_title)
+        view = RadioView(
+            guild_id=self.guild_id,
+            container=self._container,
+            tracks=result.generated_tracks,
+            seed_title=result.seed_title,
+            queue_start_position=queue_start,
+        )
+        msg = await interaction.followup.send(embed=embed, view=view, wait=True)
+        view.set_message(msg)
+
+    # ── Shared helpers ─────────────────────────────────────────────────
+
+    async def _get_current_track(self, interaction: discord.Interaction) -> Track | None:
+        """Get the current track, or send an ephemeral error and return None."""
+        session = await self._container.session_repository.get(self.guild_id)
+        if session is None or session.current_track is None:
+            await interaction.followup.send("Nothing is playing.", ephemeral=True)
+            return None
+        return session.current_track
 
     async def _try_edit_message(self, *, embed: discord.Embed | None = None) -> None:
         if self._message is None:

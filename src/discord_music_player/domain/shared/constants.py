@@ -75,6 +75,9 @@ class AudioConstants:
     # Timestamp / seek limits
     MAX_SEEK_SECONDS = 86_400  # 24 hours
 
+    # Audio normalization (EBU R128 loudnorm)
+    LOUDNORM_FILTER = "loudnorm=I=-16:TP=-1.5:LRA=11"
+
 
 class TimeConstants:
     """Time-related constants in seconds."""
@@ -94,6 +97,9 @@ class TimeConstants:
 
     # Voice warmup
     VOICE_WARMUP_SECONDS = 60
+
+    # Auto-DJ — auto-start radio this many seconds after queue exhausts (0 = disabled)
+    AUTO_DJ_DELAY_SECONDS = 60  # 1 minute
 
     # Idle disconnect — leave voice after this many seconds with no playback
     IDLE_DISCONNECT_SECONDS = 300  # 5 minutes

@@ -12,6 +12,7 @@ from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.repository import TrackHistoryRepository
 from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
+from discord_music_player.domain.shared.enums import LeaderboardTimeRange
 from discord_music_player.domain.shared.types import NonEmptyStr, NonNegativeInt, UnitInterval
 from discord_music_player.infrastructure.persistence.models import TrackRow
 
@@ -339,6 +340,71 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             (guild_id,),
         )
         return [(row["weekday"], row[_COUNT]) for row in rows]
+
+    @staticmethod
+    def _time_range_clause(time_range: LeaderboardTimeRange) -> str:
+        """Return a SQL WHERE clause fragment for the given time range."""
+        if time_range == LeaderboardTimeRange.ALL_TIME:
+            return ""
+        days = 7 if time_range == LeaderboardTimeRange.LAST_7_DAYS else 30
+        return f" AND played_at >= datetime('now', '-{days} days')"
+
+    async def get_most_played_since(
+        self, guild_id: int, time_range: LeaderboardTimeRange, limit: int = 10
+    ) -> list[tuple[Track, int]]:
+        """Most-played tracks within a time range."""
+        clause = self._time_range_clause(time_range)
+        rows = await self._db.fetch_all(
+            f"""
+            SELECT *, COUNT(*) as play_count
+            FROM track_history
+            WHERE guild_id = ?{clause}
+            GROUP BY track_id
+            ORDER BY play_count DESC
+            LIMIT ?
+            """,
+            (guild_id, limit),
+        )
+        return [(TrackRow.model_validate(row).to_track(), row["play_count"]) for row in rows]
+
+    async def get_top_requesters_since(
+        self, guild_id: int, time_range: LeaderboardTimeRange, limit: int = 10
+    ) -> list[tuple[int, str, int]]:
+        """Top requesters within a time range."""
+        clause = self._time_range_clause(time_range)
+        rows = await self._db.fetch_all(
+            f"""
+            SELECT requested_by_id, requested_by_name, COUNT(*) as count
+            FROM track_history
+            WHERE guild_id = ? AND requested_by_id IS NOT NULL{clause}
+            GROUP BY requested_by_id
+            ORDER BY count DESC
+            LIMIT ?
+            """,
+            (guild_id, limit),
+        )
+        return [
+            (row["requested_by_id"], row["requested_by_name"] or "Unknown", row[_COUNT])
+            for row in rows
+        ]
+
+    async def get_most_skipped_since(
+        self, guild_id: int, time_range: LeaderboardTimeRange, limit: int = 10
+    ) -> list[tuple[str, int]]:
+        """Most-skipped tracks within a time range."""
+        clause = self._time_range_clause(time_range)
+        rows = await self._db.fetch_all(
+            f"""
+            SELECT title, COUNT(*) as count
+            FROM track_history
+            WHERE guild_id = ? AND skipped = 1{clause}
+            GROUP BY track_id
+            ORDER BY count DESC
+            LIMIT ?
+            """,
+            (guild_id, limit),
+        )
+        return [(row[_TITLE], row[_COUNT]) for row in rows]
 
     async def get_user_tracks_for_genre(
         self, guild_id: int, user_id: int

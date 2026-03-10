@@ -159,15 +159,15 @@ class TestDatabase:
         """Test that a freshly initialized DB passes validation."""
         result = await in_memory_database.validate_schema()
 
-        assert result.tables.expected == 7
-        assert result.tables.found == 7
+        assert result.tables.expected == 8
+        assert result.tables.found == 8
         assert result.tables.missing == []
 
         assert result.columns.expected == result.columns.found
         assert result.columns.missing == {}
 
-        assert result.indexes.expected == 9
-        assert result.indexes.found == 9
+        assert result.indexes.expected == 10
+        assert result.indexes.found == 10
         assert result.indexes.missing == []
 
         # In-memory SQLite uses journal_mode=memory instead of wal
@@ -186,7 +186,7 @@ class TestDatabase:
         result = await in_memory_database.validate_schema()
 
         assert "track_genres" in result.tables.missing
-        assert result.tables.found == 6
+        assert result.tables.found == 7
         assert len(result.issues) > 0
         assert any("track_genres" in issue for issue in result.issues)
 
@@ -198,7 +198,7 @@ class TestDatabase:
         result = await in_memory_database.validate_schema()
 
         assert "idx_track_genres_genre" in result.indexes.missing
-        assert result.indexes.found == 8
+        assert result.indexes.found == 9
         assert any("idx_track_genres_genre" in issue for issue in result.issues)
 
 
@@ -429,20 +429,22 @@ class TestCacheRepository:
     """Tests for SQLiteCacheRepository."""
 
     @pytest.mark.asyncio
-    async def test_set_and_get_cache(self, cache_repository):
-        """Test setting and getting a cache entry."""
-        from discord_music_player.domain.recommendations.entities import Recommendation
+    async def test_save_and_get_cache(self, cache_repository):
+        """Test saving and getting a cache entry."""
+        from discord_music_player.domain.recommendations.entities import Recommendation, RecommendationSet
 
-        key = "test-key-123"
-        recommendations = [
-            Recommendation(title="song1", query="song1"),
-            Recommendation(title="song2", query="song2"),
-        ]
-        ttl = 3600
+        rec_set = RecommendationSet(
+            base_track_title="test song",
+            base_track_artist="test artist",
+            recommendations=[
+                Recommendation(title="song1", query="song1"),
+                Recommendation(title="song2", query="song2"),
+            ],
+        )
 
-        await cache_repository.set(key, recommendations, ttl)
+        await cache_repository.save(rec_set)
 
-        result = await cache_repository.get(key)
+        result = await cache_repository.get(rec_set.cache_key)
 
         assert result is not None
         assert [r.title for r in result.recommendations] == ["song1", "song2"]
@@ -456,34 +458,42 @@ class TestCacheRepository:
     @pytest.mark.asyncio
     async def test_delete_cache(self, cache_repository):
         """Test deleting a cache entry."""
-        from discord_music_player.domain.recommendations.entities import Recommendation
+        from discord_music_player.domain.recommendations.entities import Recommendation, RecommendationSet
 
-        key = "delete-me"
+        rec_set = RecommendationSet(
+            base_track_title="delete me",
+            base_track_artist="artist",
+            recommendations=[Recommendation(title="test", query="test")],
+        )
 
-        await cache_repository.set(key, [Recommendation(title="test", query="test")], 3600)
-        await cache_repository.delete(key)
+        await cache_repository.save(rec_set)
+        await cache_repository.delete(rec_set.cache_key)
 
-        result = await cache_repository.get(key)
+        result = await cache_repository.get(rec_set.cache_key)
         assert result is None
 
     @pytest.mark.asyncio
     async def test_clear_all_cache(self, cache_repository):
         """Test clearing all cache entries."""
-        from discord_music_player.domain.recommendations.entities import Recommendation
+        from discord_music_player.domain.recommendations.entities import Recommendation, RecommendationSet
 
-        # Add multiple entries
         for i in range(5):
-            await cache_repository.set(
-                f"key-{i}",
-                [Recommendation(title=f"song{i}", query=f"song{i}")],
-                3600,
+            rec_set = RecommendationSet(
+                base_track_title=f"song{i}",
+                base_track_artist=f"artist{i}",
+                recommendations=[Recommendation(title=f"song{i}", query=f"song{i}")],
             )
+            await cache_repository.save(rec_set)
 
-        await cache_repository.clear_all()
+        await cache_repository.clear()
 
-        # Verify all are gone
         for i in range(5):
-            result = await cache_repository.get(f"key-{i}")
+            rec_set = RecommendationSet(
+                base_track_title=f"song{i}",
+                base_track_artist=f"artist{i}",
+                recommendations=[],
+            )
+            result = await cache_repository.get(rec_set.cache_key)
             assert result is None
 
     @pytest.mark.asyncio

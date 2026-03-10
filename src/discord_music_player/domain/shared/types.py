@@ -128,7 +128,10 @@ TemperatureFloat = Annotated[float, Field(ge=0.0, le=2.0)]
 """AI temperature: 0.0 … 2.0."""
 
 RadioCount = Annotated[int, Field(gt=0, le=10)]
-"""Radio tracks per batch: 1 … 10."""
+"""Radio visible tracks in queue: 1 … 10."""
+
+RadioBatchSize = Annotated[int, Field(gt=0, le=10)]
+"""Radio AI batch size: 1 … 10 (capped by MAX_RECOMMENDATION_COUNT)."""
 
 RadioMaxTracks = Annotated[int, Field(gt=0, le=200)]
 """Radio max tracks per session: 1 … 200."""

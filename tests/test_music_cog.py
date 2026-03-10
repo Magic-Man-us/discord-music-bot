@@ -130,6 +130,7 @@ def mock_container():
     # Mock settings
     container.settings = MagicMock()
     container.settings.discord.owner_ids = [999999999]
+    container.settings.discord.dj_role_id = None
 
     # Mock message_state_manager
     container.message_state_manager = MagicMock(spec=MessageStateManager)

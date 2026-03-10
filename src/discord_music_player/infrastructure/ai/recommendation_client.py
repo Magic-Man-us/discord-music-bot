@@ -129,6 +129,17 @@ class AIRecommendationClient(AIClient):
                 f"Base artist: {request.base_track_artist or ''}\n"
             )
 
+            if request.session_context:
+                context_lines = [
+                    f"- {s.artist} - {s.title}" if s.artist else f"- {s.title}"
+                    for s in request.session_context
+                ]
+                user_prompt += (
+                    "\nRecent session tracks (match this overall mood/vibe):\n"
+                    + "\n".join(context_lines)
+                    + "\n"
+                )
+
             self._logger.debug(
                 "Fetching recommendations for '%s' (count=%d)",
                 request.base_track_title,

@@ -9,12 +9,13 @@ import discord
 from discord import app_commands
 
 from discord_music_player.domain.shared.constants import AnalyticsConstants, UIConstants
-from discord_music_player.domain.shared.enums import ActivityPeriod, LeaderboardCategory, Weekday
+from discord_music_player.domain.shared.enums import ActivityPeriod, LeaderboardCategory, LeaderboardTimeRange, Weekday
 from discord_music_player.domain.shared.types import DiscordSnowflake, TrackForClassification, TrackGenreMap, UserIdField
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.utils.reply import format_duration
 
 if TYPE_CHECKING:
+    from ...charts.chart_generator import ChartGenerator
     from ...persistence.repositories.history_repository import GenreTrackInfo
 
 _LEADERBOARD_CHART_FILENAME: str = "leaderboard.png"
@@ -94,27 +95,34 @@ class AnalyticsCog(BaseCog):
     # -- Leaderboards --
 
     @app_commands.command(name="top", description="Show leaderboards")
-    @app_commands.describe(category="What to rank")
+    @app_commands.describe(category="What to rank", period="Time range")
     @app_commands.choices(
         category=[
             app_commands.Choice(name="Tracks", value="tracks"),
             app_commands.Choice(name="Users", value="users"),
             app_commands.Choice(name="Skipped", value="skipped"),
-        ]
+        ],
+        period=[
+            app_commands.Choice(name="All Time", value="all"),
+            app_commands.Choice(name="Last 7 Days", value="7d"),
+            app_commands.Choice(name="Last 30 Days", value="30d"),
+        ],
     )
     @app_commands.guild_only()
     async def top(
         self,
         interaction: discord.Interaction,
         category: app_commands.Choice[str] | None = None,
+        period: app_commands.Choice[str] | None = None,
     ) -> None:
         assert interaction.guild is not None
         await interaction.response.defer()
 
         guild_id = interaction.guild.id
         cat = category.value if category else LeaderboardCategory.TRACKS
+        time_range = LeaderboardTimeRange(period.value) if period else LeaderboardTimeRange.ALL_TIME
 
-        result = await self._fetch_leaderboard(guild_id, cat)
+        result = await self._fetch_leaderboard(guild_id, cat, time_range)
         if result is None:
             await interaction.followup.send(_NO_MUSIC_YET)
             return
@@ -140,6 +148,7 @@ class AnalyticsCog(BaseCog):
         self,
         guild_id: DiscordSnowflake,
         category: str,
+        time_range: LeaderboardTimeRange = LeaderboardTimeRange.ALL_TIME,
     ) -> tuple[str, list[str], list[int], list[str]] | None:
         """Fetch leaderboard data and format for display.
 
@@ -149,13 +158,14 @@ class AnalyticsCog(BaseCog):
         limit = AnalyticsConstants.DEFAULT_LEADERBOARD_LIMIT
         label_trunc = AnalyticsConstants.CHART_LABEL_TRUNCATION
         line_trunc = AnalyticsConstants.LEADERBOARD_LINE_TRUNCATION
+        suffix = "" if time_range == LeaderboardTimeRange.ALL_TIME else f" ({time_range.value})"
 
         if category == LeaderboardCategory.TRACKS:
-            data = await history_repo.get_most_played(guild_id, limit=limit)
+            data = await history_repo.get_most_played_since(guild_id, time_range, limit=limit)
             if not data:
                 return None
             return (
-                "Top Tracks",
+                f"Top Tracks{suffix}",
                 [t.title[:label_trunc] for t, _ in data],
                 [c for _, c in data],
                 [
@@ -165,22 +175,22 @@ class AnalyticsCog(BaseCog):
             )
 
         if category == LeaderboardCategory.USERS:
-            raw = await history_repo.get_top_requesters(guild_id, limit=limit)
+            raw = await history_repo.get_top_requesters_since(guild_id, time_range, limit=limit)
             if not raw:
                 return None
             return (
-                "Top Listeners",
+                f"Top Listeners{suffix}",
                 [name[:label_trunc] for _, name, _ in raw],
                 [c for _, _, c in raw],
                 [f"**{i + 1}.** {name} — {c} plays" for i, (_, name, c) in enumerate(raw)],
             )
 
         # skipped
-        raw_skipped = await history_repo.get_most_skipped(guild_id, limit=limit)
+        raw_skipped = await history_repo.get_most_skipped_since(guild_id, time_range, limit=limit)
         if not raw_skipped:
             return None
         return (
-            "Most Skipped",
+            f"Most Skipped{suffix}",
             [t[:label_trunc] for t, _ in raw_skipped],
             [c for _, c in raw_skipped],
             [f"**{i + 1}.** {t[:line_trunc]} — {c} skips" for i, (t, c) in enumerate(raw_skipped)],
@@ -431,10 +441,9 @@ class AnalyticsCog(BaseCog):
         return self._attach_chart(embed, chart_gen, png)
 
     @staticmethod
-    def _attach_chart(embed: discord.Embed, chart_gen: object, png: bytes) -> discord.File:
-        """Attach a chart image to the embed and return the File."""
+    def _attach_chart(embed: discord.Embed, chart_gen: ChartGenerator, png: bytes) -> discord.File:
         filename = AnalyticsConstants.ACTIVITY_CHART_FILENAME
-        chart_file = chart_gen.to_discord_file(png, filename)  # type: ignore[union-attr]
+        chart_file = chart_gen.to_discord_file(png, filename)
         embed.set_image(url=f"attachment://{filename}")
         return chart_file
 

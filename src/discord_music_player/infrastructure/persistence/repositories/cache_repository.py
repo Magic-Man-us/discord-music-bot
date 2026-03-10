@@ -17,8 +17,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# TypeAdapter for list[Recommendation] — avoids manual dict plucking
 _recommendation_list_ta = TypeAdapter(list[Recommendation])
+
+_COUNT_COL = "count"
 
 
 class SQLiteCacheRepository(RecommendationCacheRepository):
@@ -35,16 +36,6 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
             """,
             (cache_key, now_iso),
         )
-
-        if row is None and "|" not in cache_key:
-            compat_key = f"{cache_key.lower().strip()}|unknown"
-            row = await self._db.fetch_one(
-                """
-                SELECT * FROM recommendation_cache
-                WHERE cache_key = ? AND expires_at > ?
-                """,
-                (compat_key, now_iso),
-            )
 
         if row is None:
             return None
@@ -68,31 +59,6 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
         except (ValueError, KeyError) as e:
             logger.warning("Failed to parse cached recommendations: %s", e)
             return None
-
-    async def set(
-        self,
-        key: str,
-        recommendations: list[Recommendation],
-        ttl_seconds: int,
-    ) -> None:
-        """Cache a list of recommendations under the given key."""
-        now = UtcDateTime.now().dt
-        expires_at = now + timedelta(seconds=int(ttl_seconds))
-
-        base_track_title = key.split("|")[0]
-
-        rs = RecommendationSet(
-            base_track_title=base_track_title,
-            base_track_artist=None,
-            recommendations=recommendations,
-            generated_at=now,
-            expires_at=expires_at,
-        )
-
-        await self.save(rs)
-
-    async def clear_all(self) -> int:
-        return await self.clear()
 
     async def save(self, recommendation_set: RecommendationSet) -> None:
         cache_key = recommendation_set.cache_key
@@ -132,31 +98,18 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
             "SELECT 1 FROM recommendation_cache WHERE cache_key = ?",
             (cache_key,),
         )
-        if row is not None:
-            await self._db.execute(
-                "DELETE FROM recommendation_cache WHERE cache_key = ?",
-                (cache_key,),
-            )
-            return True
+        if row is None:
+            return False
 
-        if "|" not in cache_key:
-            compat_key = f"{cache_key.lower().strip()}|unknown"
-            row2 = await self._db.fetch_one(
-                "SELECT 1 FROM recommendation_cache WHERE cache_key = ?",
-                (compat_key,),
-            )
-            if row2 is not None:
-                await self._db.execute(
-                    "DELETE FROM recommendation_cache WHERE cache_key = ?",
-                    (compat_key,),
-                )
-                return True
-
-        return False
+        await self._db.execute(
+            "DELETE FROM recommendation_cache WHERE cache_key = ?",
+            (cache_key,),
+        )
+        return True
 
     async def clear(self) -> int:
         count_row = await self._db.fetch_one("SELECT COUNT(*) as count FROM recommendation_cache")
-        count = count_row["count"] if count_row else 0
+        count = count_row[_COUNT_COL] if count_row else 0
         await self._db.execute("DELETE FROM recommendation_cache")
         return count
 
@@ -166,7 +119,7 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
             "SELECT COUNT(*) as count FROM recommendation_cache WHERE expires_at < ?",
             (now_iso,),
         )
-        count = count_row["count"] if count_row else 0
+        count = count_row[_COUNT_COL] if count_row else 0
         await self._db.execute(
             "DELETE FROM recommendation_cache WHERE expires_at < ?",
             (now_iso,),
@@ -194,7 +147,7 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
 
     async def count(self) -> int:
         row = await self._db.fetch_one("SELECT COUNT(*) as count FROM recommendation_cache")
-        return row["count"] if row else 0
+        return row[_COUNT_COL] if row else 0
 
     async def get_stats(self) -> CacheStats:
         now = UtcDateTime.now().iso

@@ -6,7 +6,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import discord
 
@@ -48,6 +48,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
         self._on_track_end: Callable[[int], Awaitable[None]] | None = None
         self._current_track: dict[int, Track] = {}
         self._ffmpeg_options = self._settings.ffmpeg_options
+        self._normalize_audio = self._settings.normalize_audio
         # Resolve User-Agent from primary player_client
         primary_client = self._settings.player_client[0] if self._settings.player_client else "web"
         self._user_agent = (
@@ -178,7 +179,10 @@ class DiscordVoiceAdapter(VoiceAdapter):
                 before_opts = f"-ss {start_seconds.value} {before_opts}"
             base_opts = self._ffmpeg_options.get("options", "")
 
-            fade_opts = f'{base_opts} -af "afade=t=in:ss=0:d={FADE_IN_SECONDS}"'
+            af_filters = [f"afade=t=in:ss=0:d={FADE_IN_SECONDS}"]
+            if self._normalize_audio:
+                af_filters.append(AudioConstants.LOUDNORM_FILTER)
+            fade_opts = f'{base_opts} -af "{",".join(af_filters)}"'
 
             source = discord.FFmpegPCMAudio(
                 track.stream_url,
@@ -282,7 +286,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
     def set_on_track_end_callback(
         self,
-        callback: Any,  # Callable[[int], Awaitable[None]]
+        callback: Callable[[int], Awaitable[None]],
     ) -> None:
         self._on_track_end = callback
 

@@ -31,17 +31,18 @@ class SQLiteGenreCacheRepository:
         return {row["track_id"]: row["genre"] for row in rows}
 
     async def save_genres(self, classifications: TrackGenreMap) -> None:
-        """Batch upsert genre classifications."""
+        """Batch upsert genre classifications in a single transaction."""
         if not classifications:
             return
 
         now = UtcDateTime.now().iso
-        for track_id, genre in classifications.items():
-            await self._db.execute(
-                """
-                INSERT INTO track_genres (track_id, genre, classified_at)
-                VALUES (?, ?, ?)
-                ON CONFLICT(track_id) DO UPDATE SET genre = ?, classified_at = ?
-                """,
-                (track_id, genre, now, genre, now),
-            )
+        async with self._db.transaction() as conn:
+            for track_id, genre in classifications.items():
+                await conn.execute(
+                    """
+                    INSERT INTO track_genres (track_id, genre, classified_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(track_id) DO UPDATE SET genre = ?, classified_at = ?
+                    """,
+                    (track_id, genre, now, genre, now),
+                )

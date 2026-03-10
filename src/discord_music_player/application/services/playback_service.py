@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from ...domain.music.entities import GuildPlaybackSession, Track
 from ...domain.music.enums import PlaybackState
@@ -37,7 +37,7 @@ class PlaybackApplicationService:
         self._voice_adapter = voice_adapter
         self._audio_resolver = audio_resolver
 
-        self._on_track_finished_callback: Callable[[DiscordSnowflake, Track], Any] | None = None
+        self._on_track_finished_callback: Callable[[DiscordSnowflake, Track], Awaitable[None]] | None = None
 
         # Optional seek offset consumed on next playback start per guild.
         self._pending_start_seconds: dict[DiscordSnowflake, StartSeconds] = {}
@@ -62,7 +62,7 @@ class PlaybackApplicationService:
         if current_track:
             await self.handle_track_finished(guild_id, current_track)
 
-    def set_track_finished_callback(self, callback: Callable[[DiscordSnowflake, Track], Any]) -> None:
+    def set_track_finished_callback(self, callback: Callable[[DiscordSnowflake, Track], Awaitable[None]]) -> None:
         self._on_track_finished_callback = callback
 
     _MAX_RESOLVE_RETRIES: int = 3
@@ -277,6 +277,41 @@ class PlaybackApplicationService:
             logger.exception("Error resuming playback")
             return False
 
+    async def seek_playback(
+        self, guild_id: DiscordSnowflake, *, start_seconds: StartSeconds
+    ) -> bool:
+        """Restart the current track at a specific timestamp."""
+        session = await self._session_repo.get(guild_id)
+        if session is None or session.current_track is None:
+            return False
+
+        track = session.current_track
+        if not track.stream_url:
+            track = await self._ensure_stream_url(session, track, guild_id)
+            if track is None:
+                return False
+
+        self._ignore_next_voice_track_end.add(guild_id)
+        try:
+            await self._voice_adapter.stop(guild_id)
+        except Exception:
+            self._ignore_next_voice_track_end.discard(guild_id)
+            logger.exception("Error stopping voice during seek")
+            return False
+
+        try:
+            success = await self._voice_adapter.play(
+                guild_id, track, start_seconds=start_seconds
+            )
+            if not success:
+                logger.error("Voice adapter failed to play after seek in guild %s", guild_id)
+                return False
+            logger.info("Seeked to %ss in guild %s", start_seconds.value, guild_id)
+            return True
+        except Exception:
+            logger.exception("Error starting playback after seek")
+            return False
+
     async def skip_track(self, guild_id: DiscordSnowflake) -> Track | None:
         """Skip the current track and return it, or None if nothing was playing."""
         session = await self._session_repo.get(guild_id)
@@ -346,9 +381,7 @@ class PlaybackApplicationService:
 
         if self._on_track_finished_callback:
             try:
-                result = self._on_track_finished_callback(guild_id, track)
-                if asyncio.iscoroutine(result):
-                    await result
+                await self._on_track_finished_callback(guild_id, track)
             except Exception:
                 logger.exception("Error in track finished callback")
 

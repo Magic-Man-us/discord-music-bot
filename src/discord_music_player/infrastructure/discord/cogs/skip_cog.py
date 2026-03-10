@@ -9,6 +9,7 @@ from discord.ext import commands
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     can_force_skip,
+    ensure_dj_role,
     ensure_user_in_voice_and_warm,
     send_ephemeral,
 )
@@ -34,6 +35,8 @@ class SkipCog(BaseCog):
             return
 
         if force:
+            if not await ensure_dj_role(interaction, self.container.settings.discord.dj_role_id):
+                return
             await self._handle_force_skip(interaction, user)
         else:
             await self._handle_vote_skip(interaction, user)

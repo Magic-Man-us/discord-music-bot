@@ -220,6 +220,10 @@ class AdminCog(BaseCog):
     @commands.command(name="cache_status", description="Show cache statistics.")
     @require_owner_or_admin()
     async def cache_status(self, ctx: commands.Context) -> None:
+        if not self.container.ai_enabled:
+            await self._reply(ctx, "AI features are disabled.")
+            return
+
         try:
             ai_client = self.container.ai_client
             stats = ai_client.get_cache_stats()
@@ -241,6 +245,10 @@ class AdminCog(BaseCog):
     @commands.command(name="cache_clear", description="Clear the AI cache.")
     @require_owner()
     async def cache_clear(self, ctx: commands.Context) -> None:
+        if not self.container.ai_enabled:
+            await self._reply(ctx, "AI features are disabled.")
+            return
+
         try:
             ai_client = self.container.ai_client
             cleared = ai_client.clear_cache()
@@ -252,6 +260,10 @@ class AdminCog(BaseCog):
     @commands.command(name="cache_prune", description="Prune old cache entries.")
     @require_owner()
     async def cache_prune(self, ctx: commands.Context, max_age_seconds: int = 3600) -> None:
+        if not self.container.ai_enabled:
+            await self._reply(ctx, "AI features are disabled.")
+            return
+
         try:
             ai_client = self.container.ai_client
             pruned = ai_client.prune_cache(max_age_seconds)

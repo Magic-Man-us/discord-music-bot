@@ -2,20 +2,29 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ...domain.music.entities import Track
-from ...domain.shared.types import NonEmptyStr, NonNegativeInt, TrackTitleStr
+from ...domain.recommendations.entities import Recommendation
+from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, NonNegativeInt, TrackTitleStr
 
 
 class RadioState(BaseModel):
-    """Mutable state tracker for a guild's radio session — mutated in-place by RadioService."""
+    """Mutable per-guild state for an active radio session.
+
+    Holds the unresolved recommendation pool so tracks can be resolved
+    on-demand as the queue is consumed, without extra AI calls.
+    """
 
     model_config = ConfigDict()
 
     enabled: bool = False
     seed_track_title: TrackTitleStr | None = None
-    tracks_generated: NonNegativeInt = 0
+    tracks_consumed: NonNegativeInt = 0
+    pool: list[Recommendation] = Field(default_factory=list)
+    user_id: DiscordSnowflake | None = None
+    user_name: NonEmptyStr | None = None
+    channel_id: DiscordSnowflake | None = None
 
 
 class RadioToggleResult(BaseModel):

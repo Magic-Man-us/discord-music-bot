@@ -432,6 +432,8 @@ class TestLoadCogs:
             "discord_music_player.infrastructure.discord.cogs.info_cog",
             "discord_music_player.infrastructure.discord.cogs.event_cog",
             "discord_music_player.infrastructure.discord.cogs.analytics_cog",
+            "discord_music_player.infrastructure.discord.cogs.favorites_cog",
+            "discord_music_player.infrastructure.discord.cogs.saved_queue_cog",
         ]
 
         assert mock_load.call_count == len(expected_cogs)
@@ -455,7 +457,7 @@ class TestLoadCogs:
             await bot._load_cogs()
 
         # Should still attempt to load all cogs
-        assert mock_load.call_count == 10
+        assert mock_load.call_count == 12
 
 
 # =============================================================================

@@ -1,4 +1,13 @@
-"""AI-powered radio: manages per-guild state and orchestrates recommendations."""
+"""AI-powered radio: pool-based recommendation system with batch fetching.
+
+Architecture:
+- toggle_radio() fetches batch_size(10) recommendations from AI
+- Resolves visible_count(3) immediately and enqueues them
+- Remaining 7 go into the unresolved pool on RadioState
+- replenish_from_pool() pops from pool → resolve → enqueue (called on track consumed)
+- When pool empties, publishes RadioPoolExhausted → triggers "Continue?" prompt
+- continue_radio() fetches a fresh batch and refills the pool
+"""
 
 from __future__ import annotations
 
@@ -6,11 +15,15 @@ import logging
 from typing import TYPE_CHECKING
 
 from ...domain.music.entities import GuildPlaybackSession, Track
-from ...domain.recommendations.entities import Recommendation, RecommendationRequest, filter_duplicates
+from ...domain.recommendations.entities import (
+    Recommendation,
+    RecommendationRequest,
+    filter_duplicates,
+)
+from ...domain.shared.events import RadioPoolExhausted, get_event_bus
 from ...domain.shared.types import (
     DiscordSnowflake,
     NonEmptyStr,
-    PositiveInt,
 )
 from .radio_models import RadioState, RadioToggleResult
 
@@ -24,10 +37,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _REROLL_CANDIDATES: int = 3
+_SMART_SEED_LIMIT: int = 5  # Number of recent tracks used for session-aware seeding
 
 
 class RadioApplicationService:
-    """Orchestrates the radio feature: AI recommendations -> resolve -> enqueue."""
+    """Orchestrates the radio feature using a pool-based recommendation pipeline.
+
+    Flow: AI batch(batch_size) → resolve visible(visible_count) → pool(remainder)
+    → auto-replenish from pool → prompt on pool exhaustion → continue or stop.
+    """
 
     def __init__(
         self,
@@ -53,6 +71,10 @@ class RadioApplicationService:
         state = self._states.get(guild_id)
         return state is not None and state.enabled
 
+    def get_state(self, guild_id: DiscordSnowflake) -> RadioState | None:
+        """Return the guild's radio state (or None if no state exists)."""
+        return self._states.get(guild_id)
+
     async def has_queued_tracks(self, guild_id: DiscordSnowflake) -> bool:
         """Check whether the guild's queue has any tracks waiting."""
         session = await self._session_repo.get(guild_id)
@@ -65,8 +87,13 @@ class RadioApplicationService:
         guild_id: DiscordSnowflake,
         user_id: DiscordSnowflake,
         user_name: NonEmptyStr,
+        channel_id: DiscordSnowflake | None = None,
     ) -> RadioToggleResult:
-        """Toggle radio on/off, seeding from the currently playing track when enabling."""
+        """Toggle radio on/off.
+
+        When enabling: fetches batch_size recommendations, resolves visible_count
+        for immediate playback, and stores the remainder in the pool.
+        """
         if self.is_enabled(guild_id):
             self.disable_radio(guild_id)
             return RadioToggleResult(enabled=False, message="Radio disabled.")
@@ -80,29 +107,67 @@ class RadioApplicationService:
 
         current_track = session.current_track
 
-        state = RadioState(enabled=True, seed_track_title=current_track.title)
-        self._states[guild_id] = state
-
-        tracks = await self._generate_and_enqueue(
-            guild_id=guild_id,
-            base_track=current_track,
+        # Create state with user/channel context for pool-exhaustion events
+        state = RadioState(
+            enabled=True,
+            seed_track_title=current_track.title,
             user_id=user_id,
             user_name=user_name,
-            count=self._settings.default_count,
+            channel_id=channel_id,
+        )
+        self._states[guild_id] = state
+
+        # Fetch a full batch from AI, seeded with recent session history
+        exclude_ids = await self._collect_exclude_ids(guild_id)
+        recent_tracks = await self._history_repo.get_recent(guild_id, limit=_SMART_SEED_LIMIT)
+        recommendations = await self._fetch_recommendations(
+            current_track,
+            count=self._settings.batch_size,
+            exclude_ids=exclude_ids,
+            recent_tracks=recent_tracks,
         )
 
-        if not tracks:
+        if not recommendations:
             self.disable_radio(guild_id)
             return RadioToggleResult(
                 enabled=False,
                 message="Couldn't find similar tracks.",
             )
 
-        logger.info("Radio enabled in guild %s (seed='%s')", guild_id, current_track.title)
+        # Split: resolve visible_count immediately, pool the rest
+        visible_recs = recommendations[: self._settings.visible_count]
+        pool_recs = recommendations[self._settings.visible_count :]
+
+        enqueued = await self._resolve_and_enqueue_all(
+            visible_recs,
+            guild_id=guild_id,
+            user_id=user_id,
+            user_name=user_name,
+        )
+
+        if not enqueued:
+            self.disable_radio(guild_id)
+            return RadioToggleResult(
+                enabled=False,
+                message="Couldn't find similar tracks.",
+            )
+
+        # Store remaining unresolved recommendations in the pool
+        state.pool = list(pool_recs)
+        state.tracks_consumed += len(enqueued)
+
+        logger.info(
+            "Radio enabled in guild %s (seed='%s', queued=%d, pool=%d)",
+            guild_id,
+            current_track.title,
+            len(enqueued),
+            len(state.pool),
+        )
+
         return RadioToggleResult(
             enabled=True,
-            tracks_added=len(tracks),
-            generated_tracks=tracks,
+            tracks_added=len(enqueued),
+            generated_tracks=enqueued,
             seed_title=current_track.title,
         )
 
@@ -111,6 +176,129 @@ class RadioApplicationService:
         self._states.pop(guild_id, None)
         if had_state:
             logger.info("Radio disabled in guild %s", guild_id)
+
+    # ── Pool-based replenishment ──────────────────────────────────────
+
+    async def replenish_from_pool(self, guild_id: DiscordSnowflake) -> int:
+        """Pop one recommendation from the pool, resolve, and enqueue it.
+
+        Called automatically when a track is consumed (played/skipped).
+        Publishes RadioPoolExhausted when the pool runs dry.
+        Returns the number of tracks added (0 or 1).
+        """
+        state = self._get_active_state(guild_id)
+        if state is None:
+            return 0
+
+        if state.tracks_consumed >= self._settings.max_tracks_per_session:
+            logger.info(
+                "Radio session limit reached in guild %s (%d/%d tracks)",
+                guild_id,
+                state.tracks_consumed,
+                self._settings.max_tracks_per_session,
+            )
+            self.disable_radio(guild_id)
+            return 0
+
+        if not state.pool:
+            # Pool exhausted — publish event so the UI can prompt "Continue?"
+            await self._publish_pool_exhausted(guild_id, state)
+            return 0
+
+        # Try recommendations from the pool until one resolves
+        user_id = state.user_id or 0
+        user_name = state.user_name or "Radio"
+
+        while state.pool:
+            rec = state.pool.pop(0)
+            track = await self._try_resolve_and_enqueue(
+                rec,
+                guild_id=guild_id,
+                user_id=user_id,
+                user_name=user_name,
+            )
+            if track is not None:
+                state.tracks_consumed += 1
+                logger.debug(
+                    "Radio pool: queued '%s' for guild %s (pool remaining=%d)",
+                    track.title,
+                    guild_id,
+                    len(state.pool),
+                )
+                return 1
+
+        # Exhausted pool trying to resolve — publish event
+        await self._publish_pool_exhausted(guild_id, state)
+        return 0
+
+    async def continue_radio(self, guild_id: DiscordSnowflake) -> RadioToggleResult:
+        """Continue radio after pool exhaustion — fetch a fresh batch.
+
+        Called when the user accepts the "Continue?" prompt.
+        """
+        state = self._get_active_state(guild_id)
+        if state is None:
+            return RadioToggleResult(enabled=False, message="Radio is not active.")
+
+        base_track = await self._get_base_track(guild_id)
+        if base_track is None:
+            return RadioToggleResult(enabled=False, message="No track is currently playing.")
+
+        remaining_budget = self._settings.max_tracks_per_session - state.tracks_consumed
+        if remaining_budget <= 0:
+            self.disable_radio(guild_id)
+            return RadioToggleResult(enabled=False, message="Radio session limit reached.")
+
+        batch_size = min(self._settings.batch_size, remaining_budget)
+        exclude_ids = await self._collect_exclude_ids(guild_id)
+        recent_tracks = await self._history_repo.get_recent(guild_id, limit=_SMART_SEED_LIMIT)
+
+        recommendations = await self._fetch_recommendations(
+            base_track,
+            count=batch_size,
+            exclude_ids=exclude_ids,
+            recent_tracks=recent_tracks,
+        )
+
+        if not recommendations:
+            return RadioToggleResult(
+                enabled=True,
+                message="Couldn't find more similar tracks.",
+            )
+
+        # Split: resolve visible_count immediately, pool the rest
+        visible_count = min(self._settings.visible_count, len(recommendations))
+        visible_recs = recommendations[:visible_count]
+        pool_recs = recommendations[visible_count:]
+
+        user_id = state.user_id or 0
+        user_name = state.user_name or "Radio"
+
+        enqueued = await self._resolve_and_enqueue_all(
+            visible_recs,
+            guild_id=guild_id,
+            user_id=user_id,
+            user_name=user_name,
+        )
+
+        state.pool = list(pool_recs)
+        state.tracks_consumed += len(enqueued)
+
+        logger.info(
+            "Radio continued in guild %s (queued=%d, pool=%d, total_consumed=%d)",
+            guild_id,
+            len(enqueued),
+            len(state.pool),
+            state.tracks_consumed,
+        )
+
+        return RadioToggleResult(
+            enabled=True,
+            tracks_added=len(enqueued),
+            generated_tracks=enqueued,
+            seed_title=state.seed_track_title,
+            message="Radio continuing with fresh recommendations.",
+        )
 
     # ── Reroll ────────────────────────────────────────────────────────
 
@@ -138,13 +326,18 @@ class RadioApplicationService:
         exclude_ids = await self._collect_exclude_ids(guild_id, removed.id.value)
 
         recommendations = await self._fetch_recommendations(
-            base_track, count=_REROLL_CANDIDATES, exclude_ids=exclude_ids,
+            base_track,
+            count=_REROLL_CANDIDATES,
+            exclude_ids=exclude_ids,
         )
         if not recommendations:
             return None
 
         track = await self._resolve_and_enqueue_first(
-            recommendations, guild_id=guild_id, user_id=user_id, user_name=user_name,
+            recommendations,
+            guild_id=guild_id,
+            user_id=user_id,
+            user_name=user_name,
         )
         if track is None:
             return None
@@ -156,22 +349,26 @@ class RadioApplicationService:
             if from_pos != queue_position:
                 await self._queue_service.move(guild_id, from_pos, queue_position)
 
-        state.tracks_generated += 1
+        state.tracks_consumed += 1
         return track
 
-    # ── Refill / warmup ──────────────────────────────────────────────
+    # ── Legacy refill / warmup (now pool-aware) ───────────────────────
 
     async def refill_queue(self, guild_id: DiscordSnowflake) -> int:
-        """Refill the queue with more radio tracks when the queue is exhausted."""
+        """Refill the queue when exhausted — draws from pool first.
+
+        If the pool is empty, publishes RadioPoolExhausted instead of
+        calling AI directly (the user must accept "Continue?").
+        """
         state = self._get_active_state(guild_id)
         if state is None:
             return 0
 
-        if state.tracks_generated >= self._settings.max_tracks_per_session:
+        if state.tracks_consumed >= self._settings.max_tracks_per_session:
             logger.info(
                 "Radio session limit reached in guild %s (%d/%d tracks)",
                 guild_id,
-                state.tracks_generated,
+                state.tracks_consumed,
                 self._settings.max_tracks_per_session,
             )
             self.disable_radio(guild_id)
@@ -183,109 +380,129 @@ class RadioApplicationService:
         if session is None:
             return 0
 
-        base_track = session.current_track
-        if base_track is None:
-            return 0
-
-        remaining_budget = self._settings.max_tracks_per_session - state.tracks_generated
-        count = min(self._settings.default_count, remaining_budget)
-
         remaining_capacity = session.MAX_QUEUE_SIZE - session.queue_length
         if remaining_capacity <= 0:
             return 0
-        count = min(count, remaining_capacity)
 
-        try:
-            tracks = await self._generate_and_enqueue(
+        # Draw from pool up to visible_count or remaining capacity
+        target = min(self._settings.visible_count, remaining_capacity)
+        added = 0
+
+        user_id = state.user_id or 0
+        user_name = state.user_name or "Radio"
+
+        for _ in range(target):
+            if not state.pool:
+                break
+            rec = state.pool.pop(0)
+            track = await self._try_resolve_and_enqueue(
+                rec,
                 guild_id=guild_id,
-                base_track=base_track,
-                user_id=base_track.requested_by_id or 0,
-                user_name=base_track.requested_by_name or "Radio",
-                count=count,
+                user_id=user_id,
+                user_name=user_name,
             )
-            added = len(tracks)
-            logger.info("Radio refill completed in guild %s: %d tracks added", guild_id, added)
-            return added
-        except Exception as exc:
-            logger.exception("Radio refill failed in guild %s: %s", guild_id, exc)
-            return 0
+            if track is not None:
+                state.tracks_consumed += 1
+                added += 1
+
+        if added > 0:
+            logger.info("Radio refill completed in guild %s: %d tracks from pool", guild_id, added)
+
+        # If pool is now empty after refill, notify
+        if not state.pool:
+            await self._publish_pool_exhausted(guild_id, state)
+
+        return added
 
     async def warmup_next(self, guild_id: DiscordSnowflake, *, recent_limit: int = 10) -> int:
-        """Pre-fetch a single track so the queue is never empty while radio is active.
+        """Pre-fetch a single track from the pool so the queue is never empty.
 
-        Excludes the current track, any queued tracks, and the last *recent_limit*
-        tracks from history to avoid immediate repeats.
+        Draws from the pool instead of calling AI directly.
         """
         state = self._get_active_state(guild_id)
         if state is None:
             return 0
 
-        if state.tracks_generated >= self._settings.max_tracks_per_session:
+        if state.tracks_consumed >= self._settings.max_tracks_per_session:
             return 0
 
         session = await self._session_repo.get(guild_id)
         if session is None or session.queue_length > 0:
             return 0
 
-        base_track = session.current_track
-        if base_track is None:
+        if not state.pool:
+            await self._publish_pool_exhausted(guild_id, state)
             return 0
 
-        # Build exclusion set: current + queued + recent history
-        exclude_ids = self._session_exclude_ids(session)
-        recent = await self._history_repo.get_recent(guild_id, limit=recent_limit)
-        for t in recent:
-            if t.id.value not in exclude_ids:
-                exclude_ids.append(t.id.value)
+        user_id = state.user_id or 0
+        user_name = state.user_name or "Radio"
 
-        recommendations = await self._fetch_recommendations(
-            base_track, count=1, exclude_ids=exclude_ids,
-        )
-        if not recommendations:
-            return 0
+        while state.pool:
+            rec = state.pool.pop(0)
+            track = await self._try_resolve_and_enqueue(
+                rec,
+                guild_id=guild_id,
+                user_id=user_id,
+                user_name=user_name,
+            )
+            if track is not None:
+                state.tracks_consumed += 1
+                logger.debug("Radio warmup: queued 1 track for guild %s", guild_id)
+                return 1
 
-        track = await self._resolve_and_enqueue_first(
-            recommendations,
-            guild_id=guild_id,
-            user_id=base_track.requested_by_id or 0,
-            user_name=base_track.requested_by_name or "Radio",
-        )
-        if track is None:
-            return 0
-
-        state.tracks_generated += 1
-        logger.debug("Radio warmup: queued 1 track for guild %s", guild_id)
-        return 1
+        # Exhausted pool trying to resolve
+        await self._publish_pool_exhausted(guild_id, state)
+        return 0
 
     # ── Core pipeline ─────────────────────────────────────────────────
 
-    async def _generate_and_enqueue(
+    async def _publish_pool_exhausted(
         self,
+        guild_id: DiscordSnowflake,
+        state: RadioState,
+    ) -> None:
+        """Publish RadioPoolExhausted so the UI layer can prompt the user."""
+        logger.info(
+            "Radio pool exhausted in guild %s (consumed=%d)",
+            guild_id,
+            state.tracks_consumed,
+        )
+        event = RadioPoolExhausted(
+            guild_id=guild_id,
+            channel_id=state.channel_id,
+            tracks_generated=state.tracks_consumed,
+        )
+        await get_event_bus().publish(event)
+
+    async def _try_resolve_and_enqueue(
+        self,
+        rec: Recommendation,
         *,
         guild_id: DiscordSnowflake,
-        base_track: Track,
         user_id: DiscordSnowflake,
         user_name: NonEmptyStr,
-        count: PositiveInt,
-    ) -> list[Track]:
-        """Generate recommendations and enqueue all resolved tracks."""
-        exclude_ids = await self._collect_exclude_ids(guild_id)
+    ) -> Track | None:
+        """Resolve a single recommendation and enqueue it. Returns the Track or None."""
+        try:
+            track = await self._audio_resolver.resolve(rec.query)
+            if track is None:
+                logger.warning("Radio: could not resolve '%s'", rec.query)
+                return None
 
-        recommendations = await self._fetch_recommendations(
-            base_track, count=count, exclude_ids=exclude_ids,
-        )
-        if not recommendations:
-            return []
+            track = track.model_copy(update={"is_from_recommendation": True})
 
-        enqueued = await self._resolve_and_enqueue_all(
-            recommendations, guild_id=guild_id, user_id=user_id, user_name=user_name,
-        )
-
-        state = self._states.get(guild_id)
-        if state is not None:
-            state.tracks_generated += len(enqueued)
-
-        return enqueued
+            result = await self._queue_service.enqueue(
+                guild_id=guild_id,
+                track=track,
+                user_id=user_id,
+                user_name=user_name,
+            )
+            if result.success and result.track is not None:
+                return result.track
+            return None
+        except Exception as exc:
+            logger.warning("Radio: failed to resolve '%s': %s", rec.query, exc)
+            return None
 
     # ── Shared helpers (no duplication) ───────────────────────────────
 
@@ -329,12 +546,14 @@ class RadioApplicationService:
         *,
         count: int,
         exclude_ids: list[str],
+        recent_tracks: list[Track] | None = None,
     ) -> list[Recommendation]:
         """Create recommendation request, call AI, and filter duplicates."""
         request = RecommendationRequest.from_track(
             base_track,
             count=count,
             exclude_ids=exclude_ids,
+            recent_tracks=recent_tracks,
         )
         recommendations = await self._ai_client.get_recommendations(request)
         if not recommendations:
@@ -351,22 +570,14 @@ class RadioApplicationService:
     ) -> Track | None:
         """Resolve recommendations until one successfully enqueues. Returns that track."""
         for rec in recommendations:
-            try:
-                track = await self._audio_resolver.resolve(rec.query)
-                if track is None:
-                    logger.warning("Radio: could not resolve '%s'", rec.query)
-                    continue
-
-                result = await self._queue_service.enqueue(
-                    guild_id=guild_id,
-                    track=track,
-                    user_id=user_id,
-                    user_name=user_name,
-                )
-                if result.success and result.track is not None:
-                    return result.track
-            except Exception as exc:
-                logger.warning("Radio: failed to resolve '%s': %s", rec.query, exc)
+            track = await self._try_resolve_and_enqueue(
+                rec,
+                guild_id=guild_id,
+                user_id=user_id,
+                user_name=user_name,
+            )
+            if track is not None:
+                return track
         return None
 
     async def _resolve_and_enqueue_all(
@@ -380,20 +591,12 @@ class RadioApplicationService:
         """Resolve all recommendations and enqueue every success."""
         enqueued: list[Track] = []
         for rec in recommendations:
-            try:
-                track = await self._audio_resolver.resolve(rec.query)
-                if track is None:
-                    logger.warning("Radio: could not resolve '%s'", rec.query)
-                    continue
-
-                result = await self._queue_service.enqueue(
-                    guild_id=guild_id,
-                    track=track,
-                    user_id=user_id,
-                    user_name=user_name,
-                )
-                if result.success and result.track is not None:
-                    enqueued.append(result.track)
-            except Exception as exc:
-                logger.warning("Radio: failed to resolve '%s': %s", rec.query, exc)
+            track = await self._try_resolve_and_enqueue(
+                rec,
+                guild_id=guild_id,
+                user_id=user_id,
+                user_name=user_name,
+            )
+            if track is not None:
+                enqueued.append(track)
         return enqueued

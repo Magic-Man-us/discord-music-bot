@@ -150,3 +150,37 @@ def can_force_skip(user: discord.Member, owner_ids: Collection[int]) -> bool:
     is_admin = user.guild_permissions.administrator
     is_owner = user.id in owner_ids
     return is_admin or is_owner
+
+
+def has_dj_role(user: discord.Member, dj_role_id: DiscordSnowflake | None) -> bool:
+    """Check if the user has the DJ role, is an admin, or no DJ role is configured.
+
+    When ``dj_role_id`` is None (unconfigured), everyone is allowed.
+    """
+    if dj_role_id is None:
+        return True
+    if user.guild_permissions.administrator:
+        return True
+    return any(role.id == dj_role_id for role in user.roles)
+
+
+async def ensure_dj_role(
+    interaction: discord.Interaction,
+    dj_role_id: DiscordSnowflake | None,
+) -> bool:
+    """Guard that verifies the user has DJ permissions. Returns False with error on failure."""
+    if dj_role_id is None:
+        return True
+
+    member = await get_member(interaction)
+    if member is None:
+        return False
+
+    if has_dj_role(member, dj_role_id):
+        return True
+
+    await send_ephemeral(
+        interaction,
+        "You need the DJ role to use this command.",
+    )
+    return False

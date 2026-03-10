@@ -12,6 +12,7 @@ from discord_music_player.domain.shared.constants import UIConstants
 from discord_music_player.domain.shared.types import DiscordSnowflake
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
+    ensure_dj_role,
     ensure_user_in_voice_and_warm,
     ensure_voice,
 )
@@ -212,11 +213,48 @@ class QueueCog(BaseCog):
                 ephemeral=True,
             )
 
+    @app_commands.command(name="move", description="Move a track to a different position in the queue.")
+    @app_commands.describe(
+        from_position="Current position (1-based)",
+        to_position="Target position (1-based)",
+    )
+    async def move(
+        self,
+        interaction: discord.Interaction,
+        from_position: app_commands.Range[int, 1],
+        to_position: app_commands.Range[int, 1],
+    ) -> None:
+        if not await ensure_user_in_voice_and_warm(
+            interaction, self.container.voice_warmup_tracker
+        ):
+            return
+
+        assert interaction.guild is not None
+
+        queue_service = self.container.queue_service
+        success = await queue_service.move(
+            interaction.guild.id, from_position - 1, to_position - 1
+        )
+
+        if success:
+            await interaction.response.send_message(
+                f"Moved track from position {from_position} to {to_position}.",
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                "Invalid position(s). Check the queue with `/queue`.",
+                ephemeral=True,
+            )
+
     @app_commands.command(name="clear", description="Clear the queue.")
     async def clear(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker
         ):
+            return
+
+        if not await ensure_dj_role(interaction, self.container.settings.discord.dj_role_id):
             return
 
         assert interaction.guild is not None

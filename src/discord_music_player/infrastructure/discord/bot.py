@@ -14,6 +14,8 @@ from discord.ext import commands
 if TYPE_CHECKING:
     from ...config.container import Container
     from ...config.settings import Settings
+    from ...domain.music.entities import GuildPlaybackSession
+    from ...domain.music.repository import SessionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +114,7 @@ class MusicBot(commands.Bot):
         except Exception as e:
             logger.warning("Failed to reset stale sessions: %s", e)
 
-    async def _try_resume_session(self, session: Any, guild: discord.Guild) -> bool:
+    async def _try_resume_session(self, session: GuildPlaybackSession, guild: discord.Guild) -> bool:
         """Attempt to resume playback for a single session. Returns True if successful."""
         try:
             # Skip if no tracks to play
@@ -185,7 +187,7 @@ class MusicBot(commands.Bot):
             return False
 
     async def _find_text_channel(
-        self, guild: discord.Guild, session: Any
+        self, guild: discord.Guild, session: GuildPlaybackSession
     ) -> discord.TextChannel | None:
         """Find a suitable text channel to post the resume prompt."""
         # Try system channel first
@@ -210,7 +212,7 @@ class MusicBot(commands.Bot):
                 return channel
         return None
 
-    async def _reset_session(self, session: Any, session_repo: Any) -> None:
+    async def _reset_session(self, session: GuildPlaybackSession, session_repo: SessionRepository) -> None:
         """Reset a session to IDLE state."""
         from ...domain.music.enums import PlaybackState
 
@@ -219,18 +221,25 @@ class MusicBot(commands.Bot):
         await session_repo.save(session)
 
     async def _load_cogs(self) -> None:
+        _COG_PKG = "discord_music_player.infrastructure.discord.cogs"
         cogs = [
-            "discord_music_player.infrastructure.discord.cogs.playback_cog",
-            "discord_music_player.infrastructure.discord.cogs.queue_cog",
-            "discord_music_player.infrastructure.discord.cogs.skip_cog",
-            "discord_music_player.infrastructure.discord.cogs.radio_cog",
-            "discord_music_player.infrastructure.discord.cogs.now_playing_cog",
-            "discord_music_player.infrastructure.discord.cogs.admin_cog",
-            "discord_music_player.infrastructure.discord.cogs.health_cog",
-            "discord_music_player.infrastructure.discord.cogs.info_cog",
-            "discord_music_player.infrastructure.discord.cogs.event_cog",
-            "discord_music_player.infrastructure.discord.cogs.analytics_cog",
+            f"{_COG_PKG}.playback_cog",
+            f"{_COG_PKG}.queue_cog",
+            f"{_COG_PKG}.skip_cog",
+            f"{_COG_PKG}.now_playing_cog",
+            f"{_COG_PKG}.admin_cog",
+            f"{_COG_PKG}.health_cog",
+            f"{_COG_PKG}.info_cog",
+            f"{_COG_PKG}.event_cog",
+            f"{_COG_PKG}.analytics_cog",
+            f"{_COG_PKG}.favorites_cog",
+            f"{_COG_PKG}.saved_queue_cog",
         ]
+
+        if self.container.ai_enabled:
+            cogs.append(f"{_COG_PKG}.radio_cog")
+        else:
+            logger.info("AI disabled — skipping radio_cog")
 
         loaded = 0
         failed = 0

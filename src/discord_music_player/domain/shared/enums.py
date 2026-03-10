@@ -27,6 +27,14 @@ class LeaderboardCategory(StrEnum):
     SKIPPED = "skipped"
 
 
+class LeaderboardTimeRange(StrEnum):
+    """Time range for leaderboard queries."""
+
+    ALL_TIME = "all"
+    LAST_7_DAYS = "7d"
+    LAST_30_DAYS = "30d"
+
+
 class ActivityPeriod(StrEnum):
     """Activity chart time periods."""
 

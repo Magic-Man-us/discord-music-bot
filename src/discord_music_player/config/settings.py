@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import ClassVar
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ..domain.shared.enums import EnvironmentType, LogLevel
@@ -21,6 +22,7 @@ from ..domain.shared.types import (
     NonNegativeInt,
     PoolSize,
     PositiveInt,
+    RadioBatchSize,
     RadioCount,
     RadioMaxTracks,
     TemperatureFloat,
@@ -77,10 +79,25 @@ class DiscordSettings(BaseModel):
         default_factory=tuple, validation_alias=AliasChoices("test_guild_ids", "test_guilds")
     )
     sync_on_startup: bool = True
+    dj_role_id: DiscordSnowflake | None = Field(
+        default=None,
+        validation_alias=AliasChoices("dj_role_id", "dj_role"),
+        description="Optional role ID that gates destructive commands (skip, stop, clear, etc.)",
+    )
 
     @field_validator("owner_ids", "guild_ids", "test_guild_ids", mode="before")
     @classmethod
-    def _coerce_list_to_tuple(cls, v: tuple[int, ...] | list[int]) -> tuple[int, ...]:
+    def _coerce_to_tuple(cls, v: tuple[int, ...] | list[int] | str) -> tuple[int, ...]:
+        if isinstance(v, str):
+            import json
+
+            try:
+                parsed = json.loads(v)
+            except json.JSONDecodeError:
+                parsed = [int(s.strip()) for s in v.split(",") if s.strip()]
+            if isinstance(parsed, list):
+                return tuple(parsed)
+            return (parsed,)
         if isinstance(v, list):
             return tuple(v)
         return v
@@ -109,11 +126,24 @@ class AudioSettings(BaseModel):
         default="http://127.0.0.1:4416",
         validation_alias=AliasChoices("pot_server_url", "bgutil_pot_server_url"),
     )
+    normalize_audio: bool = Field(
+        default=False,
+        description="Apply EBU R128 loudnorm filter to normalize audio volume across tracks.",
+    )
 
 
 class AISettings(BaseModel):
+    """AI configuration. Features auto-disable when the provider API key is missing."""
 
     model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
+
+    # Provider prefix → environment variable holding the API key.
+    _PROVIDER_API_KEY_ENV: ClassVar[dict[str, str]] = {
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "google-gla": "GOOGLE_API_KEY",
+        "google-vertex": "GOOGLE_API_KEY",
+    }
 
     model: NonEmptyStr = Field(
         default="openai:gpt-5-mini", validation_alias=AliasChoices("model", "ai_model")
@@ -139,6 +169,21 @@ class AISettings(BaseModel):
             raise ValueError(msg)
         return v
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def enabled(self) -> bool:
+        """True only when the primary model's provider has a non-empty API key."""
+        return self._has_api_key(self.model)
+
+    def _has_api_key(self, model_str: str) -> bool:
+        import os
+
+        provider = model_str.split(":", 1)[0]
+        env_var = self._PROVIDER_API_KEY_ENV.get(provider)
+        if env_var is None:
+            return False
+        return bool(os.environ.get(env_var, "").strip())
+
 
 class VotingSettings(BaseModel):
 
@@ -153,7 +198,8 @@ class RadioSettings(BaseModel):
 
     model_config = ConfigDict(frozen=True, strict=True)
 
-    default_count: RadioCount = 5
+    batch_size: RadioBatchSize = 10
+    visible_count: RadioCount = 3
     max_tracks_per_session: RadioMaxTracks = 50
 
 
@@ -170,9 +216,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file=".env",
-        env_file_encoding="utf-8",
         env_nested_delimiter="__",
-        case_sensitive=False,
         extra="ignore",
         strict=True,
     )
@@ -186,7 +230,6 @@ class Settings(BaseSettings):
     @field_validator("log_level", mode="before")
     @classmethod
     def _normalize_log_level(cls, v: str | LogLevel) -> LogLevel:
-        """Accept case-insensitive log level strings (e.g. 'debug' -> 'DEBUG')."""
         if isinstance(v, str) and not isinstance(v, LogLevel):
             return LogLevel(v.upper())
         return v

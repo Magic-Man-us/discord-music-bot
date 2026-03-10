@@ -61,6 +61,17 @@ class QueueExhausted(DomainEvent):
     last_track_title: NonEmptyStr | None = None
 
 
+# === Radio Events ===
+
+
+class RadioPoolExhausted(DomainEvent):
+    """All recommendations in the current radio batch have been consumed."""
+
+    guild_id: DiscordSnowflake
+    channel_id: ChannelIdField | None = None
+    tracks_generated: NonNegativeInt = 0
+
+
 # === Voice Events ===
 
 

@@ -419,8 +419,11 @@ def mock_history_repo():
         artist="Band A",
     )
     repo.get_most_played = AsyncMock(return_value=[(sample_track, 10)])
+    repo.get_most_played_since = AsyncMock(return_value=[(sample_track, 10)])
     repo.get_top_requesters = AsyncMock(return_value=[(100, "Alice", 30)])
+    repo.get_top_requesters_since = AsyncMock(return_value=[(100, "Alice", 30)])
     repo.get_most_skipped = AsyncMock(return_value=[("Pop Hit", 5)])
+    repo.get_most_skipped_since = AsyncMock(return_value=[("Pop Hit", 5)])
     repo.get_user_stats = AsyncMock(
         return_value=UserStats(
             total_tracks=20,
@@ -562,7 +565,7 @@ class TestTopCogCommand:
     @pytest.mark.asyncio
     async def test_top_tracks_default(self, analytics_cog, mock_interaction):
         """Should default to tracks category."""
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=None)
+        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=None, period=None)
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
@@ -575,7 +578,7 @@ class TestTopCogCommand:
         choice = MagicMock()
         choice.value = "tracks"
 
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice)
+        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice, period=None)
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
@@ -587,7 +590,7 @@ class TestTopCogCommand:
         choice = MagicMock()
         choice.value = "users"
 
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice)
+        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice, period=None)
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
@@ -600,7 +603,7 @@ class TestTopCogCommand:
         choice = MagicMock()
         choice.value = "skipped"
 
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice)
+        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice, period=None)
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
@@ -610,9 +613,9 @@ class TestTopCogCommand:
     @pytest.mark.asyncio
     async def test_top_tracks_no_data(self, analytics_cog, mock_interaction, mock_history_repo):
         """Should send no-data message when no tracks."""
-        mock_history_repo.get_most_played = AsyncMock(return_value=[])
+        mock_history_repo.get_most_played_since = AsyncMock(return_value=[])
 
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=None)
+        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=None, period=None)
 
         args = mock_interaction.followup.send.call_args[0]
         assert args[0] == "No music has been played yet in this server."
@@ -620,11 +623,11 @@ class TestTopCogCommand:
     @pytest.mark.asyncio
     async def test_top_users_no_data(self, analytics_cog, mock_interaction, mock_history_repo):
         """Should send no-data message when no requesters."""
-        mock_history_repo.get_top_requesters = AsyncMock(return_value=[])
+        mock_history_repo.get_top_requesters_since = AsyncMock(return_value=[])
         choice = MagicMock()
         choice.value = "users"
 
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice)
+        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice, period=None)
 
         args = mock_interaction.followup.send.call_args[0]
         assert args[0] == "No music has been played yet in this server."
@@ -632,11 +635,11 @@ class TestTopCogCommand:
     @pytest.mark.asyncio
     async def test_top_skipped_no_data(self, analytics_cog, mock_interaction, mock_history_repo):
         """Should send no-data message when no skipped tracks."""
-        mock_history_repo.get_most_skipped = AsyncMock(return_value=[])
+        mock_history_repo.get_most_skipped_since = AsyncMock(return_value=[])
         choice = MagicMock()
         choice.value = "skipped"
 
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice)
+        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice, period=None)
 
         args = mock_interaction.followup.send.call_args[0]
         assert args[0] == "No music has been played yet in this server."
@@ -648,7 +651,7 @@ class TestTopCogCommand:
         """Should still send embed even if chart generation fails."""
         mock_chart_gen.async_horizontal_bar_chart = AsyncMock(side_effect=Exception("chart error"))
 
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=None)
+        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=None, period=None)
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         assert "embed" in call_kwargs

@@ -202,26 +202,26 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
         return count
 
     async def cleanup_expired(self) -> int:
-        now = UtcDateTime.now().dt
-        expiration_minutes = VoteSession.DEFAULT_EXPIRATION_MINUTES
+        from datetime import timedelta
+
+        cutoff = UtcDateTime.now().dt - timedelta(minutes=VoteSession.DEFAULT_EXPIRATION_MINUTES)
+        cutoff_iso = UtcDateTime(cutoff).iso
 
         count_row = await self._db.fetch_one(
-            f"""
+            """
             SELECT COUNT(*) as count FROM vote_sessions
-            WHERE completed_at IS NULL
-            AND datetime(started_at, '+{expiration_minutes} minutes') < datetime(?)
+            WHERE completed_at IS NULL AND started_at < ?
             """,
-            (UtcDateTime(now).iso,),
+            (cutoff_iso,),
         )
         count = count_row["count"] if count_row else 0
 
         await self._db.execute(
-            f"""
+            """
             DELETE FROM vote_sessions
-            WHERE completed_at IS NULL
-            AND datetime(started_at, '+{expiration_minutes} minutes') < datetime(?)
+            WHERE completed_at IS NULL AND started_at < ?
             """,
-            (UtcDateTime(now).iso,),
+            (cutoff_iso,),
         )
 
         if count > 0:

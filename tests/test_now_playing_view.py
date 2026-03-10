@@ -26,8 +26,9 @@ def mock_discord_event_loop():
         yield loop
 
 
-def _make_container():
+def _make_container(*, ai_enabled: bool = True):
     container = MagicMock()
+    container.ai_enabled = ai_enabled
     container.session_repository = MagicMock()
     container.session_repository.get = AsyncMock(return_value=None)
     container.shuffle_ai_client = MagicMock()
@@ -36,6 +37,9 @@ def _make_container():
     container.audio_resolver.resolve = AsyncMock(return_value=None)
     container.queue_service = MagicMock()
     container.queue_service.enqueue_next = AsyncMock()
+    container.radio_service = MagicMock()
+    container.radio_service.is_enabled = MagicMock(return_value=False)
+    container.radio_service.toggle_radio = AsyncMock()
     return container
 
 
@@ -140,6 +144,25 @@ class TestNowPlayingViewInit:
         ]
         assert len(similar_buttons) == 1
         assert similar_buttons[0].style == discord.ButtonStyle.primary
+
+    def test_has_radio_button(self):
+        view, _ = _make_view()
+        radio_buttons = [
+            item for item in view.children
+            if isinstance(item, discord.ui.Button) and "Radio" in (item.label or "")
+        ]
+        assert len(radio_buttons) == 1
+        assert radio_buttons[0].style == discord.ButtonStyle.secondary
+
+    def test_ai_disabled_hides_ai_buttons(self):
+        container = _make_container(ai_enabled=False)
+        view, _ = _make_view(container=container)
+        interactive_buttons = [
+            item for item in view.children
+            if isinstance(item, discord.ui.Button)
+            and item.style != discord.ButtonStyle.link
+        ]
+        assert len(interactive_buttons) == 0
 
 
 # =============================================================================

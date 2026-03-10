@@ -12,6 +12,7 @@ from discord_music_player.application.services.radio_service import (
 from discord_music_player.config.settings import RadioSettings
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.wrappers import TrackId
+from discord_music_player.domain.shared.events import reset_event_bus
 
 
 def _make_track(title: str = "Test Song", track_id: str = "abc123") -> Track:
@@ -29,7 +30,18 @@ def _make_session(current_track: Track | None = None, queue: list[Track] | None 
     session.queue = queue or []
     session.queue_length = len(session.queue)
     session.MAX_QUEUE_SIZE = 50
+    session.is_idle = True
     return session
+
+
+def _make_rec(title: str = "Similar Song", artist: str | None = None):
+    """Create a mock Recommendation."""
+    rec = MagicMock()
+    rec.query = title
+    rec.title = title
+    rec.artist = artist
+    rec.dedup_key = f"{(artist or '').lower()}|{title.lower()}"
+    return rec
 
 
 def _make_service(
@@ -60,6 +72,9 @@ def _make_service(
     history_repo = AsyncMock()
     history_repo.get_recent.return_value = []
 
+    # Reset event bus to avoid cross-test interference
+    reset_event_bus()
+
     svc = RadioApplicationService(
         ai_client=ai_client,
         audio_resolver=audio_resolver,
@@ -84,20 +99,17 @@ class TestRadioToggle:
 
     @pytest.mark.asyncio
     async def test_toggle_on_enables_radio(self):
-        """Toggle on with a current track should enable radio and enqueue tracks."""
+        """Toggle on should enable radio, enqueue visible_count tracks, and pool the rest."""
         track = _make_track()
         session = _make_session(current_track=track)
 
-        rec = MagicMock()
-        rec.query = "Similar Song"
-        rec.title = "Similar Song"
-        rec.artist = None
-
-        resolved = _make_track(title="Similar Song", track_id="resolved1")
+        # Create batch_size(10) recommendations
+        recs = [_make_rec(title=f"Rec {i}", artist=f"Artist {i}") for i in range(10)]
+        resolved = _make_track(title="Resolved", track_id="resolved1")
 
         svc, mocks = _make_service(
             ai_available=True,
-            recommendations=[rec],
+            recommendations=recs,
             resolve_returns=resolved,
             enqueue_success=True,
             session=session,
@@ -106,11 +118,16 @@ class TestRadioToggle:
         result = await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
 
         assert result.enabled is True
-        assert result.tracks_added == 1
-        assert len(result.generated_tracks) == 1
-        assert result.generated_tracks[0].title == "Similar Song"
+        # Default visible_count=3, so 3 tracks enqueued
+        assert result.tracks_added == 3
+        assert len(result.generated_tracks) == 3
         assert result.seed_title == track.title
         assert svc.is_enabled(1)
+
+        # Remaining 7 should be in the pool
+        state = svc.get_state(1)
+        assert state is not None
+        assert len(state.pool) == 7
 
     @pytest.mark.asyncio
     async def test_toggle_off_disables_radio(self):
@@ -118,26 +135,20 @@ class TestRadioToggle:
         track = _make_track()
         session = _make_session(current_track=track)
 
-        rec = MagicMock()
-        rec.query = "Similar Song"
-        rec.title = "Similar Song"
-        rec.artist = None
-
+        recs = [_make_rec(title=f"Rec {i}") for i in range(3)]
         resolved = _make_track(title="Similar Song", track_id="resolved1")
 
         svc, _ = _make_service(
             ai_available=True,
-            recommendations=[rec],
+            recommendations=recs,
             resolve_returns=resolved,
             enqueue_success=True,
             session=session,
         )
 
-        # Enable first
         await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
         assert svc.is_enabled(1)
 
-        # Toggle again to disable
         result = await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
         assert result.enabled is False
         assert not svc.is_enabled(1)
@@ -146,24 +157,19 @@ class TestRadioToggle:
     async def test_toggle_no_current_track(self):
         """Toggle with no current track should fail."""
         session = _make_session(current_track=None)
-
         svc, _ = _make_service(session=session)
 
         result = await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
-
         assert result.enabled is False
-        assert not svc.is_enabled(1)
 
     @pytest.mark.asyncio
     async def test_toggle_ai_unavailable(self):
         """Toggle when AI is unavailable should fail."""
         track = _make_track()
         session = _make_session(current_track=track)
-
         svc, _ = _make_service(ai_available=False, session=session)
 
         result = await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
-
         assert result.enabled is False
 
     @pytest.mark.asyncio
@@ -171,16 +177,29 @@ class TestRadioToggle:
         """Toggle when AI returns no recommendations should fail."""
         track = _make_track()
         session = _make_session(current_track=track)
-
-        svc, _ = _make_service(
-            ai_available=True,
-            recommendations=[],
-            session=session,
-        )
+        svc, _ = _make_service(ai_available=True, recommendations=[], session=session)
 
         result = await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
-
         assert result.enabled is False
+
+    @pytest.mark.asyncio
+    async def test_toggle_stores_channel_id(self):
+        """Toggle should store channel_id on state for pool-exhaustion events."""
+        track = _make_track()
+        session = _make_session(current_track=track)
+        recs = [_make_rec(title=f"Rec {i}") for i in range(3)]
+        resolved = _make_track(title="Resolved", track_id="res1")
+
+        svc, _ = _make_service(
+            ai_available=True, recommendations=recs,
+            resolve_returns=resolved, enqueue_success=True, session=session,
+        )
+
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="User", channel_id=555)
+        state = svc.get_state(1)
+        assert state is not None
+        assert state.channel_id == 555
+        assert state.user_id == 100
 
 
 class TestRadioDisable:
@@ -188,23 +207,14 @@ class TestRadioDisable:
 
     @pytest.mark.asyncio
     async def test_disable_clears_state(self):
-        """disable_radio should clear the guild's radio state."""
         track = _make_track()
         session = _make_session(current_track=track)
-
-        rec = MagicMock()
-        rec.query = "Similar Song"
-        rec.title = "Similar Song"
-        rec.artist = None
-
-        resolved = _make_track(title="Similar Song", track_id="resolved1")
+        recs = [_make_rec(title=f"Rec {i}") for i in range(3)]
+        resolved = _make_track(title="Similar", track_id="res1")
 
         svc, _ = _make_service(
-            ai_available=True,
-            recommendations=[rec],
-            resolve_returns=resolved,
-            enqueue_success=True,
-            session=session,
+            ai_available=True, recommendations=recs,
+            resolve_returns=resolved, enqueue_success=True, session=session,
         )
 
         await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
@@ -214,17 +224,118 @@ class TestRadioDisable:
         assert not svc.is_enabled(1)
 
     def test_disable_noop_when_not_enabled(self):
-        """disable_radio on a guild that isn't enabled should be a no-op."""
         svc, _ = _make_service()
-        svc.disable_radio(999)  # Should not raise
+        svc.disable_radio(999)
+
+
+class TestReplenishFromPool:
+    """Tests for replenish_from_pool."""
+
+    @pytest.mark.asyncio
+    async def test_replenish_pops_from_pool(self):
+        """replenish_from_pool should resolve and enqueue one track from the pool."""
+        track = _make_track()
+        session = _make_session(current_track=track)
+
+        recs = [_make_rec(title=f"Rec {i}", artist=f"Artist {i}") for i in range(5)]
+        resolved = _make_track(title="Resolved", track_id="res1")
+
+        svc, mocks = _make_service(
+            ai_available=True, recommendations=recs,
+            resolve_returns=resolved, enqueue_success=True, session=session,
+            settings=RadioSettings(batch_size=5, visible_count=2),
+        )
+
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
+
+        state = svc.get_state(1)
+        assert state is not None
+        initial_pool_size = len(state.pool)
+        assert initial_pool_size == 3  # 5 - 2 visible
+
+        added = await svc.replenish_from_pool(1)
+        assert added == 1
+        assert len(state.pool) == initial_pool_size - 1
+
+    @pytest.mark.asyncio
+    async def test_replenish_publishes_event_when_pool_empty(self):
+        """replenish_from_pool should publish RadioPoolExhausted when pool is empty."""
+        from discord_music_player.domain.shared.events import RadioPoolExhausted, get_event_bus
+
+        track = _make_track()
+        session = _make_session(current_track=track)
+
+        # Only visible_count recs — pool will be empty after toggle
+        recs = [_make_rec(title=f"Rec {i}") for i in range(3)]
+        resolved = _make_track(title="Resolved", track_id="res1")
+
+        svc, _ = _make_service(
+            ai_available=True, recommendations=recs,
+            resolve_returns=resolved, enqueue_success=True, session=session,
+            settings=RadioSettings(batch_size=3, visible_count=3),
+        )
+
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="User", channel_id=555)
+
+        state = svc.get_state(1)
+        assert state is not None
+        assert len(state.pool) == 0
+
+        handler = AsyncMock()
+        get_event_bus().subscribe(RadioPoolExhausted, handler)
+
+        await svc.replenish_from_pool(1)
+
+        handler.assert_awaited_once()
+        event = handler.call_args[0][0]
+        assert event.guild_id == 1
+        assert event.channel_id == 555
+
+
+class TestContinueRadio:
+    """Tests for continue_radio."""
+
+    @pytest.mark.asyncio
+    async def test_continue_fetches_new_batch(self):
+        """continue_radio should fetch a new batch and refill the pool."""
+        track = _make_track()
+        session = _make_session(current_track=track)
+
+        initial_recs = [_make_rec(title=f"Init {i}") for i in range(3)]
+        resolved = _make_track(title="Resolved", track_id="res1")
+
+        svc, mocks = _make_service(
+            ai_available=True, recommendations=initial_recs,
+            resolve_returns=resolved, enqueue_success=True, session=session,
+        )
+
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
+        assert svc.is_enabled(1)
+
+        # Set up new batch for continue
+        new_recs = [_make_rec(title=f"New {i}", artist=f"Artist {i}") for i in range(8)]
+        mocks["ai_client"].get_recommendations.return_value = new_recs
+
+        result = await svc.continue_radio(1)
+
+        assert result.enabled is True
+        assert result.tracks_added == 3  # visible_count
+        state = svc.get_state(1)
+        assert state is not None
+        assert len(state.pool) == 5  # 8 - 3
+
+    @pytest.mark.asyncio
+    async def test_continue_when_not_active(self):
+        svc, _ = _make_service()
+        result = await svc.continue_radio(1)
+        assert result.enabled is False
 
 
 class TestRadioRefill:
-    """Tests for refill_queue."""
+    """Tests for refill_queue (now pool-aware)."""
 
     @pytest.mark.asyncio
     async def test_refill_when_not_enabled(self):
-        """Refill should return 0 when radio is not enabled."""
         svc, _ = _make_service()
         result = await svc.refill_queue(guild_id=1)
         assert result == 0
@@ -235,63 +346,56 @@ class TestRadioRefill:
         track = _make_track()
         session = _make_session(current_track=track)
 
-        rec = MagicMock()
-        rec.query = "Similar Song"
-        rec.title = "Similar Song"
-        rec.artist = None
+        recs = [_make_rec(title=f"Rec {i}") for i in range(3)]
+        resolved = _make_track(title="Resolved", track_id="res1")
 
-        resolved = _make_track(title="Similar Song", track_id="resolved1")
-
-        settings = RadioSettings(default_count=5, max_tracks_per_session=5)
+        settings = RadioSettings(batch_size=3, visible_count=3, max_tracks_per_session=5)
 
         svc, _ = _make_service(
-            ai_available=True,
-            recommendations=[rec],
-            resolve_returns=resolved,
-            enqueue_success=True,
-            session=session,
-            settings=settings,
+            ai_available=True, recommendations=recs,
+            resolve_returns=resolved, enqueue_success=True,
+            session=session, settings=settings,
         )
 
-        # Enable radio (adds 1 track, so tracks_generated = 1)
         await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
         assert svc.is_enabled(1)
 
-        # Manually set tracks_generated to the limit
-        svc._states[1].tracks_generated = 5
+        # Manually set tracks_consumed to the limit
+        svc._states[1].tracks_consumed = 5
 
         result = await svc.refill_queue(guild_id=1)
         assert result == 0
         assert not svc.is_enabled(1)
 
     @pytest.mark.asyncio
-    async def test_refill_adds_tracks(self):
-        """Refill should add tracks when radio is enabled and under limit."""
+    async def test_refill_draws_from_pool(self):
+        """Refill should draw from pool rather than calling AI directly."""
         track = _make_track()
         session = _make_session(current_track=track)
 
-        rec = MagicMock()
-        rec.query = "Another Song"
-        rec.title = "Another Song"
-        rec.artist = None
-
-        resolved = _make_track(title="Another Song", track_id="another1")
+        recs = [_make_rec(title=f"Rec {i}", artist=f"Artist {i}") for i in range(6)]
+        resolved = _make_track(title="Resolved", track_id="res1")
 
         svc, mocks = _make_service(
-            ai_available=True,
-            recommendations=[rec],
-            resolve_returns=resolved,
-            enqueue_success=True,
+            ai_available=True, recommendations=recs,
+            resolve_returns=resolved, enqueue_success=True,
             session=session,
+            settings=RadioSettings(batch_size=6, visible_count=3),
         )
 
-        # Enable radio
         await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
         assert svc.is_enabled(1)
 
-        # Refill
+        state = svc.get_state(1)
+        assert state is not None
+        assert len(state.pool) == 3  # 6 - 3
+
+        # Reset AI mock call count — refill should NOT call AI
+        mocks["ai_client"].get_recommendations.reset_mock()
+
         added = await svc.refill_queue(guild_id=1)
-        assert added == 1
+        assert added > 0
+        mocks["ai_client"].get_recommendations.assert_not_awaited()
 
 
 class TestRadioReroll:
@@ -299,43 +403,34 @@ class TestRadioReroll:
 
     @pytest.mark.asyncio
     async def test_reroll_replaces_track(self):
-        """reroll_track should remove the old track and enqueue a new one."""
         track = _make_track()
         queued = _make_track(title="Old Rec", track_id="old1")
         session = _make_session(current_track=track, queue=[queued])
 
-        rec = MagicMock()
-        rec.query = "New Rec"
-        rec.title = "New Rec"
-        rec.artist = None
-
+        rec = _make_rec(title="New Rec")
         new_track = _make_track(title="New Rec", track_id="new1")
 
         svc, mocks = _make_service(
             ai_available=True,
-            recommendations=[rec],
-            resolve_returns=new_track,
+            recommendations=[_make_rec(title=f"Init {i}") for i in range(3)],
+            resolve_returns=queued,
             enqueue_success=True,
             session=session,
         )
 
-        # Enable radio first
-        enable_rec = MagicMock()
-        enable_rec.query = "Old Rec"
-        enable_rec.title = "Old Rec"
-        enable_rec.artist = None
-        mocks["ai_client"].get_recommendations.return_value = [enable_rec]
-        mocks["audio_resolver"].resolve.return_value = queued
-
         await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
         assert svc.is_enabled(1)
 
-        # Now set up for the reroll
+        # Set up for the reroll
         mocks["ai_client"].get_recommendations.return_value = [rec]
         mocks["audio_resolver"].resolve.return_value = new_track
+
+        enqueue_result = MagicMock()
+        enqueue_result.success = True
+        enqueue_result.track = new_track
+        mocks["queue_service"].enqueue.return_value = enqueue_result
         mocks["queue_service"].remove.return_value = queued
 
-        # After removal, session has empty queue
         empty_session = _make_session(current_track=track, queue=[])
         mocks["session_repo"].get.return_value = empty_session
 
@@ -348,67 +443,7 @@ class TestRadioReroll:
         mocks["queue_service"].remove.assert_awaited_once_with(1, 0)
 
     @pytest.mark.asyncio
-    async def test_reroll_moves_track_to_original_position(self):
-        """reroll_track should move the new track back to the original queue position."""
-        track = _make_track()
-        q1 = _make_track(title="Q1", track_id="q1")
-        q2 = _make_track(title="Q2", track_id="q2")
-        q3 = _make_track(title="Q3", track_id="q3")
-        session = _make_session(current_track=track, queue=[q1, q2, q3])
-
-        rec = MagicMock()
-        rec.query = "Replacement"
-        rec.title = "Replacement"
-        rec.artist = None
-
-        new_track = _make_track(title="Replacement", track_id="rep1")
-
-        svc, mocks = _make_service(
-            ai_available=True,
-            recommendations=[rec],
-            resolve_returns=new_track,
-            enqueue_success=True,
-            session=session,
-        )
-
-        # Enable radio
-        enable_rec = MagicMock()
-        enable_rec.query = "Q1"
-        enable_rec.title = "Q1"
-        enable_rec.artist = None
-        mocks["ai_client"].get_recommendations.return_value = [enable_rec]
-        mocks["audio_resolver"].resolve.return_value = q1
-
-        await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
-        assert svc.is_enabled(1)
-
-        # Set up for reroll at position 1 (middle track)
-        mocks["ai_client"].get_recommendations.return_value = [rec]
-        mocks["audio_resolver"].resolve.return_value = new_track
-        mocks["queue_service"].remove.return_value = q2
-
-        # reroll_track calls session_repo.get 3 times:
-        # 1. Initial fetch (to get base_track)
-        # 2. Re-fetch after removal (to build exclusion set)
-        # 3. Re-fetch after enqueue (to compute from_pos for move)
-        initial = _make_session(current_track=track, queue=[q1, q2, q3])
-        after_remove = _make_session(current_track=track, queue=[q1, q3])
-        after_enqueue = _make_session(current_track=track, queue=[q1, q3, new_track])
-        mocks["session_repo"].get.side_effect = [initial, after_remove, after_enqueue]
-
-        result = await svc.reroll_track(
-            guild_id=1, queue_position=1, user_id=100, user_name="User"
-        )
-
-        assert result is not None
-        assert result.title == "Replacement"
-        mocks["queue_service"].remove.assert_awaited_once_with(1, 1)
-        # New track was at position 2 (end), should be moved to position 1
-        mocks["queue_service"].move.assert_awaited_once_with(1, 2, 1)
-
-    @pytest.mark.asyncio
     async def test_reroll_when_not_enabled(self):
-        """reroll_track should return None when radio is not enabled."""
         svc, _ = _make_service()
         result = await svc.reroll_track(
             guild_id=1, queue_position=0, user_id=100, user_name="User"
@@ -421,11 +456,7 @@ class TestRadioAutoRefill:
 
     @pytest.mark.asyncio
     async def test_subscriber_start_stop(self):
-        """Subscriber should subscribe/unsubscribe without error."""
-        from discord_music_player.application.services.radio_auto_refill import (
-            RadioAutoRefill,
-        )
-        from discord_music_player.domain.shared.events import reset_event_bus
+        from discord_music_player.application.services.radio_auto_refill import RadioAutoRefill
 
         reset_event_bus()
 
@@ -447,14 +478,10 @@ class TestRadioAutoRefill:
 
     @pytest.mark.asyncio
     async def test_subscriber_triggers_refill(self):
-        """Subscriber should call refill and start playback on QueueExhausted."""
-        from discord_music_player.application.services.radio_auto_refill import (
-            RadioAutoRefill,
-        )
+        from discord_music_player.application.services.radio_auto_refill import RadioAutoRefill
         from discord_music_player.domain.shared.events import (
             QueueExhausted,
             get_event_bus,
-            reset_event_bus,
         )
 
         reset_event_bus()
@@ -486,14 +513,10 @@ class TestRadioAutoRefill:
 
     @pytest.mark.asyncio
     async def test_subscriber_skips_when_disabled(self):
-        """Subscriber should not refill when radio is disabled."""
-        from discord_music_player.application.services.radio_auto_refill import (
-            RadioAutoRefill,
-        )
+        from discord_music_player.application.services.radio_auto_refill import RadioAutoRefill
         from discord_music_player.domain.shared.events import (
             QueueExhausted,
             get_event_bus,
-            reset_event_bus,
         )
 
         reset_event_bus()

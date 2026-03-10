@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from ..application.services.queue_service import QueueApplicationService
     from ..application.services.radio_auto_refill import RadioAutoRefill
     from ..application.services.radio_service import RadioApplicationService
+    from ..application.services.auto_dj import AutoDJ
     from ..application.services.requester_leave_autoskip import (
         AutoSkipOnRequesterLeave,
     )
@@ -28,13 +29,19 @@ if TYPE_CHECKING:
     from ..infrastructure.discord.services.voice_warmup import VoiceWarmupTracker
     from ..infrastructure.persistence.cleanup import CleanupJob
     from ..infrastructure.persistence.database import Database
+    from ..infrastructure.persistence.repositories.favorites_repository import (
+        SQLiteFavoritesRepository,
+    )
+    from ..infrastructure.persistence.repositories.saved_queue_repository import (
+        SQLiteSavedQueueRepository,
+    )
     from ..infrastructure.persistence.repositories.genre_repository import (
         SQLiteGenreCacheRepository,
     )
     from .settings import Settings
 
 
-@dataclass
+@dataclass  # noqa: not-a-boundary
 class Container:
     """Lazy-initializing service locator for all application components.
 
@@ -54,6 +61,8 @@ class Container:
     _history_repository: TrackHistoryRepository | None = None
     _vote_repository: VoteSessionRepository | None = None
     _cache_repository: RecommendationCacheRepository | None = None
+    _favorites_repository: SQLiteFavoritesRepository | None = None
+    _saved_queue_repository: SQLiteSavedQueueRepository | None = None
 
     # Analytics
     _genre_repository: SQLiteGenreCacheRepository | None = None
@@ -78,6 +87,7 @@ class Container:
     _auto_skip_on_requester_leave: AutoSkipOnRequesterLeave | None = None
     _radio_service: RadioApplicationService | None = None
     _radio_auto_refill: RadioAutoRefill | None = None
+    _auto_dj: AutoDJ | None = None
 
     # Command handlers
     _vote_skip_handler: VoteSkipHandler | None = None
@@ -146,6 +156,28 @@ class Container:
             self._cache_repository = SQLiteCacheRepository(self.database)
         return self._cache_repository
 
+
+    @property
+    def favorites_repository(self) -> SQLiteFavoritesRepository:
+        if self._favorites_repository is None:
+            from ..infrastructure.persistence.repositories.favorites_repository import (
+                SQLiteFavoritesRepository,
+            )
+
+            self._favorites_repository = SQLiteFavoritesRepository(self.database)
+        return self._favorites_repository
+
+
+    @property
+    def saved_queue_repository(self) -> SQLiteSavedQueueRepository:
+        if self._saved_queue_repository is None:
+            from ..infrastructure.persistence.repositories.saved_queue_repository import (
+                SQLiteSavedQueueRepository,
+            )
+
+            self._saved_queue_repository = SQLiteSavedQueueRepository(self.database)
+        return self._saved_queue_repository
+
     # === Analytics ===
 
     @property
@@ -195,22 +227,36 @@ class Container:
         return self._voice_adapter
 
     @property
+    def ai_enabled(self) -> bool:
+        return self.settings.ai.enabled
+
+    @property
     def ai_client(self) -> AIClient:
         if self._ai_client is None:
-            from ..infrastructure.ai.recommendation_client import AIRecommendationClient
+            if not self.ai_enabled:
+                from ..infrastructure.ai.noop_client import NoOpAIClient
 
-            self._ai_client = AIRecommendationClient(self.settings.ai)
+                self._ai_client = NoOpAIClient()
+            else:
+                from ..infrastructure.ai.recommendation_client import AIRecommendationClient
+
+                self._ai_client = AIRecommendationClient(self.settings.ai)
         return self._ai_client
 
     @property
     def shuffle_ai_client(self) -> AIClient:
         if self._shuffle_ai_client is None:
-            from ..infrastructure.ai.recommendation_client import AIRecommendationClient
+            if not self.ai_enabled:
+                from ..infrastructure.ai.noop_client import NoOpAIClient
 
-            shuffle_settings = self.settings.ai.model_copy(
-                update={"model": self.settings.ai.shuffle_model}
-            )
-            self._shuffle_ai_client = AIRecommendationClient(shuffle_settings)
+                self._shuffle_ai_client = NoOpAIClient()
+            else:
+                from ..infrastructure.ai.recommendation_client import AIRecommendationClient
+
+                shuffle_settings = self.settings.ai.model_copy(
+                    update={"model": self.settings.ai.shuffle_model}
+                )
+                self._shuffle_ai_client = AIRecommendationClient(shuffle_settings)
         return self._shuffle_ai_client
 
     @property
@@ -316,6 +362,21 @@ class Container:
             )
         return self._radio_auto_refill
 
+
+    @property
+    def auto_dj(self) -> AutoDJ:
+        if self._auto_dj is None:
+            from ..application.services.auto_dj import AutoDJ
+
+            self._auto_dj = AutoDJ(
+                radio_service=self.radio_service,
+                playback_service=self.playback_service,
+                session_repository=self.session_repository,
+                history_repository=self.history_repository,
+                ai_client=self.ai_client,
+            )
+        return self._auto_dj
+
     # === Background Jobs ===
 
     @property
@@ -337,10 +398,12 @@ class Container:
     async def initialize(self) -> None:
         await self.database.initialize()
         self.auto_skip_on_requester_leave.start()
-        self.radio_auto_refill.start()
+        if self.ai_enabled:
+            self.radio_auto_refill.start()
+            self.auto_dj.start()
 
     async def shutdown(self) -> None:
-        for subscriber in (self._auto_skip_on_requester_leave, self._radio_auto_refill):
+        for subscriber in (self._auto_skip_on_requester_leave, self._radio_auto_refill, self._auto_dj):
             if subscriber is not None:
                 try:
                     subscriber.stop()

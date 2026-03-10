@@ -1,4 +1,4 @@
-"""Auto-refill subscriber that generates more radio tracks when the queue is exhausted."""
+"""Auto-refill subscriber: replenishes radio queue from the recommendation pool."""
 
 from __future__ import annotations
 
@@ -13,14 +13,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-WARMUP_RECENT_HISTORY = 10
-
 
 class RadioAutoRefill:
-    """Subscribes to QueueExhausted and refills when radio is active.
+    """Subscribes to playback events and replenishes from the radio pool.
 
-    Also pre-fetches a single track when the queue runs dry behind the
-    currently playing track, so there is always one song waiting.
+    - QueueExhausted: refill the queue from the pool so playback continues.
+    - TrackStartedPlaying: pre-fetch one track from the pool when the queue
+      is empty behind the currently playing track.
     """
 
     def __init__(
@@ -57,7 +56,7 @@ class RadioAutoRefill:
             await self._playback_service.start_playback(event.guild_id)
 
     async def _on_track_started(self, event: TrackStartedPlaying) -> None:
-        """Pre-fetch one track when the queue is empty behind the current song."""
+        """Pre-fetch one track from the pool when the queue is empty."""
         guild_id = event.guild_id
         if not self._radio_service.is_enabled(guild_id):
             return
@@ -66,8 +65,6 @@ class RadioAutoRefill:
             return
 
         try:
-            await self._radio_service.warmup_next(
-                guild_id, recent_limit=WARMUP_RECENT_HISTORY
-            )
+            await self._radio_service.replenish_from_pool(guild_id)
         except Exception:
-            logger.exception("Radio warmup failed for guild %s", guild_id)
+            logger.exception("Radio pool replenish failed for guild %s", guild_id)

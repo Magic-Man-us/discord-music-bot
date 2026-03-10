@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import discord
 from discord.ext import commands
@@ -17,6 +17,7 @@ from discord_music_player.utils.reply import truncate
 
 if TYPE_CHECKING:
     from ....config.container import Container
+    from ....domain.shared.events import QueueExhausted, TrackStartedPlaying
 
 class EventCog(BaseCog):
     def __init__(self, bot: commands.Bot, container: Container) -> None:
@@ -143,7 +144,7 @@ class EventCog(BaseCog):
     # Idle Disconnect (AFK timeout)
     # ─────────────────────────────────────────────────────────────────
 
-    async def _on_queue_exhausted(self, event: Any) -> None:
+    async def _on_queue_exhausted(self, event: QueueExhausted) -> None:
         """Start an idle timer when the queue runs out."""
         guild_id: DiscordSnowflake = event.guild_id
         self._cancel_idle_timer(guild_id)
@@ -160,7 +161,7 @@ class EventCog(BaseCog):
             self._idle_disconnect(guild_id, timeout)
         )
 
-    async def _on_track_started(self, event: Any) -> None:
+    async def _on_track_started(self, event: TrackStartedPlaying) -> None:
         """Cancel any pending idle timer when a new track starts."""
         self._cancel_idle_timer(event.guild_id)
 

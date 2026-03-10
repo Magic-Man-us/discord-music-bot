@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import discord
 from discord import app_commands
+from discord.ext import commands
 
 from discord_music_player.domain.shared.enums import RadioAction
+from discord_music_player.domain.shared.events import RadioPoolExhausted, get_event_bus
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
@@ -17,8 +20,48 @@ from discord_music_player.infrastructure.discord.guards.voice_guards import (
 if TYPE_CHECKING:
     from discord_music_player.application.services.radio_models import RadioToggleResult
 
+logger = logging.getLogger(__name__)
+
 
 class RadioCog(BaseCog):
+
+    def __init__(self, bot: commands.Bot, container: "Container") -> None:  # noqa: F821
+        super().__init__(bot, container)
+        self._bus = get_event_bus()
+        self._subscribed = False
+
+    async def cog_load(self) -> None:
+        if not self._subscribed:
+            self._bus.subscribe(RadioPoolExhausted, self._on_pool_exhausted)
+            self._subscribed = True
+
+    async def cog_unload(self) -> None:
+        if self._subscribed:
+            self._bus.unsubscribe(RadioPoolExhausted, self._on_pool_exhausted)
+            self._subscribed = False
+
+    async def _on_pool_exhausted(self, event: RadioPoolExhausted) -> None:
+        """Send 'Continue Radio?' prompt to the channel where radio was started."""
+        if event.channel_id is None:
+            logger.warning("RadioPoolExhausted has no channel_id for guild %s", event.guild_id)
+            return
+
+        channel = self.bot.get_channel(event.channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            return
+
+        from ..views.radio_continue_view import RadioContinueView, build_continue_embed
+
+        state = self.container.radio_service.get_state(event.guild_id)
+        tracks_consumed = state.tracks_consumed if state else event.tracks_generated
+
+        embed = build_continue_embed(tracks_consumed)
+        view = RadioContinueView(
+            guild_id=event.guild_id,
+            container=self.container,
+        )
+        msg = await channel.send(embed=embed, view=view)
+        view.set_message(msg)
 
     @app_commands.command(
         name="radio",
@@ -89,6 +132,7 @@ class RadioCog(BaseCog):
             guild_id=guild_id,
             user_id=user.id,
             user_name=user.display_name,
+            channel_id=interaction.channel_id,
         )
 
         if not result.enabled:
@@ -105,7 +149,6 @@ class RadioCog(BaseCog):
         assert interaction.guild is not None
         guild_id = interaction.guild.id
 
-        # Ensure bot is connected to voice
         if not await ensure_voice(
             interaction,
             self.container.voice_warmup_tracker,
@@ -134,7 +177,6 @@ class RadioCog(BaseCog):
         if result.should_start:
             await self.container.playback_service.start_playback(guild_id)
 
-        # Disable existing radio so toggle_radio re-enables fresh
         radio_service = self.container.radio_service
         if radio_service.is_enabled(guild_id):
             radio_service.disable_radio(guild_id)

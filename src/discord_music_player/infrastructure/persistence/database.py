@@ -142,6 +142,10 @@ EXPECTED_SCHEMA = ExpectedSchema(
             "base_track_artist", "recommendations_json", "generated_at", "expires_at",
         ],
         "track_genres": ["track_id", "genre", "classified_at"],
+        "saved_queues": [
+            "id", "guild_id", "name", "tracks_json", "track_count",
+            "created_by_id", "created_by_name", "created_at",
+        ],
     },
     indexes=[
         "idx_queue_tracks_guild_pos",
@@ -153,6 +157,7 @@ EXPECTED_SCHEMA = ExpectedSchema(
         "idx_vote_sessions_completed",
         "idx_reco_cache_expires",
         "idx_track_genres_genre",
+        "idx_saved_queues_guild",
     ],
 )
 
@@ -354,6 +359,45 @@ class Database:
         )
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_track_genres_genre ON track_genres(genre)"
+        )
+
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_favorites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                track_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                webpage_url TEXT NOT NULL,
+                duration_seconds INTEGER,
+                artist TEXT,
+                uploader TEXT,
+                added_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f','now')),
+                UNIQUE(user_id, track_id)
+            )
+            """
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_favorites_user ON user_favorites(user_id)"
+        )
+
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS saved_queues (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                tracks_json TEXT NOT NULL,
+                track_count INTEGER NOT NULL DEFAULT 0,
+                created_by_id INTEGER NOT NULL,
+                created_by_name TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f','now')),
+                UNIQUE(guild_id, name)
+            )
+            """
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_saved_queues_guild ON saved_queues(guild_id)"
         )
 
     async def _ensure_column(

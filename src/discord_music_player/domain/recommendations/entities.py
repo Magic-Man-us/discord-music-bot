@@ -21,6 +21,15 @@ MAX_RECOMMENDATION_COUNT: Final[int] = 10
 DEFAULT_TOP_N: Final[int] = 3
 
 
+class SessionSeedTrack(BaseModel):
+    """Lightweight seed track used for multi-track radio seeding."""
+
+    model_config = ConfigDict(frozen=True)
+
+    title: NonEmptyStr
+    artist: NonEmptyStr | None = None
+
+
 class RecommendationRequest(BaseModel):
     """Value object for a recommendation request."""
 
@@ -31,6 +40,10 @@ class RecommendationRequest(BaseModel):
     count: Annotated[PositiveInt, Field(le=MAX_RECOMMENDATION_COUNT)] = DEFAULT_RECOMMENDATION_COUNT
     genre_hint: NonEmptyStr | None = None
     exclude_tracks: frozenset[NonEmptyStr] = Field(default_factory=frozenset)
+    session_context: tuple[SessionSeedTrack, ...] = Field(
+        default_factory=tuple,
+        description="Recently played tracks for session-aware seeding.",
+    )
 
     @property
     def request_cache_key(self) -> str:
@@ -45,18 +58,34 @@ class RecommendationRequest(BaseModel):
         track: Track,
         count: int = DEFAULT_RECOMMENDATION_COUNT,
         exclude_ids: list[str] | None = None,
+        recent_tracks: list[Track] | None = None,
     ) -> RecommendationRequest:
-        """Build a recommendation request by parsing the track's title."""
+        """Build a recommendation request by parsing the track's title.
+
+        When *recent_tracks* are provided, they're included as session
+        context so the AI can match the overall session mood.
+        """
         artist = extract_artist_from_title(track.title)
         title = clean_title(track.title)
 
         exclude_set = frozenset(exclude_ids) if exclude_ids else frozenset()
+
+        context: tuple[SessionSeedTrack, ...] = ()
+        if recent_tracks:
+            context = tuple(
+                SessionSeedTrack(
+                    title=clean_title(t.title),
+                    artist=extract_artist_from_title(t.title),
+                )
+                for t in recent_tracks
+            )
 
         return cls(
             base_track_title=title,
             base_track_artist=artist,
             count=min(count, MAX_RECOMMENDATION_COUNT),
             exclude_tracks=exclude_set,
+            session_context=context,
         )
 
 
@@ -133,18 +162,6 @@ class RecommendationSet(ExpirableMixin, BaseModel):
     def get_top(self, n: int = DEFAULT_TOP_N) -> list[Recommendation]:
         sorted_recs = sorted(self.recommendations, key=lambda r: r.confidence, reverse=True)
         return sorted_recs[:n]
-
-    def deduplicate(self) -> int:
-        """Remove duplicate recommendations in-place, return count removed."""
-        seen: set[str] = set()
-        unique: list[Recommendation] = []
-        for rec in self.recommendations:
-            if rec.dedup_key not in seen:
-                seen.add(rec.dedup_key)
-                unique.append(rec)
-        removed = len(self.recommendations) - len(unique)
-        self.recommendations = unique
-        return removed
 
     def validate_set(self) -> list[str]:
         """Return error messages for invalid state (empty, expired, etc.)."""
