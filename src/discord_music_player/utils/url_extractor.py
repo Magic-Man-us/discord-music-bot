@@ -54,7 +54,6 @@ async def extract_search_query_from_url(url: str) -> str | None:
     or None if extraction fails.
     """
     import asyncio
-
     import urllib.request
 
     def _fetch() -> str | None:
