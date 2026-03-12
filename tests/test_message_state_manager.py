@@ -367,7 +367,7 @@ class TestEditMessage:
 class TestUpdateNextUp:
 
     @pytest.mark.asyncio
-    async def test_updates_next_up_field(
+    async def test_updates_next_up_field_to_track_title(
         self, manager: MessageStateManager, mock_bot: MagicMock, track_a: Track, track_b: Track
     ) -> None:
         # Set up now-playing state
@@ -389,6 +389,10 @@ class TestUpdateNextUp:
         await manager.update_next_up(GUILD_ID, track_b)
 
         mock_message.edit.assert_awaited_once()
+        # Verify the field value was actually updated to the track title
+        updated_embed = mock_message.edit.call_args.kwargs["embed"]
+        next_field = [f for f in updated_embed.fields if "Next Up" in (f.name or "")][0]
+        assert track_b.title in next_field.value
 
     @pytest.mark.asyncio
     async def test_noop_when_no_state(self, manager: MessageStateManager) -> None:
@@ -502,10 +506,12 @@ class TestOnTrackFinished:
 
         await manager.on_track_finished(GUILD_ID, track_a)
 
+        from discord_music_player.domain.shared.constants import UIConstants
+
         mock_channel.send.assert_awaited_once()
         call_args = mock_channel.send.call_args
         assert "Track Alpha" in call_args[0][0]
-        assert call_args[1].get("delete_after") is not None
+        assert call_args[1].get("delete_after") == UIConstants.FINISHED_DELETE_AFTER
 
     @pytest.mark.asyncio
     async def test_noop_when_no_state(
@@ -515,10 +521,11 @@ class TestOnTrackFinished:
 
     @pytest.mark.asyncio
     async def test_noop_when_no_now_playing(
-        self, manager: MessageStateManager, track_a: Track
+        self, manager: MessageStateManager, mock_bot: MagicMock, track_a: Track
     ) -> None:
         manager.get_state(GUILD_ID)  # no now_playing set
         await manager.on_track_finished(GUILD_ID, track_a)  # should not raise
+        mock_bot.get_channel.assert_not_called()  # verify early exit was taken
 
     @pytest.mark.asyncio
     async def test_swallows_send_http_error(
@@ -577,10 +584,13 @@ class TestPromoteNextTrack:
         await manager.promote_next_track(GUILD_ID, track_b)
 
         mock_message.edit.assert_awaited_once()
-        # now_playing should still be the same TrackedMessage
+        # now_playing should still be the same TrackedMessage (reused, not replaced)
         state = manager.get_state(GUILD_ID)
         assert state.now_playing is not None
         assert state.now_playing.message_id == MESSAGE_ID_1
+        # Deliberate: track_key still references the original track, not the promoted one.
+        # The TrackedMessage is frozen and reused for its channel/message IDs only.
+        assert state.now_playing.track_key.track_id == "track-a"
 
     @pytest.mark.asyncio
     async def test_falls_back_to_queued_message(

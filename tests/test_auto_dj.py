@@ -15,14 +15,22 @@ from discord_music_player.domain.shared.events import (
     QueueExhausted,
     TrackStartedPlaying,
     get_event_bus,
+    reset_event_bus,
 )
-
 
 # ============================================================================
 # Fixtures
 # ============================================================================
 
 GUILD_ID = 111111111
+
+
+@pytest.fixture(autouse=True)
+def _isolate_event_bus():
+    """Reset the global event bus before and after each test to prevent leakage."""
+    reset_event_bus()
+    yield
+    reset_event_bus()
 
 
 @pytest.fixture
@@ -188,11 +196,14 @@ class TestOnQueueExhausted:
 
         with patch(
             "discord_music_player.application.services.auto_dj.TimeConstants"
-        ) as mock_tc:
+        ) as mock_tc, patch(
+            "discord_music_player.application.services.auto_dj.asyncio.create_task"
+        ) as mock_create_task:
             mock_tc.AUTO_DJ_DELAY_SECONDS = 0
             await auto_dj._on_queue_exhausted(event)
 
         assert GUILD_ID not in auto_dj._timers
+        mock_create_task.assert_not_called()  # verify the code path actually exited early
 
     @pytest.mark.asyncio
     async def test_replaces_existing_timer_for_same_guild(self, auto_dj: AutoDJ) -> None:
@@ -206,6 +217,8 @@ class TestOnQueueExhausted:
         second_task = auto_dj._timers[GUILD_ID]
 
         assert first_task is not second_task
+        await asyncio.sleep(0)  # let the event loop process the cancellation
+        assert first_task.cancelled()  # verify old timer was actually cancelled
         auto_dj.stop()
 
 
@@ -224,12 +237,15 @@ class TestOnTrackStarted:
         event_exhausted = QueueExhausted(guild_id=GUILD_ID)
         await auto_dj._on_queue_exhausted(event_exhausted)
         assert GUILD_ID in auto_dj._timers
+        task = auto_dj._timers[GUILD_ID]
 
         # Track starts → should cancel
         event_started = TrackStartedPlaying(guild_id=GUILD_ID)
         await auto_dj._on_track_started(event_started)
 
         assert GUILD_ID not in auto_dj._timers
+        await asyncio.sleep(0)  # let the event loop process the cancellation
+        assert task.cancelled()  # verify cancel() was actually called on the task
         auto_dj.stop()
 
     @pytest.mark.asyncio
@@ -277,7 +293,11 @@ class TestDelayedActivate:
 
         assert empty_session.current_track is not None
         assert empty_session.current_track.title == seed_track.title
+        # Verify the mutated session was the one passed to save
         session_repo.save.assert_awaited_once()
+        saved_arg = session_repo.save.call_args.args[0]
+        assert saved_arg is empty_session
+        assert saved_arg.current_track.title == seed_track.title
 
     @pytest.mark.asyncio
     async def test_uses_default_requester_when_missing(
@@ -339,6 +359,25 @@ class TestDelayedActivateGuards:
         session_with_tracks = GuildPlaybackSession(guild_id=GUILD_ID)
         session_with_tracks.set_current_track(seed_track)
         session_repo.get = AsyncMock(return_value=session_with_tracks)
+
+        await auto_dj._delayed_activate(GUILD_ID, delay=0)
+
+        radio_service.toggle_radio.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_aborts_if_session_has_queued_tracks_only(
+        self,
+        auto_dj: AutoDJ,
+        session_repo: MagicMock,
+        radio_service: MagicMock,
+        seed_track: Track,
+    ) -> None:
+        """has_tracks is True when queue is non-empty even if current_track is None."""
+        session_with_queue = GuildPlaybackSession(guild_id=GUILD_ID)
+        session_with_queue.enqueue(seed_track)
+        assert session_with_queue.current_track is None
+        assert session_with_queue.has_tracks is True
+        session_repo.get = AsyncMock(return_value=session_with_queue)
 
         await auto_dj._delayed_activate(GUILD_ID, delay=0)
 
