@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import discord
@@ -19,9 +18,6 @@ from discord_music_player.infrastructure.discord.guards.voice_guards import (
 
 if TYPE_CHECKING:
     from discord_music_player.application.services.radio_models import RadioToggleResult
-
-logger = logging.getLogger(__name__)
-
 
 class RadioCog(BaseCog):
 
@@ -43,7 +39,7 @@ class RadioCog(BaseCog):
     async def _on_pool_exhausted(self, event: RadioPoolExhausted) -> None:
         """Send 'Continue Radio?' prompt to the channel where radio was started."""
         if event.channel_id is None:
-            logger.warning("RadioPoolExhausted has no channel_id for guild %s", event.guild_id)
+            self.logger.warning("RadioPoolExhausted has no channel_id for guild %s", event.guild_id)
             return
 
         channel = self.bot.get_channel(event.channel_id)
@@ -67,6 +63,7 @@ class RadioCog(BaseCog):
         name="radio",
         description="Toggle AI radio — auto-queue similar songs.",
     )
+    @app_commands.guild_only()
     @app_commands.describe(
         query="Optional: song name or URL to seed radio with",
         action="Action to perform (default: toggle)",

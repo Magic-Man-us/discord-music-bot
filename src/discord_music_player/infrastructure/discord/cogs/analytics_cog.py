@@ -47,7 +47,7 @@ class AnalyticsCog(BaseCog):
 
         total = await history_repo.get_total_tracks(guild_id)
         if total == 0:
-            await interaction.followup.send(_NO_MUSIC_YET)
+            await interaction.followup.send(_NO_MUSIC_YET, ephemeral=True)
             return
 
         unique = await history_repo.get_unique_tracks(guild_id)
@@ -124,7 +124,7 @@ class AnalyticsCog(BaseCog):
 
         result = await self._fetch_leaderboard(guild_id, cat, time_range)
         if result is None:
-            await interaction.followup.send(_NO_MUSIC_YET)
+            await interaction.followup.send(_NO_MUSIC_YET, ephemeral=True)
             return
 
         title, labels, values, lines = result
@@ -210,7 +210,7 @@ class AnalyticsCog(BaseCog):
 
         user_stats = await history_repo.get_user_stats(guild_id, user_id)
         if user_stats.total_tracks == 0:
-            await interaction.followup.send(_NO_MUSIC_YET)
+            await interaction.followup.send(_NO_MUSIC_YET, ephemeral=True)
             return
 
         top_tracks = await history_repo.get_user_top_tracks(guild_id, user_id, limit=5)
@@ -350,7 +350,7 @@ class AnalyticsCog(BaseCog):
 
         total = await history_repo.get_total_tracks(guild_id)
         if total == 0:
-            await interaction.followup.send(_NO_MUSIC_YET)
+            await interaction.followup.send(_NO_MUSIC_YET, ephemeral=True)
             return
 
         embed = discord.Embed(title="Listening Activity", color=AnalyticsConstants.BLURPLE)

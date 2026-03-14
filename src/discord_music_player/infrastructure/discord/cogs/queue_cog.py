@@ -22,6 +22,7 @@ from discord_music_player.utils.reply import format_duration, truncate
 class QueueCog(BaseCog):
 
     @app_commands.command(name="queue", description="Show the current queue.")
+    @app_commands.guild_only()
     @app_commands.describe(page="Page number")
     async def queue(self, interaction: discord.Interaction, page: int = 1) -> None:
         if not await ensure_user_in_voice_and_warm(
@@ -81,6 +82,7 @@ class QueueCog(BaseCog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="shuffle", description="Shuffle the queue.")
+    @app_commands.guild_only()
     async def shuffle(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker
@@ -104,6 +106,7 @@ class QueueCog(BaseCog):
     @app_commands.command(
         name="shuffle_history", description="Queue and shuffle all previously played tracks."
     )
+    @app_commands.guild_only()
     @app_commands.describe(limit="Max number of tracks to fetch (default: 100)")
     async def shuffle_history(self, interaction: discord.Interaction, limit: app_commands.Range[int, 1, 500] = 100) -> None:
         if not await ensure_voice(
@@ -152,6 +155,7 @@ class QueueCog(BaseCog):
         return unique
 
     @app_commands.command(name="loop", description="Toggle loop mode.")
+    @app_commands.guild_only()
     async def loop(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker
@@ -169,6 +173,7 @@ class QueueCog(BaseCog):
         )
 
     @app_commands.command(name="remove", description="Remove a track from the queue.")
+    @app_commands.guild_only()
     @app_commands.describe(position="Position in queue (1-based)")
     async def remove(self, interaction: discord.Interaction, position: app_commands.Range[int, 1]) -> None:
         if not await ensure_user_in_voice_and_warm(
@@ -193,6 +198,7 @@ class QueueCog(BaseCog):
             )
 
     @app_commands.command(name="move", description="Move a track to a different position in the queue.")
+    @app_commands.guild_only()
     @app_commands.describe(
         from_position="Current position (1-based)",
         to_position="Target position (1-based)",
@@ -227,6 +233,7 @@ class QueueCog(BaseCog):
             )
 
     @app_commands.command(name="clear", description="Clear the queue.")
+    @app_commands.guild_only()
     async def clear(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker

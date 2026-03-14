@@ -80,7 +80,7 @@ class WarmupRetryView(BaseInteractiveView):
     async def on_timeout(self) -> None:
         if self._enable_task is not None and not self._enable_task.done():
             self._enable_task.cancel()
-        self._disable_buttons()
+        self._finish_view()
         if self._message is not None:
             try:
                 await self._message.edit(view=self)

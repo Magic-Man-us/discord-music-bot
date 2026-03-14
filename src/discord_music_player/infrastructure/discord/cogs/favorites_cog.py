@@ -18,7 +18,7 @@ _FAVORITES_PER_PAGE = UIConstants.QUEUE_PER_PAGE
 
 class FavoritesCog(BaseCog):
 
-    favorites = app_commands.Group(name="favorites", description="Manage your favorite tracks")
+    favorites = app_commands.Group(name="favorites", description="Manage your favorite tracks", guild_only=True)
 
     @favorites.command(name="add", description="Save the currently playing track to your favorites.")
     async def favorites_add(self, interaction: discord.Interaction) -> None:

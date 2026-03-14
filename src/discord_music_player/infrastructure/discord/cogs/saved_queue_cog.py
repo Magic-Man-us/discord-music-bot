@@ -19,7 +19,7 @@ from discord_music_player.utils.reply import format_duration, truncate
 class SavedQueueCog(BaseCog):
 
     saved = app_commands.Group(
-        name="playlist", description="Save and load named queue playlists."
+        name="playlist", description="Save and load named queue playlists.", guild_only=True,
     )
 
     @saved.command(name="save", description="Save the current queue as a named playlist.")
@@ -111,7 +111,6 @@ class SavedQueueCog(BaseCog):
         )
 
     @saved.command(name="list", description="List all saved playlists for this server.")
-    @app_commands.guild_only()
     async def list_queues(self, interaction: discord.Interaction) -> None:
         assert interaction.guild is not None
 
@@ -140,7 +139,6 @@ class SavedQueueCog(BaseCog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @saved.command(name="delete", description="Delete a saved playlist.")
-    @app_commands.guild_only()
     @app_commands.describe(name="Playlist name to delete")
     async def delete_queue(self, interaction: discord.Interaction, name: str) -> None:
         assert interaction.guild is not None

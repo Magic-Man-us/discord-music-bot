@@ -151,7 +151,7 @@ class RadioView(BaseInteractiveView):
         await interaction.response.edit_message(embed=embed, view=self)
 
     async def on_timeout(self) -> None:
-        self._disable_buttons()
+        self._finish_view()
 
         if self._message is not None:
             try:

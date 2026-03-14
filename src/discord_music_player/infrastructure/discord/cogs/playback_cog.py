@@ -57,6 +57,7 @@ class PlaybackCog(BaseCog):
     # ─────────────────────────────────────────────────────────────────
 
     @app_commands.command(name="play", description="Play a song by URL or search query.")
+    @app_commands.guild_only()
     @app_commands.describe(
         query="YouTube URL or search query",
         timestamp='Start position (e.g. "1:30" or "90")',
@@ -337,6 +338,7 @@ class PlaybackCog(BaseCog):
     # ─────────────────────────────────────────────────────────────────
 
     @app_commands.command(name="seek", description="Jump to a position in the current track.")
+    @app_commands.guild_only()
     @app_commands.describe(timestamp='Position (e.g. "1:30", "1:30:00", or seconds like "90")')
     async def seek(self, interaction: discord.Interaction, timestamp: str) -> None:
         if not await ensure_user_in_voice_and_warm(
@@ -382,6 +384,7 @@ class PlaybackCog(BaseCog):
     # ─────────────────────────────────────────────────────────────────
 
     @app_commands.command(name="playnext", description="Add a track to play next in the queue.")
+    @app_commands.guild_only()
     @app_commands.describe(query="YouTube URL or search query")
     async def playnext(self, interaction: discord.Interaction, query: str) -> None:
         await interaction.response.defer()
@@ -619,6 +622,7 @@ class PlaybackCog(BaseCog):
     # ─────────────────────────────────────────────────────────────────
 
     @app_commands.command(name="stop", description="Stop playback and clear the queue.")
+    @app_commands.guild_only()
     async def stop(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker
@@ -648,6 +652,7 @@ class PlaybackCog(BaseCog):
             )
 
     @app_commands.command(name="pause", description="Pause the current track.")
+    @app_commands.guild_only()
     async def pause(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker
@@ -667,6 +672,7 @@ class PlaybackCog(BaseCog):
             )
 
     @app_commands.command(name="resume", description="Resume paused playback.")
+    @app_commands.guild_only()
     async def resume(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker
@@ -690,6 +696,7 @@ class PlaybackCog(BaseCog):
     # ─────────────────────────────────────────────────────────────────
 
     @app_commands.command(name="leave", description="Disconnect from voice channel.")
+    @app_commands.guild_only()
     async def leave(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker
