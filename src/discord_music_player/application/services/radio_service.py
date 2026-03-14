@@ -416,7 +416,7 @@ class RadioApplicationService:
 
         return added
 
-    async def warmup_next(self, guild_id: DiscordSnowflake, *, recent_limit: int = 10) -> int:
+    async def warmup_next(self, guild_id: DiscordSnowflake) -> int:
         """Pre-fetch a single track from the pool so the queue is never empty.
 
         Draws from the pool instead of calling AI directly.

@@ -52,13 +52,16 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
         )
         voters = {vr["user_id"] for vr in votes_rows}
 
+        row_fields = {
+            "track_id": TrackId(value=row["track_id"]),
+            "vote_type": VoteType(row["vote_type"]),
+            "threshold": row["threshold"],
+            "started_at": UtcDateTime.from_iso(row["started_at"]).dt,
+        }
         session = VoteSession(
             guild_id=guild_id,
-            track_id=TrackId(value=row["track_id"]),
-            vote_type=VoteType(row["vote_type"]),
-            threshold=row["threshold"],
-            started_at=UtcDateTime.from_iso(row["started_at"]).dt,
             initial_voters=voters,
+            **row_fields,
         )
 
         if session.is_expired:
@@ -151,19 +154,19 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
         logger.debug("Saved vote session for guild %s", session.guild_id)
 
     async def delete(self, guild_id: int, vote_type: VoteType) -> bool:
-        row = await self._db.fetch_one(
-            """
-            SELECT id FROM vote_sessions
-            WHERE guild_id = ? AND vote_type = ?
-            AND completed_at IS NULL
-            """,
-            (guild_id, vote_type.value),
-        )
-
-        if row is None:
-            return False
-
         async with self._db.transaction() as conn:
+            row = await (await conn.execute(
+                """
+                SELECT id FROM vote_sessions
+                WHERE guild_id = ? AND vote_type = ?
+                AND completed_at IS NULL
+                """,
+                (guild_id, vote_type.value),
+            )).fetchone()
+
+            if row is None:
+                return False
+
             await conn.execute(
                 "DELETE FROM votes WHERE vote_session_id = ?",
                 (row["id"],),
@@ -181,24 +184,17 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
         return True
 
     async def delete_for_guild(self, guild_id: int) -> int:
-        count_row = await self._db.fetch_one(
-            """
-            SELECT COUNT(*) as count FROM vote_sessions
-            WHERE guild_id = ? AND completed_at IS NULL
-            """,
-            (guild_id,),
-        )
-        count = count_row["count"] if count_row else 0
-
-        await self._db.execute(
+        cursor = await self._db.execute(
             """
             DELETE FROM vote_sessions
             WHERE guild_id = ? AND completed_at IS NULL
             """,
             (guild_id,),
         )
+        count = cursor.rowcount
 
-        logger.debug("Deleted %s vote sessions for guild %s", count, guild_id)
+        if count > 0:
+            logger.debug("Deleted %s vote sessions for guild %s", count, guild_id)
         return count
 
     async def cleanup_expired(self) -> int:
@@ -207,22 +203,14 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
         cutoff = UtcDateTime.now().dt - timedelta(minutes=VoteSession.DEFAULT_EXPIRATION_MINUTES)
         cutoff_iso = UtcDateTime(cutoff).iso
 
-        count_row = await self._db.fetch_one(
-            """
-            SELECT COUNT(*) as count FROM vote_sessions
-            WHERE completed_at IS NULL AND started_at < ?
-            """,
-            (cutoff_iso,),
-        )
-        count = count_row["count"] if count_row else 0
-
-        await self._db.execute(
+        cursor = await self._db.execute(
             """
             DELETE FROM vote_sessions
             WHERE completed_at IS NULL AND started_at < ?
             """,
             (cutoff_iso,),
         )
+        count = cursor.rowcount
 
         if count > 0:
             logger.info("Cleaned up %s expired vote sessions", count)

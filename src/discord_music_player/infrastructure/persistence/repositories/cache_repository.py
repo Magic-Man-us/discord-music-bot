@@ -94,37 +94,23 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
         )
 
     async def delete(self, cache_key: str) -> bool:
-        row = await self._db.fetch_one(
-            "SELECT 1 FROM recommendation_cache WHERE cache_key = ?",
-            (cache_key,),
-        )
-        if row is None:
-            return False
-
-        await self._db.execute(
+        cursor = await self._db.execute(
             "DELETE FROM recommendation_cache WHERE cache_key = ?",
             (cache_key,),
         )
-        return True
+        return cursor.rowcount > 0
 
     async def clear(self) -> int:
-        count_row = await self._db.fetch_one("SELECT COUNT(*) as count FROM recommendation_cache")
-        count = count_row[_COUNT_COL] if count_row else 0
-        await self._db.execute("DELETE FROM recommendation_cache")
-        return count
+        cursor = await self._db.execute("DELETE FROM recommendation_cache")
+        return cursor.rowcount
 
     async def cleanup_expired(self) -> int:
         now_iso = UtcDateTime.now().iso
-        count_row = await self._db.fetch_one(
-            "SELECT COUNT(*) as count FROM recommendation_cache WHERE expires_at < ?",
-            (now_iso,),
-        )
-        count = count_row[_COUNT_COL] if count_row else 0
-        await self._db.execute(
+        cursor = await self._db.execute(
             "DELETE FROM recommendation_cache WHERE expires_at < ?",
             (now_iso,),
         )
-        return count
+        return cursor.rowcount
 
     async def prune(self, max_entries: int) -> int:
         count = await self.count()

@@ -72,15 +72,15 @@ class SQLiteFavoritesRepository:
         self._db = database
 
     async def add(self, user_id: DiscordSnowflake, track: Track) -> bool:
-        async with self._db.connection() as conn:
-            row = await conn.execute_fetchall(
-                "SELECT COUNT(*) as count FROM user_favorites WHERE user_id = :user_id",
-                {"user_id": user_id},
-            )
-            if row and row[0][0] >= _MAX_FAVORITES:
-                return False
+        try:
+            async with self._db.transaction() as conn:
+                row = await conn.execute_fetchall(
+                    "SELECT COUNT(*) as count FROM user_favorites WHERE user_id = :user_id",
+                    {"user_id": user_id},
+                )
+                if row and row[0][0] >= _MAX_FAVORITES:
+                    return False
 
-            try:
                 fav = FavoriteRow.from_track(track)
                 params = {"user_id": user_id, **fav.model_dump()}
                 await conn.execute(
@@ -92,11 +92,10 @@ class SQLiteFavoritesRepository:
                     """,
                     params,
                 )
-                await conn.commit()
                 return True
-            except Exception:
-                logger.exception("Failed to add favorite for user %s", user_id)
-                return False
+        except Exception:
+            logger.exception("Failed to add favorite for user %s", user_id)
+            return False
 
     async def remove(self, user_id: DiscordSnowflake, track_id: str) -> bool:
         async with self._db.connection() as conn:

@@ -65,6 +65,13 @@ class DiscordSettings(BaseModel):
     token: SecretStr = Field(
         default=SecretStr(""), validation_alias=AliasChoices("token", "bot_token", "discord_token")
     )
+
+    @field_validator("token")
+    @classmethod
+    def _token_not_empty(cls, v: SecretStr) -> SecretStr:
+        if not v.get_secret_value().strip():
+            raise ValueError("Discord token must not be empty — set DISCORD_TOKEN")
+        return v
     command_prefix: CommandPrefixStr = Field(
         default="!",
         validation_alias=AliasChoices("command_prefix", "prefix"),

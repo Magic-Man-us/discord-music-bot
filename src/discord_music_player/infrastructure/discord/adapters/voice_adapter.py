@@ -198,9 +198,16 @@ class DiscordVoiceAdapter(VoiceAdapter):
                 if error:
                     logger.warning("Playback error in guild %s: %s", guild_id, error)
 
-                asyncio.run_coroutine_threadsafe(
+                future = asyncio.run_coroutine_threadsafe(
                     self._handle_track_end(guild_id),
                     self._bot.loop,
+                )
+                future.add_done_callback(
+                    lambda f, gid=guild_id: (
+                        logger.error("track-end handler raised in guild %s: %r", gid, f.exception())
+                        if not f.cancelled() and f.exception()
+                        else None
+                    )
                 )
 
             vc.play(volume_source, after=after_callback)

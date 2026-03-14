@@ -246,6 +246,14 @@ class NowPlayingView(BaseInteractiveView):
             return None
         return session.current_track
 
+    async def on_timeout(self) -> None:
+        self._disable_buttons()
+        if self._message is not None:
+            try:
+                await self._message.edit(view=self)
+            except discord.HTTPException:
+                pass
+
     async def _try_edit_message(self, *, embed: discord.Embed | None = None) -> None:
         if self._message is None:
             return
