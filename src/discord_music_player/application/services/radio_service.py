@@ -331,6 +331,7 @@ class RadioApplicationService:
             exclude_ids=exclude_ids,
         )
         if not recommendations:
+            await self._restore_removed_track(guild_id, removed, queue_position, user_id, user_name)
             return None
 
         track = await self._resolve_and_enqueue_first(
@@ -340,6 +341,7 @@ class RadioApplicationService:
             user_name=user_name,
         )
         if track is None:
+            await self._restore_removed_track(guild_id, removed, queue_position, user_id, user_name)
             return None
 
         # Move the newly enqueued track (at the end) to the original position
@@ -505,6 +507,32 @@ class RadioApplicationService:
             return None
 
     # ── Shared helpers (no duplication) ───────────────────────────────
+
+    async def _restore_removed_track(
+        self,
+        guild_id: DiscordSnowflake,
+        track: Track,
+        position: int,
+        user_id: DiscordSnowflake,
+        user_name: NonEmptyStr,
+    ) -> None:
+        """Re-enqueue a track that was removed during a failed reroll."""
+        try:
+            result = await self._queue_service.enqueue(
+                guild_id=guild_id,
+                track=track,
+                user_id=user_id,
+                user_name=user_name,
+            )
+            if result.success:
+                session = await self._session_repo.get(guild_id)
+                if session is not None and session.queue_length > 1:
+                    from_pos = session.queue_length - 1
+                    if from_pos != position:
+                        await self._queue_service.move(guild_id, from_pos, position)
+                logger.info("Restored removed track '%s' after failed reroll", track.title)
+        except Exception:
+            logger.warning("Failed to restore track '%s' after reroll failure", track.title)
 
     def _get_active_state(self, guild_id: DiscordSnowflake) -> RadioState | None:
         """Return the guild's radio state if radio is active, else None."""

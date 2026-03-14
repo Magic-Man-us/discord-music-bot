@@ -136,8 +136,8 @@ class EventBus:
             async with asyncio.TaskGroup() as tg:
                 for handler in handlers:
                     tg.create_task(safe_call(handler))
-        except* Exception:
-            pass
+        except* Exception as eg:
+            logger.error("Unexpected errors in event bus TaskGroup: %s", eg.exceptions)
 
     def clear(self) -> None:
         """Remove all handlers."""

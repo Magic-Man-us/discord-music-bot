@@ -273,8 +273,8 @@ class GuildPlaybackSession(BaseModel):
         next_track = self.dequeue()
         self.current_track = next_track
 
-        if next_track is None:
-            self.state = PlaybackState.IDLE
+        if next_track is None and self.state != PlaybackState.IDLE:
+            self.transition_to(PlaybackState.IDLE)
 
         return next_track
 

@@ -78,7 +78,11 @@ class AIRecommendationClient(AIClient):
     def _cache_key(self, request: RecommendationRequest) -> NonEmptyStr:
         title = request.base_track_title.strip().lower()
         artist = (request.base_track_artist or "").strip().lower()
-        return f"{title}|{artist}|{request.count}|{self._settings.model}"
+        excludes = ",".join(sorted(request.exclude_tracks))
+        context = ",".join(
+            f"{(s.artist or '')}:{s.title}" for s in request.session_context
+        )
+        return f"{title}|{artist}|{request.count}|{excludes}|{context}"
 
     async def _call_api(self, user_prompt: str) -> AIRecommendationResponse:
         agent = self._get_agent()
@@ -123,15 +127,24 @@ class AIRecommendationClient(AIClient):
         self._inflight[cache_key] = future
 
         try:
+            safe_title = request.base_track_title.replace("`", "'")
+            safe_artist = (request.base_track_artist or "").replace("`", "'")
             user_prompt = (
                 f"Count: {request.count}\n"
-                f"Base title: {request.base_track_title}\n"
-                f"Base artist: {request.base_track_artist or ''}\n"
+                f"Base title: ```{safe_title}```\n"
+                f"Base artist: ```{safe_artist}```\n"
             )
+
+            if request.exclude_tracks:
+                user_prompt += (
+                    "\nDo NOT recommend any of these tracks (already played):\n"
+                    + "\n".join(f"- {t}" for t in request.exclude_tracks)
+                    + "\n"
+                )
 
             if request.session_context:
                 context_lines = [
-                    f"- {s.artist} - {s.title}" if s.artist else f"- {s.title}"
+                    f"- ```{(s.artist or '').replace('`', chr(39))} - {s.title.replace('`', chr(39))}```"
                     for s in request.session_context
                 ]
                 user_prompt += (

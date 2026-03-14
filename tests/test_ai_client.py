@@ -314,12 +314,15 @@ class TestCacheKey:
 
         assert client._cache_key(request1) != client._cache_key(request2)
 
-    def test_cache_key_includes_model(self, client):
-        """Should include model in cache key."""
-        request = RecommendationRequest(base_track_title="Test")
-        key = client._cache_key(request)
+    def test_cache_key_includes_exclude_tracks(self, client):
+        """Should produce different keys when exclude_tracks differ."""
+        request1 = RecommendationRequest(base_track_title="Test")
+        request2 = RecommendationRequest(
+            base_track_title="Test",
+            exclude_tracks=frozenset({"track1", "track2"}),
+        )
 
-        assert client._settings.model in key
+        assert client._cache_key(request1) != client._cache_key(request2)
 
 
 class TestCaching:

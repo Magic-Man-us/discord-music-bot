@@ -520,9 +520,12 @@ class Database:
                     )
                     table_rows = await cursor.fetchall()
 
+                    allowed_tables = frozenset(EXPECTED_SCHEMA.tables.keys())
                     for (table_name,) in table_rows:
+                        if table_name not in allowed_tables:
+                            continue
                         count_cursor = await conn.execute(
-                            f"SELECT COUNT(*) FROM {table_name}"  # noqa: S608
+                            f"SELECT COUNT(*) FROM {table_name}"  # noqa: S608 — validated against allowlist above
                         )
                         count_row = await count_cursor.fetchone()
                         tables[table_name] = count_row[0] if count_row else 0

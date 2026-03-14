@@ -60,6 +60,6 @@ class StartSeconds(ValueWrapper[DurationSeconds]):
     @classmethod
     def from_optional(cls, seconds: int | None) -> StartSeconds | None:
         """Create from an optional int, returning None if input is None or zero."""
-        if not seconds:
+        if seconds is None or seconds == 0:
             return None
         return cls(value=seconds)

@@ -44,7 +44,13 @@ _HTML_TITLE_PATTERN = re.compile(
 )
 # Spotify titles usually look like: "Song Name - song and target by Artist Name | Spotify"
 _SPOTIFY_TITLE_CLEANUP = re.compile(r"\s*\|\s*Spotify\s*$", re.IGNORECASE)
-_SPOTIFY_TITLE_SEPARATOR = re.compile(r"\s*-\s*(?:song\s+(?:and\s+\w+\s+)?by|.*\s+by)\s+", re.IGNORECASE)
+_SPOTIFY_TITLE_SEPARATOR = re.compile(r"\s*-\s*(?:song\s+(?:and\s+\w+\s+)?by|[^-]+\s+by)\s+", re.IGNORECASE)
+
+
+_ALLOWED_HOSTS: frozenset[str] = frozenset({
+    "open.spotify.com",
+    "music.apple.com",
+})
 
 
 async def extract_search_query_from_url(url: str) -> str | None:
@@ -54,7 +60,12 @@ async def extract_search_query_from_url(url: str) -> str | None:
     or None if extraction fails.
     """
     import asyncio
+    import urllib.parse
     import urllib.request
+
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("https", "http") or parsed.hostname not in _ALLOWED_HOSTS:
+        return None
 
     def _fetch() -> str | None:
         try:

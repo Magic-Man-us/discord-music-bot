@@ -315,10 +315,12 @@ class PlaybackApplicationService:
             )
             if not success:
                 logger.error("Voice adapter failed to play after seek in guild %s", guild_id)
+                self._ignore_next_voice_track_end.discard(guild_id)
                 return False
             logger.info("Seeked to %ss in guild %s", start_seconds.value, guild_id)
             return True
         except Exception:
+            self._ignore_next_voice_track_end.discard(guild_id)
             logger.exception("Error starting playback after seek")
             return False
 
@@ -336,25 +338,21 @@ class PlaybackApplicationService:
         except Exception:
             self._ignore_next_voice_track_end.discard(guild_id)
             logger.exception("Error stopping voice during skip")
-            # Still advance the queue so the session doesn't get stuck
             session.advance_to_next_track()
-            session.state = PlaybackState.IDLE
             await self._session_repo.save(session)
             return skipped_track
 
         next_track = session.advance_to_next_track()
-        if next_track:
-            session.state = PlaybackState.IDLE
         await self._session_repo.save(session)
-
-        if next_track:
-            await self.start_playback(guild_id)
 
         await self._history_repo.mark_finished(
             guild_id=guild_id,
             track_id=skipped_track.id,
             skipped=True,
         )
+
+        if next_track:
+            await self.start_playback(guild_id)
 
         logger.info("Skipped track: %s in guild %s", skipped_track.title, guild_id)
         return skipped_track
@@ -367,9 +365,13 @@ class PlaybackApplicationService:
             return
 
         next_track = session.advance_to_next_track()
-        if next_track:
-            session.state = PlaybackState.IDLE
         await self._session_repo.save(session)
+
+        await self._history_repo.mark_finished(
+            guild_id=guild_id,
+            track_id=track.id,
+            skipped=False,
+        )
 
         if next_track:
             await self.start_playback(guild_id)
@@ -382,12 +384,6 @@ class PlaybackApplicationService:
                     last_track_title=track.title,
                 )
             )
-
-        await self._history_repo.mark_finished(
-            guild_id=guild_id,
-            track_id=track.id,
-            skipped=False,
-        )
 
         if self._on_track_finished_callback:
             try:
@@ -441,11 +437,14 @@ class PlaybackApplicationService:
 
     async def cleanup_guild(self, guild_id: DiscordSnowflake) -> None:
         """Release voice and session resources for a guild."""
+        self._ignore_next_voice_track_end.add(guild_id)
         try:
             await self._voice_adapter.stop(guild_id)
             await self._voice_adapter.disconnect(guild_id)
         except Exception:
             logger.debug("Error during voice cleanup")
+        finally:
+            self._ignore_next_voice_track_end.discard(guild_id)
 
         await self._session_repo.delete(guild_id)
         logger.info("Cleaned up guild %s", guild_id)
