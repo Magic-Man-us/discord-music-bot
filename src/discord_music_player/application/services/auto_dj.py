@@ -141,9 +141,8 @@ class AutoDJ:
             last_track.title,
         )
 
+        injected_seed = session.current_track is None
         try:
-            # Temporarily inject a current_track for radio to seed from
-            injected_seed = session.current_track is None
             if injected_seed:
                 session.set_current_track(last_track)
                 await self._session_repo.save(session)
@@ -155,29 +154,18 @@ class AutoDJ:
             )
 
             if result.enabled and result.tracks_added > 0:
-                logger.info(
-                    "Auto-DJ enabled in guild %s: %d tracks queued",
-                    guild_id,
-                    result.tracks_added,
-                )
-                # Clear the injected seed so start_playback picks from queue
-                if injected_seed:
-                    session = await self._session_repo.get(guild_id)
-                    if session is not None:
-                        session.set_current_track(None)
-                        await self._session_repo.save(session)
+                logger.info("Auto-DJ enabled in guild %s: %d tracks queued", guild_id, result.tracks_added)
                 await self._playback_service.start_playback(guild_id)
             else:
-                logger.debug(
-                    "Auto-DJ could not enable radio in guild %s: %s",
-                    guild_id,
-                    result.message,
-                )
-                # Clean up injected seed on failure
-                if injected_seed:
-                    session = await self._session_repo.get(guild_id)
-                    if session is not None:
-                        session.set_current_track(None)
-                        await self._session_repo.save(session)
+                logger.debug("Auto-DJ could not enable radio in guild %s: %s", guild_id, result.message)
         except Exception:
             logger.exception("Auto-DJ failed for guild %s", guild_id)
+        finally:
+            if injected_seed:
+                await self._clear_injected_seed(guild_id)
+
+    async def _clear_injected_seed(self, guild_id: DiscordSnowflake) -> None:
+        session = await self._session_repo.get(guild_id)
+        if session is not None and session.current_track is not None:
+            session.set_current_track(None)
+            await self._session_repo.save(session)
