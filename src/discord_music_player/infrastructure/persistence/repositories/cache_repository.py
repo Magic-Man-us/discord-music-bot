@@ -118,7 +118,7 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
             return 0
 
         entries_to_prune = count - max_entries
-        await self._db.execute(
+        cursor = await self._db.execute(
             """
             DELETE FROM recommendation_cache
             WHERE id IN (
@@ -129,7 +129,7 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
             """,
             (entries_to_prune,),
         )
-        return entries_to_prune
+        return cursor.rowcount
 
     async def count(self) -> int:
         row = await self._db.fetch_one("SELECT COUNT(*) as count FROM recommendation_cache")

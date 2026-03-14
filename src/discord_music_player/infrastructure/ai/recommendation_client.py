@@ -138,7 +138,7 @@ class AIRecommendationClient(AIClient):
             if request.exclude_tracks:
                 user_prompt += (
                     "\nDo NOT recommend any of these tracks (already played):\n"
-                    + "\n".join(f"- {t}" for t in request.exclude_tracks)
+                    + "\n".join(f"- {t.replace('`', chr(39))}" for t in request.exclude_tracks)
                     + "\n"
                 )
 

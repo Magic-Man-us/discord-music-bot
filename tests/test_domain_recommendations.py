@@ -66,19 +66,10 @@ class TestRecommendationRequest:
         with pytest.raises(ValueError):
             RecommendationRequest(base_track_title="Test Song", count=11)
 
-    def test_cache_key_generated(self):
-        """Should generate normalized cache key."""
-        request = RecommendationRequest(
-            base_track_title="Test Song", base_track_artist="Test Artist", count=3
-        )
-        assert "test song" in request.request_cache_key
-        assert "test artist" in request.request_cache_key
-        assert "3" in request.request_cache_key
-
-    def test_cache_key_without_artist(self):
-        """Should handle missing artist in cache key."""
+    def test_exclude_tracks_default_empty(self):
+        """exclude_tracks should default to empty frozenset."""
         request = RecommendationRequest(base_track_title="Test Song")
-        assert "unknown" in request.request_cache_key
+        assert request.exclude_tracks == frozenset()
 
 
 # =============================================================================
@@ -499,9 +490,5 @@ class TestRecommendationIntegration:
 
         rec_set = RecommendationSet.from_request(request, [])
 
-        # Cache keys should have same base (title|artist)
-        # Request includes count, set doesn't
-        assert "test song" in request.request_cache_key
         assert "test song" in rec_set.cache_key
-        assert "test artist" in request.request_cache_key
         assert "test artist" in rec_set.cache_key

@@ -45,13 +45,6 @@ class RecommendationRequest(BaseModel):
         description="Recently played tracks for session-aware seeding.",
     )
 
-    @property
-    def request_cache_key(self) -> str:
-        artist = self.base_track_artist or "unknown"
-        title_normalized = self.base_track_title.lower().strip()
-        artist_normalized = artist.lower().strip()
-        return f"{title_normalized}|{artist_normalized}|{self.count}"
-
     @classmethod
     def from_track(
         cls,

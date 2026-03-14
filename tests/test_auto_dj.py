@@ -280,7 +280,7 @@ class TestDelayedActivate:
         playback_service.start_playback.assert_awaited_once_with(GUILD_ID)
 
     @pytest.mark.asyncio
-    async def test_sets_current_track_when_none(
+    async def test_injects_and_clears_seed_track(
         self,
         auto_dj: AutoDJ,
         session_repo: MagicMock,
@@ -291,13 +291,10 @@ class TestDelayedActivate:
 
         await auto_dj._delayed_activate(GUILD_ID, delay=0)
 
-        assert empty_session.current_track is not None
-        assert empty_session.current_track.title == seed_track.title
-        # Verify the mutated session was the one passed to save
-        session_repo.save.assert_awaited_once()
-        saved_arg = session_repo.save.call_args.args[0]
-        assert saved_arg is empty_session
-        assert saved_arg.current_track.title == seed_track.title
+        # After successful activation, the injected seed should be cleared
+        assert empty_session.current_track is None
+        # Session saved at least twice (inject seed + clear after toggle)
+        assert session_repo.save.await_count >= 2
 
     @pytest.mark.asyncio
     async def test_uses_default_requester_when_missing(

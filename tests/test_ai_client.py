@@ -197,21 +197,17 @@ class TestRecommendationRequest:
         assert request.count == 3  # Default
         assert request.base_track_artist is None
 
-    def test_cache_key_generation(self) -> None:
-        """Test cache key is deterministic and normalized."""
-        request1 = RecommendationRequest(
+    def test_fields_are_frozen(self) -> None:
+        """RecommendationRequest should be immutable."""
+        import pydantic
+
+        request = RecommendationRequest(
             base_track_title="Hello World",
             base_track_artist="Test Artist",
             count=3,
         )
-        request2 = RecommendationRequest(
-            base_track_title="HELLO WORLD",  # Different case
-            base_track_artist="TEST ARTIST",
-            count=3,
-        )
-
-        # Cache keys should be case-insensitive
-        assert request1.request_cache_key == request2.request_cache_key
+        with pytest.raises(pydantic.ValidationError):
+            request.count = 5
 
     def test_empty_title_fails(self) -> None:
         """Test that empty title fails validation."""

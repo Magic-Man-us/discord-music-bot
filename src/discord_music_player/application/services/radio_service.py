@@ -518,11 +518,13 @@ class RadioApplicationService:
     ) -> None:
         """Re-enqueue a track that was removed during a failed reroll."""
         try:
+            restore_user_id = track.requested_by_id or user_id
+            restore_user_name = track.requested_by_name or user_name
             result = await self._queue_service.enqueue(
                 guild_id=guild_id,
                 track=track,
-                user_id=user_id,
-                user_name=user_name,
+                user_id=restore_user_id,
+                user_name=restore_user_name,
             )
             if result.success:
                 session = await self._session_repo.get(guild_id)

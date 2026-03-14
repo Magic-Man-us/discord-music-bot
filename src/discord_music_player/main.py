@@ -68,20 +68,20 @@ def main() -> int:
     if lock is None:
         return 1
 
-    token_value = settings.discord.token.get_secret_value()
-    if not token_value:
-        logger.error("DISCORD_TOKEN environment variable is required")
-        return 1
-
-    logger.info("Starting Discord Music Bot in %s mode", settings.environment)
-
-    from discord_music_player.config.container import create_container
-    from discord_music_player.infrastructure.discord.bot import create_bot
-
-    container = create_container(settings)
-    bot = create_bot(container, settings)
-
     try:
+        token_value = settings.discord.token.get_secret_value()
+        if not token_value:
+            logger.error("DISCORD_TOKEN environment variable is required")
+            return 1
+
+        logger.info("Starting Discord Music Bot in %s mode", settings.environment)
+
+        from discord_music_player.config.container import create_container
+        from discord_music_player.infrastructure.discord.bot import create_bot
+
+        container = create_container(settings)
+        bot = create_bot(container, settings)
+
         logger.info("Starting bot...")
         bot.run_with_graceful_shutdown(token_value)
         logger.info("Bot stopped successfully")

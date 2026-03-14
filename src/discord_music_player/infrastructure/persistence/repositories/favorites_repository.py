@@ -98,13 +98,11 @@ class SQLiteFavoritesRepository:
             return False
 
     async def remove(self, user_id: DiscordSnowflake, track_id: str) -> bool:
-        async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                "DELETE FROM user_favorites WHERE user_id = :user_id AND track_id = :track_id",
-                {"user_id": user_id, "track_id": track_id},
-            )
-            await conn.commit()
-            return cursor.rowcount > 0
+        cursor = await self._db.execute(
+            "DELETE FROM user_favorites WHERE user_id = :user_id AND track_id = :track_id",
+            {"user_id": user_id, "track_id": track_id},
+        )
+        return cursor.rowcount > 0
 
     async def get_all(
         self, user_id: DiscordSnowflake, limit: PositiveInt = 50

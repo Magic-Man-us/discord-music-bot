@@ -140,7 +140,7 @@ class QueueCog(BaseCog):
             ephemeral=True,
         )
 
-    async def _fetch_unique_history(self, guild_id: DiscordSnowflake, limit: int) -> list[Track]:
+    async def _fetch_unique_history(self, guild_id: int, limit: int) -> list[Track]:
         """Fetch recent tracks and deduplicate by track ID."""
         tracks = await self.container.history_repository.get_recent(guild_id, limit=limit)
         seen: set[str] = set()

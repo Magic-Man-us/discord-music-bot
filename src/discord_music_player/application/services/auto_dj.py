@@ -142,8 +142,9 @@ class AutoDJ:
         )
 
         try:
-            # Ensure there's a current_track for radio to seed from
-            if session.current_track is None:
+            # Temporarily inject a current_track for radio to seed from
+            injected_seed = session.current_track is None
+            if injected_seed:
                 session.set_current_track(last_track)
                 await self._session_repo.save(session)
 
@@ -159,6 +160,12 @@ class AutoDJ:
                     guild_id,
                     result.tracks_added,
                 )
+                # Clear the injected seed so start_playback picks from queue
+                if injected_seed:
+                    session = await self._session_repo.get(guild_id)
+                    if session is not None:
+                        session.set_current_track(None)
+                        await self._session_repo.save(session)
                 await self._playback_service.start_playback(guild_id)
             else:
                 logger.debug(
@@ -166,5 +173,11 @@ class AutoDJ:
                     guild_id,
                     result.message,
                 )
+                # Clean up injected seed on failure
+                if injected_seed:
+                    session = await self._session_repo.get(guild_id)
+                    if session is not None:
+                        session.set_current_track(None)
+                        await self._session_repo.save(session)
         except Exception:
             logger.exception("Auto-DJ failed for guild %s", guild_id)
