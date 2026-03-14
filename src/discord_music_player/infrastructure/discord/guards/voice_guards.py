@@ -41,14 +41,28 @@ async def get_member(interaction: discord.Interaction) -> discord.Member | None:
     return user
 
 
+def is_solo_in_channel(member: discord.Member) -> bool:
+    """Return True if the member is the only non-bot user in their voice channel."""
+    channel = member.voice.channel if member.voice else None
+    if channel is None:
+        return False
+    return sum(1 for m in channel.members if not m.bot) <= 1
+
+
 async def ensure_voice_warmup(
     interaction: discord.Interaction,
     member: discord.Member,
     voice_warmup_tracker: VoiceWarmupTracker,
 ) -> bool:
-    """Check if the member has passed the voice warmup period. Returns False with error on failure."""
+    """Check if the member has passed the voice warmup period. Returns False with error on failure.
+
+    Solo listeners (only non-bot user in the channel) bypass the warmup entirely.
+    """
     if not interaction.guild:
         return False
+
+    if is_solo_in_channel(member):
+        return True
 
     remaining = voice_warmup_tracker.remaining_seconds(
         guild_id=interaction.guild.id,

@@ -210,6 +210,13 @@ def mock_interaction():
     member.voice = MagicMock()
     member.voice.channel = MagicMock()
     member.voice.channel.id = 444444444
+
+    # Simulate 2 non-bot members in voice so warmup is enforced
+    other_member = MagicMock(spec=discord.Member)
+    other_member.bot = False
+    member.bot = False
+    member.voice.channel.members = [member, other_member]
+
     member.guild_permissions = MagicMock()
     member.guild_permissions.administrator = False
 

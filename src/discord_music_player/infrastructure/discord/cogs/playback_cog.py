@@ -12,6 +12,7 @@ from discord_music_player.domain.shared.constants import UIConstants
 from discord_music_player.domain.shared.types import DiscordSnowflake, HttpUrlStr
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
+    is_solo_in_channel,
     ensure_dj_role,
     ensure_user_in_voice_and_warm,
     get_member,
@@ -103,16 +104,17 @@ class PlaybackCog(BaseCog):
         if not interaction.guild:
             return None
 
-        remaining = self.container.voice_warmup_tracker.remaining_seconds(
-            guild_id=interaction.guild.id,
-            user_id=member.id,
-        )
-        if remaining > 0:
-            await send_ephemeral(
-                interaction,
-                f"You must be in the voice channel for {remaining}s before you can use commands.",
+        if not is_solo_in_channel(member):
+            remaining = self.container.voice_warmup_tracker.remaining_seconds(
+                guild_id=interaction.guild.id,
+                user_id=member.id,
             )
-            return None
+            if remaining > 0:
+                await send_ephemeral(
+                    interaction,
+                    f"You must be in the voice channel for {remaining}s before you can use commands.",
+                )
+                return None
 
         voice_adapter = self.container.voice_adapter
         if not voice_adapter.is_connected(interaction.guild.id):
@@ -145,26 +147,27 @@ class PlaybackCog(BaseCog):
         if not interaction.guild:
             return
 
-        remaining = self.container.voice_warmup_tracker.remaining_seconds(
-            guild_id=interaction.guild.id,
-            user_id=member.id,
-        )
-        if remaining > 0:
-            from ..views.warmup_retry_view import WarmupRetryView
+        if not is_solo_in_channel(member):
+            remaining = self.container.voice_warmup_tracker.remaining_seconds(
+                guild_id=interaction.guild.id,
+                user_id=member.id,
+            )
+            if remaining > 0:
+                from ..views.warmup_retry_view import WarmupRetryView
 
-            view = WarmupRetryView(
-                remaining_seconds=remaining,
-                query=query,
-                execute_play=self._execute_play,
-            )
-            msg = await interaction.followup.send(
-                f"You must be in the voice channel for {remaining}s before you can use commands.",
-                view=view,
-                ephemeral=True,
-                wait=True,
-            )
-            view.set_message(msg)
-            return
+                view = WarmupRetryView(
+                    remaining_seconds=remaining,
+                    query=query,
+                    execute_play=self._execute_play,
+                )
+                msg = await interaction.followup.send(
+                    f"You must be in the voice channel for {remaining}s before you can use commands.",
+                    view=view,
+                    ephemeral=True,
+                    wait=True,
+                )
+                view.set_message(msg)
+                return
 
         voice_adapter = self.container.voice_adapter
         channel_id = member.voice.channel.id

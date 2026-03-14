@@ -22,6 +22,7 @@ from discord_music_player.infrastructure.ai.models import (
     AICacheStats,
     AIRecommendationItem,
     AIRecommendationResponse,
+    AIUsageStats,
 )
 
 SYSTEM_PROMPT: Final[str] = """You are an expert music recommender specializing in finding highly similar tracks.
@@ -60,6 +61,11 @@ class AIRecommendationClient(AIClient):
         self._cache_hits: int = 0
         self._cache_misses: int = 0
         self._inflight: dict[NonEmptyStr, asyncio.Future[list[AIRecommendationItem]]] = {}
+
+        self._total_input_tokens: int = 0
+        self._total_output_tokens: int = 0
+        self._total_requests: int = 0
+        self._total_calls: int = 0
 
     def _get_agent(self) -> Agent[None, AIRecommendationResponse]:
         if self._agent is not None:
@@ -118,6 +124,13 @@ class AIRecommendationClient(AIClient):
                 timeout=AI_TIMEOUT,
             )
             result = await agent.run(user_prompt, model_settings=settings)
+
+            usage = result.usage()
+            self._total_input_tokens += usage.input_tokens
+            self._total_output_tokens += usage.output_tokens
+            self._total_requests += usage.requests
+            self._total_calls += 1
+
             return result.output
         except Exception as e:
             self._handle_api_error(e)
@@ -219,9 +232,16 @@ class AIRecommendationClient(AIClient):
         return len(expired_keys)
 
     def get_cache_stats(self) -> AICacheStats:
+        usage = AIUsageStats(
+            total_input_tokens=self._total_input_tokens,
+            total_output_tokens=self._total_output_tokens,
+            total_requests=self._total_requests,
+            total_calls=self._total_calls,
+        )
         return AICacheStats(
             size=len(self._cache),
             hits=self._cache_hits,
             misses=self._cache_misses,
             inflight=len(self._inflight),
+            usage=usage,
         )

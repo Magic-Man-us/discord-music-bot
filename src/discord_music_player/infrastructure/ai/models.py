@@ -67,30 +67,32 @@ class AICacheEntry(BaseModel):
         return (time.time() - self.created_at) > ttl_seconds
 
 
+class AIUsageStats(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    total_input_tokens: NonNegativeInt = 0
+    total_output_tokens: NonNegativeInt = 0
+    total_requests: NonNegativeInt = 0
+    total_calls: NonNegativeInt = 0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_tokens(self) -> NonNegativeInt:
+        return self.total_input_tokens + self.total_output_tokens
+
+
 class AICacheStats(BaseModel):
-    """Cache statistics for the AI recommendation client.
-
-    Constructed from raw counters; ``hit_rate`` is derived automatically.
-    """
-
     model_config = ConfigDict(frozen=True)
 
     size: NonNegativeInt
-    """Number of entries currently in the cache."""
-
     hits: NonNegativeInt
-    """Total cache hits since last reset."""
-
     misses: NonNegativeInt
-    """Total cache misses since last reset."""
-
     inflight: NonNegativeInt
-    """Number of in-flight (singleflight-deduped) requests."""
+    usage: AIUsageStats = Field(default_factory=AIUsageStats)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def hit_rate(self) -> PercentageInt:
-        """Cache hit rate as an integer percentage (0–100)."""
         total = self.hits + self.misses
         if total == 0:
             return 0

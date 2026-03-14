@@ -242,6 +242,32 @@ class AdminCog(BaseCog):
             self.logger.exception("Failed to get cache status")
             await self._reply(ctx, "Failed to get cache status.")
 
+    @commands.command(name="ai_usage", description="Show AI token usage statistics.")
+    @require_owner_or_admin()
+    async def ai_usage(self, ctx: commands.Context) -> None:
+        if not self.container.ai_enabled:
+            await self._reply(ctx, "AI features are disabled.")
+            return
+
+        try:
+            stats = self.container.ai_client.get_cache_stats()
+            usage = stats.usage
+
+            embed = discord.Embed(
+                title="AI Token Usage", color=discord.Color.purple()
+            )
+            embed.add_field(name="Input Tokens", value=f"{usage.total_input_tokens:,}", inline=True)
+            embed.add_field(name="Output Tokens", value=f"{usage.total_output_tokens:,}", inline=True)
+            embed.add_field(name="Total Tokens", value=f"{usage.total_tokens:,}", inline=True)
+            embed.add_field(name="API Calls", value=str(usage.total_calls), inline=True)
+            embed.add_field(name="API Requests", value=str(usage.total_requests), inline=True)
+            embed.add_field(name="Cache Hit Rate", value=f"{stats.hit_rate}%", inline=True)
+
+            await self._reply(ctx, embed=embed)
+        except Exception:
+            self.logger.exception("Failed to get AI usage stats")
+            await self._reply(ctx, "Failed to get AI usage stats.")
+
     @commands.command(name="cache_clear", description="Clear the AI cache.")
     @require_owner()
     async def cache_clear(self, ctx: commands.Context) -> None:
