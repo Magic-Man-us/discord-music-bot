@@ -87,6 +87,42 @@ class PlaybackCog(BaseCog):
         await interaction.response.defer()
         await self._execute_play(interaction, query, start_seconds=seek)
 
+    async def _ensure_voice_ready(
+        self,
+        interaction: discord.Interaction,
+    ) -> discord.Member | None:
+        """Validate voice state, warmup, and connection. Returns member or None on failure."""
+        member = await get_member(interaction)
+        if member is None:
+            return None
+
+        if not member.voice or not member.voice.channel:
+            await send_ephemeral(interaction, "You need to be in a voice channel first.")
+            return None
+
+        if not interaction.guild:
+            return None
+
+        remaining = self.container.voice_warmup_tracker.remaining_seconds(
+            guild_id=interaction.guild.id,
+            user_id=member.id,
+        )
+        if remaining > 0:
+            await send_ephemeral(
+                interaction,
+                f"You must be in the voice channel for {remaining}s before you can use commands.",
+            )
+            return None
+
+        voice_adapter = self.container.voice_adapter
+        if not voice_adapter.is_connected(interaction.guild.id):
+            success = await voice_adapter.ensure_connected(interaction.guild.id, member.voice.channel.id)
+            if not success:
+                await send_ephemeral(interaction, "I couldn't join your voice channel.")
+                return None
+
+        return member
+
     async def _execute_play(
         self,
         interaction: discord.Interaction,
@@ -393,37 +429,9 @@ class PlaybackCog(BaseCog):
     async def _execute_playnext(
         self, interaction: discord.Interaction, query: str
     ) -> None:
-        """Resolve a track and insert it at the front of the queue."""
-        member = await get_member(interaction)
-        if member is None:
+        member = await self._ensure_voice_ready(interaction)
+        if member is None or interaction.guild is None:
             return
-
-        if not member.voice or not member.voice.channel:
-            await send_ephemeral(interaction, "You need to be in a voice channel first.")
-            return
-
-        if not interaction.guild:
-            return
-
-        remaining = self.container.voice_warmup_tracker.remaining_seconds(
-            guild_id=interaction.guild.id,
-            user_id=member.id,
-        )
-        if remaining > 0:
-            await send_ephemeral(
-                interaction,
-                f"You must be in the voice channel for {remaining}s before you can use commands.",
-            )
-            return
-
-        voice_adapter = self.container.voice_adapter
-        channel_id = member.voice.channel.id
-
-        if not voice_adapter.is_connected(interaction.guild.id):
-            success = await voice_adapter.ensure_connected(interaction.guild.id, channel_id)
-            if not success:
-                await send_ephemeral(interaction, "I couldn't join your voice channel.")
-                return
 
         try:
             track = await self.container.audio_resolver.resolve(query)
@@ -541,32 +549,30 @@ class PlaybackCog(BaseCog):
             self.logger.debug("Failed to auto-post now-playing for guild %s", guild_id)
 
     def _find_auto_post_channel(self, guild_id: DiscordSnowflake) -> discord.TextChannel | None:
-        """Find a text channel where the bot can auto-post now-playing embeds."""
         guild = self.bot.get_guild(guild_id)
         if guild is None:
             return None
 
-        # Prefer the channel where the bot's voice client is associated
-        if guild.voice_client and guild.voice_client.channel:
-            vc_channel = guild.voice_client.channel
-            if isinstance(vc_channel, discord.abc.GuildChannel) and vc_channel.guild:
-                # Look for a text channel in the same category
-                category = getattr(vc_channel, "category", None)
-                if category is not None:
-                    for ch in category.text_channels:
-                        if ch.permissions_for(guild.me).send_messages:
-                            return ch
-
-        # Fallback to system channel
-        if guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
-            return guild.system_channel
-
-        # Fallback to first available text channel
-        for ch in guild.text_channels:
-            if ch.permissions_for(guild.me).send_messages:
-                return ch
-
+        for candidate in self._auto_post_candidates(guild):
+            if candidate.permissions_for(guild.me).send_messages:
+                return candidate
         return None
+
+    @staticmethod
+    def _auto_post_candidates(guild: discord.Guild) -> list[discord.TextChannel]:
+        """Yield candidate text channels in priority order: same category as voice > system > any."""
+        candidates: list[discord.TextChannel] = []
+
+        if guild.voice_client and guild.voice_client.channel:
+            category = getattr(guild.voice_client.channel, "category", None)
+            if category is not None:
+                candidates.extend(category.text_channels)
+
+        if guild.system_channel:
+            candidates.append(guild.system_channel)
+
+        candidates.extend(guild.text_channels)
+        return candidates
 
     async def _on_requester_left(self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake, track: Track) -> None:
         from ..views.requester_left_view import RequesterLeftView

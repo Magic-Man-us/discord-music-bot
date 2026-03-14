@@ -150,51 +150,42 @@ class AnalyticsCog(BaseCog):
         category: str,
         time_range: LeaderboardTimeRange = LeaderboardTimeRange.ALL_TIME,
     ) -> tuple[str, list[str], list[int], list[str]] | None:
-        """Fetch leaderboard data and format for display.
+        """Fetch leaderboard data via category-specific fetcher, then format uniformly."""
+        labels, values, title, unit = await self._fetch_category_data(guild_id, category, time_range)
+        if not labels:
+            return None
 
-        Returns ``(title, chart_labels, chart_values, embed_lines)`` or None if empty.
-        """
-        history_repo = self.container.history_repository
-        limit = AnalyticsConstants.DEFAULT_LEADERBOARD_LIMIT
         label_trunc = AnalyticsConstants.CHART_LABEL_TRUNCATION
         line_trunc = AnalyticsConstants.LEADERBOARD_LINE_TRUNCATION
         suffix = "" if time_range == LeaderboardTimeRange.ALL_TIME else f" ({time_range.value})"
 
+        return (
+            f"{title}{suffix}",
+            [lbl[:label_trunc] for lbl in labels],
+            values,
+            [f"**{i + 1}.** {lbl[:line_trunc]} — {val} {unit}" for i, (lbl, val) in enumerate(zip(labels, values))],
+        )
+
+    async def _fetch_category_data(
+        self,
+        guild_id: DiscordSnowflake,
+        category: str,
+        time_range: LeaderboardTimeRange,
+    ) -> tuple[list[str], list[int], str, str]:
+        """Return (labels, values, title, unit) for the given category. Empty lists if no data."""
+        history_repo = self.container.history_repository
+        limit = AnalyticsConstants.DEFAULT_LEADERBOARD_LIMIT
+
         if category == LeaderboardCategory.TRACKS:
             data = await history_repo.get_most_played_since(guild_id, time_range, limit=limit)
-            if not data:
-                return None
-            return (
-                f"Top Tracks{suffix}",
-                [t.title[:label_trunc] for t, _ in data],
-                [c for _, c in data],
-                [
-                    f"**{i + 1}.** {t.title[:line_trunc]} — {c} plays"
-                    for i, (t, c) in enumerate(data)
-                ],
-            )
+            return [t.title for t, _ in data], [c for _, c in data], "Top Tracks", "plays"
 
         if category == LeaderboardCategory.USERS:
             raw = await history_repo.get_top_requesters_since(guild_id, time_range, limit=limit)
-            if not raw:
-                return None
-            return (
-                f"Top Listeners{suffix}",
-                [name[:label_trunc] for _, name, _ in raw],
-                [c for _, _, c in raw],
-                [f"**{i + 1}.** {name} — {c} plays" for i, (_, name, c) in enumerate(raw)],
-            )
+            return [name for _, name, _ in raw], [c for _, _, c in raw], "Top Listeners", "plays"
 
-        # skipped
         raw_skipped = await history_repo.get_most_skipped_since(guild_id, time_range, limit=limit)
-        if not raw_skipped:
-            return None
-        return (
-            f"Most Skipped{suffix}",
-            [t[:label_trunc] for t, _ in raw_skipped],
-            [c for _, c in raw_skipped],
-            [f"**{i + 1}.** {t[:line_trunc]} — {c} skips" for i, (t, c) in enumerate(raw_skipped)],
-        )
+        return [t for t, _ in raw_skipped], [c for _, c in raw_skipped], "Most Skipped", "skips"
 
     # -- Personal stats --
 

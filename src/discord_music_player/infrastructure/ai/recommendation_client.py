@@ -84,6 +84,30 @@ class AIRecommendationClient(AIClient):
         )
         return f"{title}|{artist}|{request.count}|{excludes}|{context}"
 
+    @staticmethod
+    def _sanitize(text: str) -> str:
+        return text.replace("`", "'")
+
+    def _build_prompt(self, request: RecommendationRequest) -> str:
+        parts = [
+            f"Count: {request.count}",
+            f"Base title: ```{self._sanitize(request.base_track_title)}```",
+            f"Base artist: ```{self._sanitize(request.base_track_artist or '')}```",
+        ]
+
+        if request.exclude_tracks:
+            lines = "\n".join(f"- {self._sanitize(t)}" for t in request.exclude_tracks)
+            parts.append(f"\nDo NOT recommend any of these tracks (already played):\n{lines}")
+
+        if request.session_context:
+            lines = "\n".join(
+                f"- ```{self._sanitize(s.artist or '')} - {self._sanitize(s.title)}```"
+                for s in request.session_context
+            )
+            parts.append(f"\nRecent session tracks (match this overall mood/vibe):\n{lines}")
+
+        return "\n".join(parts)
+
     async def _call_api(self, user_prompt: str) -> AIRecommendationResponse:
         agent = self._get_agent()
 
@@ -127,31 +151,7 @@ class AIRecommendationClient(AIClient):
         self._inflight[cache_key] = future
 
         try:
-            safe_title = request.base_track_title.replace("`", "'")
-            safe_artist = (request.base_track_artist or "").replace("`", "'")
-            user_prompt = (
-                f"Count: {request.count}\n"
-                f"Base title: ```{safe_title}```\n"
-                f"Base artist: ```{safe_artist}```\n"
-            )
-
-            if request.exclude_tracks:
-                user_prompt += (
-                    "\nDo NOT recommend any of these tracks (already played):\n"
-                    + "\n".join(f"- {t.replace('`', chr(39))}" for t in request.exclude_tracks)
-                    + "\n"
-                )
-
-            if request.session_context:
-                context_lines = [
-                    f"- ```{(s.artist or '').replace('`', chr(39))} - {s.title.replace('`', chr(39))}```"
-                    for s in request.session_context
-                ]
-                user_prompt += (
-                    "\nRecent session tracks (match this overall mood/vibe):\n"
-                    + "\n".join(context_lines)
-                    + "\n"
-                )
+            user_prompt = self._build_prompt(request)
 
             self._logger.debug(
                 "Fetching recommendations for '%s' (count=%d)",
