@@ -146,7 +146,7 @@ def mock_container():
     container.message_state_manager.get_state = MagicMock(return_value=GuildMessageState())
     container.message_state_manager.track_now_playing = MagicMock()
     container.message_state_manager.track_queued = MagicMock()
-    container.message_state_manager.reset = MagicMock()
+    container.message_state_manager.reset = AsyncMock()
     container.message_state_manager.clear_all = MagicMock()
     container.message_state_manager.on_track_finished = AsyncMock()
     container.message_state_manager.promote_next_track = AsyncMock()
@@ -1272,8 +1272,9 @@ class TestMessageStateManagement:
         assert state.now_playing is not None
         assert state.now_playing.message_id == 444
 
-    def test_reset_clears_guild_state(self, msm, sample_track):
-        """Should clear state for specific guild."""
+    @pytest.mark.asyncio
+    async def test_reset_clears_guild_state(self, msm, sample_track):
+        """Should clear state for specific guild and delete now-playing message."""
         msm.track_now_playing(
             guild_id=111, track=sample_track, channel_id=222, message_id=333
         )
@@ -1281,7 +1282,7 @@ class TestMessageStateManagement:
             guild_id=222, track=sample_track, channel_id=222, message_id=444
         )
 
-        msm.reset(111)
+        await msm.reset(111)
 
         # Guild 111 should be cleared
         state_111 = msm.get_state(111)

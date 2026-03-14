@@ -100,7 +100,7 @@ class EventCog(BaseCog):
         self._cancel_empty_channel_timer(guild.id)
 
         try:
-            self.container.message_state_manager.reset(guild.id)
+            await self.container.message_state_manager.reset(guild.id)
         except Exception:
             self.logger.debug("Could not cleanup message state for guild %s", guild.id)
 
@@ -324,7 +324,7 @@ class EventCog(BaseCog):
     async def _disconnect_and_cleanup(self, guild: discord.Guild) -> None:
         try:
             await self.container.playback_service.cleanup_guild(guild.id)
-            self.container.message_state_manager.reset(guild.id)
+            await self.container.message_state_manager.reset(guild.id)
         except Exception:
             self.logger.exception("Failed to disconnect and cleanup guild %s", guild.id)
 

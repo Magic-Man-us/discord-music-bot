@@ -75,9 +75,19 @@ class MessageStateManager:
             )
         )
 
-    def reset(self, guild_id: DiscordSnowflake) -> None:
-        self._state_by_guild.pop(guild_id, None)
+    async def reset(self, guild_id: DiscordSnowflake) -> None:
+        state = self._state_by_guild.pop(guild_id, None)
+        if state is not None and state.now_playing is not None:
+            await self._try_delete_message(state.now_playing)
         logger.debug("Cleaned up message state for guild %s", guild_id)
+
+    async def _try_delete_message(self, tracked: TrackedMessage) -> None:
+        message = await self._fetch_message(tracked)
+        if message is not None:
+            try:
+                await message.delete()
+            except discord.HTTPException:
+                logger.debug("Failed to delete message %s", tracked.message_id)
 
     def clear_all(self) -> None:
         self._state_by_guild.clear()

@@ -229,12 +229,4 @@ class PlaylistView(BaseInteractiveView):
         if not self._finish_view():
             return
         self._disable_all_items()
-        if self._message is not None:
-            try:
-                await self._message.edit(
-                    content="Playlist selection timed out.",
-                    embed=None,
-                    view=self,
-                )
-            except discord.HTTPException:
-                pass
+        await self._delete_message(delay=10.0)

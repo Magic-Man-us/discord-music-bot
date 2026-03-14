@@ -134,11 +134,4 @@ class LongTrackVoteView(BaseInteractiveView):
     async def on_timeout(self) -> None:
         if not self._finish_view():
             return
-        if self._message:
-            try:
-                await self._message.edit(
-                    content=f"Vote timed out. Rejected: **{truncate(self._track.title, 60)}**",
-                    view=self,
-                )
-            except discord.HTTPException:
-                logger.debug("Failed to edit long track vote message on timeout")
+        await self._delete_message(delay=10.0)

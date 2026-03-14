@@ -111,14 +111,4 @@ class RadioContinueView(BaseInteractiveView):
             return
 
         self._container.radio_service.disable_radio(self._guild_id)
-
-        if self._message is not None:
-            try:
-                embed = discord.Embed(
-                    title=_RADIO_STOPPED_TITLE,
-                    description="No response — radio disabled automatically.",
-                    color=discord.Color.greyple(),
-                )
-                await self._message.edit(embed=embed, view=self)
-            except discord.HTTPException:
-                pass
+        await self._delete_message(delay=10.0)

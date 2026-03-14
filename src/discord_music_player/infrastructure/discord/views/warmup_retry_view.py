@@ -81,8 +81,4 @@ class WarmupRetryView(BaseInteractiveView):
         if self._enable_task is not None and not self._enable_task.done():
             self._enable_task.cancel()
         self._finish_view()
-        if self._message is not None:
-            try:
-                await self._message.edit(view=self)
-            except discord.HTTPException:
-                logger.debug("Failed to edit warmup retry message on timeout")
+        await self._delete_message(delay=5.0)

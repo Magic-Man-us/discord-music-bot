@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+
 import discord
+
+logger = logging.getLogger(__name__)
 
 
 class BaseInteractiveView(discord.ui.View):
-    """Base view providing message tracking and button disabling."""
 
     def __init__(self, *, timeout: float | None = 180.0) -> None:
         super().__init__(timeout=timeout)
@@ -34,3 +37,12 @@ class BaseInteractiveView(discord.ui.View):
         self.stop()
         self._disable_buttons()
         return True
+
+    async def _delete_message(self, *, delay: float | None = None) -> None:
+        """Delete the tracked message from Discord. Safe to call if message is None or already gone."""
+        if self._message is None:
+            return
+        try:
+            await self._message.delete(delay=delay)
+        except discord.HTTPException:
+            logger.debug("Failed to delete view message %s", self._message.id)

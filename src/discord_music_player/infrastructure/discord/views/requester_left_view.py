@@ -61,10 +61,4 @@ class RequesterLeftView(BaseInteractiveView):
         if not self._finish_view():
             return
         await self._playback_service.skip_track(self._guild_id)
-        if self._message is not None:
-            try:
-                await self._message.edit(
-                    content="Track skipped (no response).", view=self
-                )
-            except discord.HTTPException:
-                logger.debug("Failed to edit requester-left message on timeout")
+        await self._delete_message(delay=10.0)

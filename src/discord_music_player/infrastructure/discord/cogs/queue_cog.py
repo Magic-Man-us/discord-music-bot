@@ -249,7 +249,7 @@ class QueueCog(BaseCog):
         count = await queue_service.clear(interaction.guild.id)
 
         if count > 0:
-            self.container.message_state_manager.reset(interaction.guild.id)
+            await self.container.message_state_manager.reset(interaction.guild.id)
             await interaction.response.send_message(
                 f"Cleared {count} tracks from the queue.", ephemeral=True
             )

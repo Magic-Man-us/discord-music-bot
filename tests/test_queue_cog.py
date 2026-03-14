@@ -41,7 +41,7 @@ def mock_container():
     container.history_repository.get_recent = AsyncMock()
 
     container.message_state_manager = MagicMock()
-    container.message_state_manager.reset = MagicMock()
+    container.message_state_manager.reset = AsyncMock()
 
     return container
 

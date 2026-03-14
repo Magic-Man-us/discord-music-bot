@@ -60,10 +60,4 @@ class ResumePlaybackView(BaseInteractiveView):
         if not self._finish_view():
             return
         await self._playback_service.stop_playback(self._guild_id)
-        if self._message is not None:
-            try:
-                await self._message.edit(
-                    content="Playback cleared (no response).", view=self
-                )
-            except discord.HTTPException:
-                logger.debug("Failed to edit resume playback message on timeout")
+        await self._delete_message(delay=10.0)

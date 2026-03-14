@@ -446,7 +446,9 @@ class PlaybackCog(BaseCog):
 
             resolved_track = result.track or track
             title = truncate(resolved_track.title, UIConstants.TITLE_TRUNCATION)
-            await interaction.followup.send(f"Up next: **{title}**")
+            sent = await interaction.followup.send(f"Up next: **{title}**", wait=True)
+            if sent is not None:
+                await sent.delete(delay=UIConstants.QUEUED_DELETE_AFTER)
 
         except Exception:
             self.logger.exception("Error in playnext command")
@@ -642,7 +644,7 @@ class PlaybackCog(BaseCog):
         cleared = await queue_service.clear(interaction.guild.id)
 
         if stopped or cleared > 0:
-            self.container.message_state_manager.reset(interaction.guild.id)
+            await self.container.message_state_manager.reset(interaction.guild.id)
             await interaction.response.send_message(
                 "Stopped playback and cleared the queue.", ephemeral=True
             )
@@ -711,7 +713,7 @@ class PlaybackCog(BaseCog):
         self.container.radio_service.disable_radio(interaction.guild.id)
         was_connected = voice_adapter.is_connected(interaction.guild.id)
         await playback_service.cleanup_guild(interaction.guild.id)
-        self.container.message_state_manager.reset(interaction.guild.id)
+        await self.container.message_state_manager.reset(interaction.guild.id)
 
         if was_connected:
             await interaction.response.send_message(

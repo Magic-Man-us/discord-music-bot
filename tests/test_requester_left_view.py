@@ -61,9 +61,7 @@ async def test_timeout_skips_track() -> None:
     await view.on_timeout()
 
     playback_service.skip_track.assert_awaited_once_with(123)
-    message.edit.assert_awaited_once()
-    call_kwargs = message.edit.call_args[1]
-    assert call_kwargs["content"] == "Track skipped (no response)."
+    message.delete.assert_awaited_once()
 
 
 @pytest.mark.asyncio

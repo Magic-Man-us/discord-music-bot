@@ -379,16 +379,17 @@ class TestGuildEvents:
     async def test_on_guild_remove_cleans_up_message_state(self, event_cog, mock_guild, mock_container):
         """Should cleanup message state via container."""
         mock_container.message_state_manager = MagicMock()
+        mock_container.message_state_manager.reset = AsyncMock()
 
         await event_cog.on_guild_remove(mock_guild)
 
-        mock_container.message_state_manager.reset.assert_called_once_with(mock_guild.id)
+        mock_container.message_state_manager.reset.assert_awaited_once_with(mock_guild.id)
 
     @pytest.mark.asyncio
     async def test_on_guild_remove_handles_message_state_error(self, event_cog, mock_guild, mock_container):
         """Should handle message state cleanup error gracefully."""
         mock_container.message_state_manager = MagicMock()
-        mock_container.message_state_manager.reset.side_effect = Exception("Error")
+        mock_container.message_state_manager.reset = AsyncMock(side_effect=Exception("Error"))
 
         # Should not raise
         await event_cog.on_guild_remove(mock_guild)

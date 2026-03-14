@@ -53,7 +53,7 @@ class TestResumePlaybackView:
         assert call_kwargs["content"] == "Skipped. Playback cleared."
 
     @pytest.mark.asyncio
-    async def test_on_timeout_stops_and_edits(self):
+    async def test_on_timeout_stops_and_deletes(self):
         view, ps = _make_resume_view()
         message = AsyncMock()
         view.set_message(message)
@@ -61,9 +61,7 @@ class TestResumePlaybackView:
         await view.on_timeout()
 
         ps.stop_playback.assert_awaited_once_with(1)
-        message.edit.assert_awaited_once()
-        call_kwargs = message.edit.call_args[1]
-        assert call_kwargs["content"] == "Playback cleared (no response)."
+        message.delete.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_buttons_disabled_after_resume(self):
@@ -173,14 +171,14 @@ class TestWarmupRetryView:
         assert view.retry_button.disabled is True
 
     @pytest.mark.asyncio
-    async def test_on_timeout_with_message_edits(self):
+    async def test_on_timeout_with_message_deletes(self):
         view, _ = _make_warmup_view()
         message = AsyncMock()
         view._message = message
 
         await view.on_timeout()
 
-        message.edit.assert_awaited_once()
+        message.delete.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_on_timeout_no_enable_task(self):
@@ -310,8 +308,7 @@ class TestLongTrackVoteView:
 
         await view.on_timeout()
 
-        msg = message.edit.call_args[1]["content"]
-        assert "timed out" in msg
+        message.delete.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_buttons_disabled_after_accept(self):

@@ -152,14 +152,7 @@ class RadioView(BaseInteractiveView):
 
     async def on_timeout(self) -> None:
         self._finish_view()
-
-        if self._message is not None:
-            try:
-                embed = build_up_next_embed(self._tracks, self._seed_title)
-                embed.set_footer(text="Re-roll timed out")
-                await self._message.edit(embed=embed, view=self)
-            except discord.HTTPException:
-                pass
+        await self._delete_message(delay=10.0)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return await check_user_in_voice(interaction, self._guild_id)

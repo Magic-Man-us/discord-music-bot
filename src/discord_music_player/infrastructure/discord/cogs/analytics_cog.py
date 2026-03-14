@@ -40,7 +40,7 @@ class AnalyticsCog(BaseCog):
     @app_commands.guild_only()
     async def stats(self, interaction: discord.Interaction) -> None:
         assert interaction.guild is not None
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
 
         guild_id = interaction.guild.id
         history_repo = self.container.history_repository
@@ -116,7 +116,7 @@ class AnalyticsCog(BaseCog):
         period: app_commands.Choice[str] | None = None,
     ) -> None:
         assert interaction.guild is not None
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
 
         guild_id = interaction.guild.id
         cat = category.value if category else LeaderboardCategory.TRACKS
@@ -202,7 +202,7 @@ class AnalyticsCog(BaseCog):
     @app_commands.guild_only()
     async def mystats(self, interaction: discord.Interaction) -> None:
         assert interaction.guild is not None
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
 
         guild_id = interaction.guild.id
         user_id = interaction.user.id
@@ -342,7 +342,7 @@ class AnalyticsCog(BaseCog):
         period: app_commands.Choice[str] | None = None,
     ) -> None:
         assert interaction.guild is not None
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
 
         guild_id = interaction.guild.id
         history_repo = self.container.history_repository
