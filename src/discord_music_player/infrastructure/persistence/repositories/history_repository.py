@@ -110,16 +110,11 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
                 raise TypeError("Either older_than or max_age_days must be provided")
             older_than = UtcDateTime.now().dt - timedelta(days=max_age_days)
 
-        count_row = await self._db.fetch_one(
-            "SELECT COUNT(*) as count FROM track_history WHERE played_at < ?",
-            (older_than.isoformat(),),
-        )
-        count = count_row[_COUNT] if count_row else 0
-
-        await self._db.execute(
+        cursor = await self._db.execute(
             "DELETE FROM track_history WHERE played_at < ?",
             (older_than.isoformat(),),
         )
+        count = cursor.rowcount
 
         if count > 0:
             logger.info("Cleaned up %s old history entries", count)
@@ -163,16 +158,11 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         return [(TrackRow.model_validate(row).to_track(), row["play_count"]) for row in rows]
 
     async def clear_history(self, guild_id: int) -> int:
-        count_row = await self._db.fetch_one(
-            "SELECT COUNT(*) as count FROM track_history WHERE guild_id = ?",
-            (guild_id,),
-        )
-        count = count_row[_COUNT] if count_row else 0
-
-        await self._db.execute(
+        cursor = await self._db.execute(
             "DELETE FROM track_history WHERE guild_id = ?",
             (guild_id,),
         )
+        count = cursor.rowcount
 
         logger.info("Cleared %s history entries for guild %s", count, guild_id)
         return count

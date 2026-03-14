@@ -191,7 +191,7 @@ class RadioCog(BaseCog):
         from ..views.radio_view import RadioView, build_up_next_embed
 
         queue_info = await self.container.queue_service.get_queue(interaction.guild.id)
-        queue_start = max(0, queue_info.total_length - len(result.generated_tracks))
+        queue_start = max(0, queue_info.total_tracks - len(result.generated_tracks))
 
         embed = build_up_next_embed(result.generated_tracks, result.seed_title)
         view = RadioView(

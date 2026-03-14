@@ -94,28 +94,19 @@ class SavedQueueCog(BaseCog):
         if shuffle:
             random.shuffle(tracks)
 
-        queue_service = self.container.queue_service
-        enqueued = 0
-        should_start = False
+        result = await self.container.queue_service.enqueue_batch(
+            guild_id=interaction.guild.id,
+            tracks=tracks,
+            user_id=interaction.user.id,
+            user_name=interaction.user.display_name,
+        )
 
-        for track in tracks:
-            result = await queue_service.enqueue(
-                guild_id=interaction.guild.id,
-                track=track,
-                user_id=interaction.user.id,
-                user_name=interaction.user.display_name,
-            )
-            if result.success:
-                enqueued += 1
-                if result.should_start:
-                    should_start = True
-
-        if should_start:
+        if result.should_start:
             await self.container.playback_service.start_playback(interaction.guild.id)
 
         shuffle_label = " (shuffled)" if shuffle else ""
         await interaction.followup.send(
-            f"Loaded **{enqueued}** tracks from **{name}**{shuffle_label}.",
+            f"Loaded **{result.enqueued}** tracks from **{name}**{shuffle_label}.",
             ephemeral=True,
         )
 

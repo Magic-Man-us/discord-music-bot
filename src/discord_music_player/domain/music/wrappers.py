@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
+
 from pydantic import field_validator
 
 from discord_music_player.domain.shared.types import DurationSeconds, NonEmptyStr, NonNegativeInt
 from discord_music_player.domain.shared.types import ValueWrapper
+
+_YOUTUBE_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})"),
+    re.compile(r"youtube\.com/shorts/([a-zA-Z0-9_-]{11})"),
+]
+_HASH_ID_LENGTH = 16
 
 
 class TrackId(ValueWrapper[NonEmptyStr]):
@@ -24,20 +33,12 @@ class TrackId(ValueWrapper[NonEmptyStr]):
     @classmethod
     def from_url(cls, url: str) -> TrackId:
         """Extract track ID from a URL, using YouTube video ID or a URL hash as fallback."""
-        import hashlib
-        import re
-
-        youtube_patterns = [
-            r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})",
-            r"youtube\.com/shorts/([a-zA-Z0-9_-]{11})",
-        ]
-
-        for pattern in youtube_patterns:
-            match = re.search(pattern, url)
+        for pattern in _YOUTUBE_PATTERNS:
+            match = pattern.search(url)
             if match:
                 return cls(value=match.group(1))
 
-        url_hash = hashlib.md5(url.encode()).hexdigest()[:16]
+        url_hash = hashlib.sha256(url.encode()).hexdigest()[:_HASH_ID_LENGTH]
         return cls(value=url_hash)
 
 

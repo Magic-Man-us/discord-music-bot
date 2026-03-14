@@ -185,9 +185,10 @@ class YtDlpResolver(AudioResolver):
                 data = ydl.extract_info(url, download=False)
                 result = self._parse_single_result(data)
 
-                with _cache_lock:
-                    _info_cache[url] = CacheEntry(info=result, cached_at=now)
-                    self._evict_cache(now)
+                if result is not None:
+                    with _cache_lock:
+                        _info_cache[url] = CacheEntry(info=result, cached_at=now)
+                        self._evict_cache(now)
 
                 return result
         except Exception:

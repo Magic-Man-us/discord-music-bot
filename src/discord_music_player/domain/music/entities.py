@@ -26,10 +26,13 @@ from discord_music_player.domain.shared.types import (
     UtcDatetimeField,
 )
 
+_RESOLVE_EXCLUDE_FIELDS: frozenset[str] = frozenset({
+    "id", "requested_by_id", "requested_by_name",
+    "requested_at", "is_from_recommendation",
+})
+
 
 class PlaylistEntry(BaseModel):
-    """Lightweight preview of a single playlist item (no stream URL needed)."""
-
     model_config = ConfigDict(frozen=True)
 
     title: TrackTitleStr
@@ -38,8 +41,6 @@ class PlaylistEntry(BaseModel):
 
 
 class Track(BaseModel):
-    """Immutable value object representing a playable track."""
-
     model_config = ConfigDict(frozen=True, strict=True)
 
     id: TrackId
@@ -48,25 +49,18 @@ class Track(BaseModel):
     stream_url: HttpUrlStr | None = None
     duration_seconds: DurationSeconds | None = None
     thumbnail_url: HttpUrlStr | None = None
-
-    # Track metadata (resolver-provided)
     artist: NonEmptyStr | None = None
     uploader: NonEmptyStr | None = None
     like_count: NonNegativeInt | None = None
     view_count: NonNegativeInt | None = None
-
-    # Request metadata (set when queued)
     requested_by_id: DiscordSnowflake | None = None
     requested_by_name: NonEmptyStr | None = None
     requested_at: UtcDatetimeField | None = None
-
-    # Playback metadata
     is_from_recommendation: bool = False
 
     @field_validator("id", mode="before")
     @classmethod
     def _coerce_track_id(cls, v: Any) -> TrackId:
-        """Accept a raw string and wrap it as a TrackId."""
         if isinstance(v, str):
             return TrackId(value=v)
         if isinstance(v, dict):
@@ -76,7 +70,6 @@ class Track(BaseModel):
     @field_validator("requested_at", mode="before")
     @classmethod
     def _coerce_requested_at(cls, v: Any) -> datetime | None:
-        """Accept an ISO 8601 string and parse it to a UTC datetime."""
         if v is None:
             return None
         if isinstance(v, str):
@@ -85,7 +78,6 @@ class Track(BaseModel):
 
     @property
     def duration_formatted(self) -> str:
-        """Format duration as MM:SS or HH:MM:SS."""
         if self.duration_seconds is None:
             return "Unknown"
 
@@ -98,7 +90,6 @@ class Track(BaseModel):
 
     @property
     def display_title(self) -> str:
-        """Get display title with duration if available."""
         if self.duration_seconds:
             return f"{self.title} [{self.duration_formatted}]"
         return self.title
@@ -106,7 +97,6 @@ class Track(BaseModel):
     def with_requester(
         self, user_id: DiscordSnowflake, user_name: NonEmptyStr, requested_at: datetime | None = None
     ) -> Track:
-        """Return a copy of this track with requester metadata populated."""
         return self.model_copy(
             update={
                 "requested_by_id": user_id,
@@ -116,12 +106,10 @@ class Track(BaseModel):
         )
 
     def with_resolved(self, resolved: Track) -> Track:
-        """Return a copy of this track enriched with data from a resolved Track.
-
-        Fields on the resolved track take priority when present, but existing
-        requester metadata and the original webpage_url are preserved.
-        """
-        resolved_dump = resolved.model_dump(exclude_none=True, exclude={"id", "requested_by_id", "requested_by_name", "requested_at", "is_from_recommendation"})
+        """Merge resolver data onto this track, preserving requester metadata and identity."""
+        resolved_dump = resolved.model_dump(
+            exclude_none=True, exclude=_RESOLVE_EXCLUDE_FIELDS,
+        )
         return self.model_copy(update=resolved_dump)
 
     def was_requested_by(self, user_id: DiscordSnowflake) -> bool:
@@ -129,8 +117,6 @@ class Track(BaseModel):
 
 
 class GuildPlaybackSession(BaseModel):
-    """Aggregate root managing playback state for a single Discord guild."""
-
     model_config = ConfigDict(strict=True)
 
     MAX_QUEUE_SIZE: ClassVar[int] = LimitConstants.MAX_QUEUE_SIZE
@@ -142,8 +128,6 @@ class GuildPlaybackSession(BaseModel):
     loop_mode: LoopMode = LoopMode.OFF
     created_at: UtcDatetimeField = Field(default_factory=utcnow)
     last_activity: UtcDatetimeField = Field(default_factory=utcnow)
-
-    # Version for optimistic concurrency
     version: NonNegativeInt = 0
 
     @property
@@ -171,17 +155,14 @@ class GuildPlaybackSession(BaseModel):
         return self.queue_length < self.MAX_QUEUE_SIZE
 
     def touch(self) -> None:
-        """Update last activity timestamp."""
         self.last_activity = utcnow()
 
     def is_duplicate(self, track: Track) -> bool:
-        """Check if a track with the same ID already exists in the queue or is currently playing."""
         if self.current_track and self.current_track.id == track.id:
             return True
         return any(t.id == track.id for t in self.queue)
 
     def enqueue(self, track: Track) -> QueuePosition:
-        """Add a track to the end of the queue."""
         if self.is_duplicate(track):
             raise BusinessRuleViolationError(
                 rule="NO_DUPLICATES",
@@ -198,7 +179,6 @@ class GuildPlaybackSession(BaseModel):
         return position
 
     def enqueue_next(self, track: Track) -> QueuePosition:
-        """Add a track to the front of the queue (play next)."""
         if self.is_duplicate(track):
             raise BusinessRuleViolationError(
                 rule="NO_DUPLICATES",
@@ -214,7 +194,6 @@ class GuildPlaybackSession(BaseModel):
         return QueuePosition(value=0)
 
     def dequeue(self) -> Track | None:
-        """Remove and return the next track from the queue."""
         if not self.queue:
             return None
 
@@ -223,11 +202,9 @@ class GuildPlaybackSession(BaseModel):
         return track
 
     def peek(self) -> Track | None:
-        """Look at the next track without removing it."""
         return self.queue[0] if self.queue else None
 
     def remove_at(self, position: QueuePositionInt) -> Track | None:
-        """Remove a track at a specific queue position."""
         if 0 <= position < len(self.queue):
             track = self.queue.pop(position)
             self.touch()
@@ -235,14 +212,12 @@ class GuildPlaybackSession(BaseModel):
         return None
 
     def clear_queue(self) -> int:
-        """Clear all tracks from the queue and return the count removed."""
         count = len(self.queue)
         self.queue.clear()
         self.touch()
         return count
 
     def clear_recommendations(self) -> int:
-        """Clear only AI-recommended tracks from the queue and return the count removed."""
         original_count = len(self.queue)
         self.queue = [track for track in self.queue if not track.is_from_recommendation]
         removed_count = original_count - len(self.queue)
@@ -251,12 +226,10 @@ class GuildPlaybackSession(BaseModel):
         return removed_count
 
     def set_current_track(self, track: Track | None) -> None:
-        """Set the currently playing track."""
         self.current_track = track
         self.touch()
 
     def transition_to(self, new_state: PlaybackState) -> None:
-        """Transition to a new playback state."""
         if not self.state.can_transition_to(new_state):
             raise InvalidOperationError(
                 operation=f"transition to {new_state.value}",
@@ -268,35 +241,29 @@ class GuildPlaybackSession(BaseModel):
         self.touch()
 
     def start_playback(self, track: Track) -> None:
-        """Start playing a track."""
         self.current_track = track
-        if self.state == PlaybackState.IDLE or self.state == PlaybackState.STOPPED:
-            self.state = PlaybackState.PLAYING
+        if self.state.can_transition_to(PlaybackState.PLAYING):
+            self.transition_to(PlaybackState.PLAYING)
         self.touch()
 
     def pause(self) -> None:
-        """Pause playback."""
         self.transition_to(PlaybackState.PAUSED)
 
     def resume(self) -> None:
-        """Resume playback."""
         self.transition_to(PlaybackState.PLAYING)
 
     def stop(self) -> None:
-        """Stop playback completely."""
-        self.state = PlaybackState.STOPPED
+        self.transition_to(PlaybackState.STOPPED)
         self.current_track = None
-        self.touch()
 
     def reset(self) -> None:
-        """Reset session to idle state."""
         self.state = PlaybackState.IDLE
         self.current_track = None
         self.queue.clear()
         self.touch()
 
     def advance_to_next_track(self) -> Track | None:
-        """Advance to the next track based on loop mode."""
+        """Handles loop modes: TRACK re-plays current, QUEUE appends current to end."""
         if self.loop_mode == LoopMode.TRACK and self.current_track:
             return self.current_track
 
@@ -312,20 +279,17 @@ class GuildPlaybackSession(BaseModel):
         return next_track
 
     def toggle_loop(self) -> LoopMode:
-        """Toggle loop mode and return the new mode."""
         self.loop_mode = self.loop_mode.next_mode()
         self.touch()
         return self.loop_mode
 
     def shuffle(self) -> None:
-        """Shuffle the queue."""
         import random
 
         random.shuffle(self.queue)
         self.touch()
 
     def move_track(self, from_pos: QueuePositionInt, to_pos: QueuePositionInt) -> bool:
-        """Move a track from one queue position to another."""
         if not (0 <= from_pos < len(self.queue) and 0 <= to_pos < len(self.queue)):
             return False
 

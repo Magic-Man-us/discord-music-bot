@@ -8,14 +8,53 @@ from ...domain.music.entities import Track
 from ...domain.shared.types import NonNegativeInt
 
 
+class EnqueueMeta(BaseModel):
+    """Tracks the position/size context of an enqueue operation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    track: Track
+    position: NonNegativeInt
+    queue_length: NonNegativeInt
+    should_start: bool = False
+
+
 class EnqueueResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     success: bool
-    track: Track | None = None
-    position: NonNegativeInt = 0
-    queue_length: NonNegativeInt = 0
+    meta: EnqueueMeta | None = None
     message: str = ""
+
+    @property
+    def track(self) -> Track | None:
+        return self.meta.track if self.meta else None
+
+    @property
+    def position(self) -> int:
+        return self.meta.position if self.meta else 0
+
+    @property
+    def queue_length(self) -> int:
+        return self.meta.queue_length if self.meta else 0
+
+    @property
+    def should_start(self) -> bool:
+        return self.meta.should_start if self.meta else False
+
+    @classmethod
+    def failure(cls, message: str) -> EnqueueResult:
+        return cls(success=False, message=message)
+
+    @classmethod
+    def ok(cls, *, meta: EnqueueMeta, message: str) -> EnqueueResult:
+        return cls(success=True, meta=meta, message=message)
+
+
+class BatchEnqueueResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    enqueued: NonNegativeInt = 0
     should_start: bool = False
 
 
@@ -23,18 +62,6 @@ class QueueSnapshot(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     current_track: Track | None
-    upcoming_tracks: list[Track]
-    total_length: NonNegativeInt
-    total_duration_seconds: NonNegativeInt | None
-
-    @property
-    def tracks(self) -> list[Track]:
-        return self.upcoming_tracks
-
-    @property
-    def total_tracks(self) -> int:
-        return self.total_length
-
-    @property
-    def total_duration(self) -> int | None:
-        return self.total_duration_seconds
+    tracks: list[Track]
+    total_tracks: NonNegativeInt
+    total_duration: NonNegativeInt | None

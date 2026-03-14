@@ -315,13 +315,13 @@ class PlaybackCog(BaseCog):
         if sent is not None:
             await sent.delete(delay=UIConstants.QUEUED_DELETE_AFTER)
 
-        if interaction.channel_id is not None:
-            msm.track_queued(
-                guild_id=guild_id,
-                track=track,
-                channel_id=interaction.channel_id,
-                message_id=sent.id,
-            )
+            if interaction.channel_id is not None:
+                msm.track_queued(
+                    guild_id=guild_id,
+                    track=track,
+                    channel_id=interaction.channel_id,
+                    message_id=sent.id,
+                )
 
         session = await self.container.session_repository.get(guild_id)
         upcoming = session.peek() if session else None
@@ -486,12 +486,21 @@ class PlaybackCog(BaseCog):
         if state.now_playing is not None:
             return
 
+        # Use event payload directly to avoid stale DB reads under rapid track changes
+        if event.track_title is None or event.track_url is None:
+            return
+
         session = await self.container.session_repository.get(guild_id)
         if session is None or session.current_track is None:
             return
 
         track = session.current_track
         upcoming = session.peek() if session else None
+
+        # Verify the session's current track matches the event to avoid posting
+        # an embed for the wrong track under rapid skips
+        if track.title != event.track_title:
+            return
 
         # Find the best text channel to post in
         channel = self._find_auto_post_channel(guild_id)
@@ -521,7 +530,7 @@ class PlaybackCog(BaseCog):
         except Exception:
             self.logger.debug("Failed to auto-post now-playing for guild %s", guild_id)
 
-    def _find_auto_post_channel(self, guild_id: DiscordSnowflake) -> discord.abc.Messageable | None:
+    def _find_auto_post_channel(self, guild_id: DiscordSnowflake) -> discord.TextChannel | None:
         """Find a text channel where the bot can auto-post now-playing embeds."""
         guild = self.bot.get_guild(guild_id)
         if guild is None:

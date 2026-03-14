@@ -217,10 +217,8 @@ class PlaylistView(BaseInteractiveView):
         await self._container.playback_service.start_playback(guild.id)
 
     async def on_timeout(self) -> None:
-        if self._resolved:
+        if not self._finish_view():
             return
-        self._resolved = True
-        self._disable_all_items()
         if self._message is not None:
             try:
                 await self._message.edit(

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -41,59 +40,35 @@ if TYPE_CHECKING:
     from .settings import Settings
 
 
-@dataclass  # noqa: not-a-boundary
 class Container:
-    """Lazy-initializing service locator for all application components.
 
-    Uses stdlib ``dataclass`` intentionally — this is not a data boundary.
-    All type annotations live under ``TYPE_CHECKING`` to avoid eagerly
-    importing the entire application graph.  Pydantic dataclasses cannot
-    work here because ``rebuild_dataclass`` requires every annotated type
-    to be resolvable at rebuild time, defeating the lazy-import pattern.
-    """
-
-    settings: Settings
-    _bot: Bot | None = None
-
-    # Persistence layer
-    _database: Database | None = None
-    _session_repository: SessionRepository | None = None
-    _history_repository: TrackHistoryRepository | None = None
-    _vote_repository: VoteSessionRepository | None = None
-    _cache_repository: RecommendationCacheRepository | None = None
-    _favorites_repository: SQLiteFavoritesRepository | None = None
-    _saved_queue_repository: SQLiteSavedQueueRepository | None = None
-
-    # Analytics
-    _genre_repository: SQLiteGenreCacheRepository | None = None
-    _genre_classifier: AIGenreClassifier | None = None
-    _chart_generator: ChartGenerator | None = None
-
-    # Infrastructure adapters
-    _audio_resolver: AudioResolver | None = None
-    _voice_adapter: VoiceAdapter | None = None
-    _ai_client: AIClient | None = None
-    _shuffle_ai_client: AIClient | None = None
-
-    # Application services
-    _playback_service: PlaybackApplicationService | None = None
-    _queue_service: QueueApplicationService | None = None
-
-    # Discord interaction helpers
-    _voice_warmup_tracker: VoiceWarmupTracker | None = None
-    _message_state_manager: MessageStateManager | None = None
-
-    # Cross-cutting event subscribers
-    _auto_skip_on_requester_leave: AutoSkipOnRequesterLeave | None = None
-    _radio_service: RadioApplicationService | None = None
-    _radio_auto_refill: RadioAutoRefill | None = None
-    _auto_dj: AutoDJ | None = None
-
-    # Command handlers
-    _vote_skip_handler: VoteSkipHandler | None = None
-
-    # Background jobs
-    _cleanup_job: CleanupJob | None = None
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self._bot: Bot | None = None
+        self._database: Database | None = None
+        self._session_repository: SessionRepository | None = None
+        self._history_repository: TrackHistoryRepository | None = None
+        self._vote_repository: VoteSessionRepository | None = None
+        self._cache_repository: RecommendationCacheRepository | None = None
+        self._favorites_repository: SQLiteFavoritesRepository | None = None
+        self._saved_queue_repository: SQLiteSavedQueueRepository | None = None
+        self._genre_repository: SQLiteGenreCacheRepository | None = None
+        self._genre_classifier: AIGenreClassifier | None = None
+        self._chart_generator: ChartGenerator | None = None
+        self._audio_resolver: AudioResolver | None = None
+        self._voice_adapter: VoiceAdapter | None = None
+        self._ai_client: AIClient | None = None
+        self._shuffle_ai_client: AIClient | None = None
+        self._playback_service: PlaybackApplicationService | None = None
+        self._queue_service: QueueApplicationService | None = None
+        self._voice_warmup_tracker: VoiceWarmupTracker | None = None
+        self._message_state_manager: MessageStateManager | None = None
+        self._auto_skip_on_requester_leave: AutoSkipOnRequesterLeave | None = None
+        self._radio_service: RadioApplicationService | None = None
+        self._radio_auto_refill: RadioAutoRefill | None = None
+        self._auto_dj: AutoDJ | None = None
+        self._vote_skip_handler: VoteSkipHandler | None = None
+        self._cleanup_job: CleanupJob | None = None
 
     def set_bot(self, bot: Bot) -> None:
         self._bot = bot
@@ -104,8 +79,6 @@ class Container:
             raise RuntimeError("Bot not initialized. Call set_bot() first.")
         return self._bot
 
-    # === Database ===
-
     @property
     def database(self) -> Database:
         if self._database is None:
@@ -113,8 +86,6 @@ class Container:
 
             self._database = Database(self.settings.database.url, settings=self.settings.database)
         return self._database
-
-    # === Repositories ===
 
     @property
     def session_repository(self) -> SessionRepository:
@@ -156,7 +127,6 @@ class Container:
             self._cache_repository = SQLiteCacheRepository(self.database)
         return self._cache_repository
 
-
     @property
     def favorites_repository(self) -> SQLiteFavoritesRepository:
         if self._favorites_repository is None:
@@ -167,7 +137,6 @@ class Container:
             self._favorites_repository = SQLiteFavoritesRepository(self.database)
         return self._favorites_repository
 
-
     @property
     def saved_queue_repository(self) -> SQLiteSavedQueueRepository:
         if self._saved_queue_repository is None:
@@ -177,8 +146,6 @@ class Container:
 
             self._saved_queue_repository = SQLiteSavedQueueRepository(self.database)
         return self._saved_queue_repository
-
-    # === Analytics ===
 
     @property
     def genre_repository(self) -> SQLiteGenreCacheRepository:
@@ -205,8 +172,6 @@ class Container:
 
             self._chart_generator = ChartGenerator()
         return self._chart_generator
-
-    # === Infrastructure Adapters ===
 
     @property
     def audio_resolver(self) -> AudioResolver:
@@ -284,8 +249,6 @@ class Container:
             )
         return self._queue_service
 
-    # === Command Handlers ===
-
     @property
     def vote_skip_handler(self) -> VoteSkipHandler:
         if self._vote_skip_handler is None:
@@ -298,16 +261,17 @@ class Container:
             )
         return self._vote_skip_handler
 
-    # === Discord Helpers ===
-
     @property
     def voice_warmup_tracker(self) -> VoiceWarmupTracker:
         if self._voice_warmup_tracker is None:
+            from ..domain.shared.constants import TimeConstants
             from ..infrastructure.discord.services.voice_warmup import (
                 VoiceWarmupTracker,
             )
 
-            self._voice_warmup_tracker = VoiceWarmupTracker(warmup_seconds=60)
+            self._voice_warmup_tracker = VoiceWarmupTracker(
+                warmup_seconds=TimeConstants.VOICE_WARMUP_SECONDS,
+            )
         return self._voice_warmup_tracker
 
     @property
@@ -319,8 +283,6 @@ class Container:
 
             self._message_state_manager = MessageStateManager(self.bot)
         return self._message_state_manager
-
-    # === Event Subscribers ===
 
     @property
     def auto_skip_on_requester_leave(self) -> AutoSkipOnRequesterLeave:
@@ -341,13 +303,16 @@ class Container:
         if self._radio_service is None:
             from ..application.services.radio_service import RadioApplicationService
 
+            repo_deps = {
+                "session_repository": self.session_repository,
+                "history_repository": self.history_repository,
+            }
             self._radio_service = RadioApplicationService(
                 ai_client=self.ai_client,
                 audio_resolver=self.audio_resolver,
                 queue_service=self.queue_service,
-                session_repository=self.session_repository,
-                history_repository=self.history_repository,
                 settings=self.settings.radio,
+                **repo_deps,
             )
         return self._radio_service
 
@@ -361,7 +326,6 @@ class Container:
                 playback_service=self.playback_service,
             )
         return self._radio_auto_refill
-
 
     @property
     def auto_dj(self) -> AutoDJ:
@@ -377,8 +341,6 @@ class Container:
             )
         return self._auto_dj
 
-    # === Background Jobs ===
-
     @property
     def cleanup_job(self) -> CleanupJob:
         if self._cleanup_job is None:
@@ -392,8 +354,6 @@ class Container:
                 settings=self.settings.cleanup,
             )
         return self._cleanup_job
-
-    # === Lifecycle ===
 
     async def initialize(self) -> None:
         await self.database.initialize()

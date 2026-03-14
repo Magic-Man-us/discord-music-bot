@@ -223,7 +223,7 @@ class NowPlayingView(BaseInteractiveView):
         from ..views.radio_view import RadioView, build_up_next_embed
 
         queue_info = await self._container.queue_service.get_queue(self.guild_id)
-        queue_start = max(0, queue_info.total_length - len(result.generated_tracks))
+        queue_start = max(0, queue_info.total_tracks - len(result.generated_tracks))
 
         embed = build_up_next_embed(result.generated_tracks, result.seed_title)
         view = RadioView(

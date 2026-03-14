@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING
 from ...domain.music.entities import Track
 from ...domain.music.enums import LoopMode
 from ...domain.shared.datetime_utils import utcnow
+from ...domain.shared.exceptions import BusinessRuleViolationError
 from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, QueuePositionInt
-from .queue_models import EnqueueResult, QueueSnapshot
+from .queue_models import BatchEnqueueResult, EnqueueMeta, EnqueueResult, QueueSnapshot
 
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository
@@ -18,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 class QueueApplicationService:
-    """Manages queue operations (add, remove, reorder, shuffle) for guilds."""
 
     def __init__(
         self,
@@ -35,19 +35,6 @@ class QueueApplicationService:
         user_name: NonEmptyStr,
     ) -> EnqueueResult:
         session = await self._session_repo.get_or_create(guild_id)
-
-        if session.is_duplicate(track):
-            return EnqueueResult(
-                success=False,
-                message=f'"{track.title}" is already in the queue or currently playing',
-            )
-
-        if not session.can_add_to_queue:
-            return EnqueueResult(
-                success=False,
-                message=f"Queue is full (max {session.MAX_QUEUE_SIZE} tracks)",
-            )
-
         was_idle = session.current_track is None
 
         track_with_requester = track.with_requester(
@@ -56,24 +43,22 @@ class QueueApplicationService:
             requested_at=utcnow(),
         )
 
-        position = session.enqueue(track_with_requester)
-        await self._session_repo.save(session)
+        try:
+            position = session.enqueue(track_with_requester)
+        except BusinessRuleViolationError as exc:
+            return EnqueueResult.failure(exc.message)
 
+        await self._session_repo.save(session)
         logger.info("Enqueued track '%s' at position %s in guild %s", track.title, position.value, guild_id)
 
-        if was_idle:
-            message = f"Now playing: {track.title}"
-        else:
-            message = f"Added to queue at position {position.value + 1}"
-
-        return EnqueueResult(
-            success=True,
+        message = f"Now playing: {track.title}" if was_idle else f"Added to queue at position {position.value + 1}"
+        meta = EnqueueMeta(
             track=track_with_requester,
             position=position.value,
             queue_length=session.queue_length,
-            message=message,
             should_start=was_idle,
         )
+        return EnqueueResult.ok(meta=meta, message=message)
 
     async def enqueue_next(
         self,
@@ -82,20 +67,7 @@ class QueueApplicationService:
         user_id: DiscordSnowflake,
         user_name: NonEmptyStr,
     ) -> EnqueueResult:
-        """Add a track to the front of the queue."""
         session = await self._session_repo.get_or_create(guild_id)
-
-        if session.is_duplicate(track):
-            return EnqueueResult(
-                success=False,
-                message=f'"{track.title}" is already in the queue or currently playing',
-            )
-
-        if not session.can_add_to_queue:
-            return EnqueueResult(
-                success=False,
-                message=f"Queue is full (max {session.MAX_QUEUE_SIZE} tracks)",
-            )
 
         track_with_requester = track.with_requester(
             user_id=user_id,
@@ -103,18 +75,43 @@ class QueueApplicationService:
             requested_at=utcnow(),
         )
 
-        position = session.enqueue_next(track_with_requester)
-        await self._session_repo.save(session)
+        try:
+            position = session.enqueue_next(track_with_requester)
+        except BusinessRuleViolationError as exc:
+            return EnqueueResult.failure(exc.message)
 
+        await self._session_repo.save(session)
         logger.info("Enqueued track '%s' to play next in guild %s", track.title, guild_id)
 
-        return EnqueueResult(
-            success=True,
+        meta = EnqueueMeta(
             track=track_with_requester,
             position=position.value,
             queue_length=session.queue_length,
-            message="Added to play next",
         )
+        return EnqueueResult.ok(meta=meta, message="Added to play next")
+
+    async def enqueue_batch(
+        self,
+        guild_id: DiscordSnowflake,
+        tracks: list[Track],
+        user_id: DiscordSnowflake,
+        user_name: NonEmptyStr,
+    ) -> BatchEnqueueResult:
+        """Enqueue multiple tracks, returning how many succeeded and whether playback should start."""
+        count = 0
+        should_start = False
+        for track in tracks:
+            result = await self.enqueue(
+                guild_id=guild_id,
+                track=track,
+                user_id=user_id,
+                user_name=user_name,
+            )
+            if result.success:
+                count += 1
+                if result.should_start:
+                    should_start = True
+        return BatchEnqueueResult(enqueued=count, should_start=should_start)
 
     async def remove(self, guild_id: DiscordSnowflake, position: QueuePositionInt) -> Track | None:
         session = await self._session_repo.get(guild_id)
@@ -139,7 +136,6 @@ class QueueApplicationService:
         return count
 
     async def clear_recommendations(self, guild_id: DiscordSnowflake) -> int:
-        """Clear only AI-recommended tracks from the queue."""
         session = await self._session_repo.get(guild_id)
         if session is None:
             return 0
@@ -176,9 +172,9 @@ class QueueApplicationService:
         if session is None:
             return QueueSnapshot(
                 current_track=None,
-                upcoming_tracks=[],
-                total_length=0,
-                total_duration_seconds=None,
+                tracks=[],
+                total_tracks=0,
+                total_duration=None,
             )
 
         total_duration = 0
@@ -197,9 +193,9 @@ class QueueApplicationService:
 
         return QueueSnapshot(
             current_track=session.current_track,
-            upcoming_tracks=list(session.queue),
-            total_length=session.queue_length + (1 if session.current_track else 0),
-            total_duration_seconds=total_duration if has_all_durations else None,
+            tracks=list(session.queue),
+            total_tracks=session.queue_length + (1 if session.current_track else 0),
+            total_duration=total_duration if has_all_durations else None,
         )
 
     async def toggle_loop(self, guild_id: DiscordSnowflake) -> LoopMode:

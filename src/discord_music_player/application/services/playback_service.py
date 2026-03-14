@@ -58,6 +58,16 @@ class PlaybackApplicationService:
         if session is None:
             return
 
+        # Guard against double-advance: if skip/stop already transitioned the
+        # session away from PLAYING, this callback is stale.
+        if session.state != PlaybackState.PLAYING:
+            logger.debug(
+                "Ignoring voice track-end for guild %s: session state is %s",
+                guild_id,
+                session.state,
+            )
+            return
+
         current_track = session.current_track
         if current_track:
             await self.handle_track_finished(guild_id, current_track)

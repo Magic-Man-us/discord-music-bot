@@ -57,11 +57,9 @@ class ResumePlaybackView(BaseInteractiveView):
         )
 
     async def on_timeout(self) -> None:
-        if self._resolved:
+        if not self._finish_view():
             return
-        self._resolved = True
         await self._playback_service.stop_playback(self._guild_id)
-        self._disable_buttons()
         if self._message is not None:
             try:
                 await self._message.edit(

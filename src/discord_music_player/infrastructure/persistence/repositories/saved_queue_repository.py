@@ -154,19 +154,14 @@ class SQLiteSavedQueueRepository:
         return [SavedQueueInfo.model_validate(row) for row in rows]
 
     async def delete(self, guild_id: DiscordSnowflake, name: NonEmptyStr) -> bool:
-        """Returns True if the queue existed and was deleted."""
-        row = await self._db.fetch_one(
-            "SELECT id FROM saved_queues WHERE guild_id = ? AND name = ?",
-            (guild_id, name),
-        )
-        if row is None:
-            return False
-        await self._db.execute(
+        cursor = await self._db.execute(
             "DELETE FROM saved_queues WHERE guild_id = ? AND name = ?",
             (guild_id, name),
         )
-        logger.info("Deleted saved queue '%s' for guild %s", name, guild_id)
-        return True
+        deleted = cursor.rowcount > 0
+        if deleted:
+            logger.info("Deleted saved queue '%s' for guild %s", name, guild_id)
+        return deleted
 
     async def count(self, guild_id: DiscordSnowflake) -> int:
         row = await self._db.fetch_one(

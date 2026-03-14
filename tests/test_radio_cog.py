@@ -124,7 +124,7 @@ async def test_toggle_enable_sends_embed(cog, interaction, mock_container):
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=result)
 
     queue_info = MagicMock()
-    queue_info.total_length = 2
+    queue_info.total_tracks = 2
     mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
     await cog.radio.callback(cog, interaction, query=None, action=None)
@@ -191,7 +191,7 @@ async def test_toggle_with_query_resolves_and_enqueues(cog, interaction, mock_co
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=radio_result)
 
     queue_info = MagicMock()
-    queue_info.total_length = 1
+    queue_info.total_tracks = 1
     mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
     await cog.radio.callback(cog, interaction, query="my query", action=None)
@@ -253,7 +253,7 @@ async def test_toggle_with_query_disables_existing_radio(cog, interaction, mock_
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=radio_result)
 
     queue_info = MagicMock()
-    queue_info.total_length = 1
+    queue_info.total_tracks = 1
     mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
     await cog.radio.callback(cog, interaction, query="new seed", action=None)

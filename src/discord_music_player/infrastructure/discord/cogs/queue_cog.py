@@ -9,7 +9,6 @@ from discord import app_commands
 
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.shared.constants import UIConstants
-from discord_music_player.domain.shared.types import DiscordSnowflake
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_dj_role,
@@ -126,15 +125,18 @@ class QueueCog(BaseCog):
 
         random.shuffle(unique_tracks)
 
-        enqueued_count, should_start = await self._enqueue_batch(
-            interaction.guild.id, unique_tracks, interaction.user,
+        result = await self.container.queue_service.enqueue_batch(
+            guild_id=interaction.guild.id,
+            tracks=unique_tracks,
+            user_id=interaction.user.id,
+            user_name=interaction.user.display_name,
         )
 
-        if should_start:
+        if result.should_start:
             await self.container.playback_service.start_playback(interaction.guild.id)
 
         await interaction.followup.send(
-            f"Shuffled and queued **{enqueued_count}** tracks from history.",
+            f"Shuffled and queued **{result.enqueued}** tracks from history.",
             ephemeral=True,
         )
 
@@ -148,29 +150,6 @@ class QueueCog(BaseCog):
                 seen.add(track.id.value)
                 unique.append(track)
         return unique
-
-    async def _enqueue_batch(
-        self,
-        guild_id: DiscordSnowflake,
-        tracks: list[Track],
-        user: discord.User | discord.Member,
-    ) -> tuple[int, bool]:
-        """Enqueue a list of tracks. Returns ``(count, should_start)``."""
-        queue_service = self.container.queue_service
-        count = 0
-        should_start = False
-        for track in tracks:
-            result = await queue_service.enqueue(
-                guild_id=guild_id,
-                track=track,
-                user_id=user.id,
-                user_name=user.display_name,
-            )
-            if result.success:
-                count += 1
-                if result.should_start:
-                    should_start = True
-        return count, should_start
 
     @app_commands.command(name="loop", description="Toggle loop mode.")
     async def loop(self, interaction: discord.Interaction) -> None:

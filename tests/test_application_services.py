@@ -370,8 +370,8 @@ class TestQueueApplicationServiceGetQueue:
         result = await service.get_queue(guild_id=123456)
 
         assert result.current_track is None
-        assert result.upcoming_tracks == []
-        assert result.total_length == 0
+        assert result.tracks == []
+        assert result.total_tracks == 0
 
     @pytest.mark.asyncio
     async def test_get_queue_with_tracks(self, service, mock_session_repo, sample_tracks):
@@ -385,8 +385,8 @@ class TestQueueApplicationServiceGetQueue:
         result = await service.get_queue(guild_id=123456)
 
         assert result.current_track == sample_tracks[0]
-        assert len(result.upcoming_tracks) == 2
-        assert result.total_length == 3  # Current + 2 in queue
+        assert len(result.tracks) == 2
+        assert result.total_tracks == 3  # Current + 2 in queue
 
     @pytest.mark.asyncio
     async def test_get_queue_calculates_duration(self, service, mock_session_repo, sample_tracks):
@@ -398,7 +398,7 @@ class TestQueueApplicationServiceGetQueue:
 
         result = await service.get_queue(guild_id=123456)
 
-        assert result.total_duration_seconds == 360  # 180 + 180
+        assert result.total_duration == 360  # 180 + 180
 
 
 class TestQueueApplicationServiceToggleLoop:
@@ -1575,11 +1575,10 @@ class TestPlaybackApplicationServiceStopErrors:
 # =============================================================================
 
 
-class TestQueueInfoProperties:
-    """Unit tests for QueueInfo property aliases."""
+class TestQueueSnapshotFields:
+    """Unit tests for QueueSnapshot field access."""
 
-    def test_tracks_property_alias(self):
-        """tracks should be alias for upcoming_tracks."""
+    def test_tracks_field(self):
         from discord_music_player.application.services.queue_models import QueueSnapshot
 
         tracks = [
@@ -1597,51 +1596,23 @@ class TestQueueInfoProperties:
 
         info = QueueSnapshot(
             current_track=None,
-            upcoming_tracks=tracks,
-            total_length=2,
-            total_duration_seconds=360,
+            tracks=tracks,
+            total_tracks=2,
+            total_duration=360,
         )
 
         assert info.tracks == tracks
-        assert info.tracks == info.upcoming_tracks
+        assert info.total_tracks == 2
+        assert info.total_duration == 360
 
-    def test_total_tracks_property_alias(self):
-        """total_tracks should be alias for total_length."""
+    def test_total_duration_none(self):
         from discord_music_player.application.services.queue_models import QueueSnapshot
 
         info = QueueSnapshot(
             current_track=None,
-            upcoming_tracks=[],
-            total_length=5,
-            total_duration_seconds=None,
-        )
-
-        assert info.total_tracks == 5
-        assert info.total_tracks == info.total_length
-
-    def test_total_duration_property_alias(self):
-        """total_duration should be alias for total_duration_seconds."""
-        from discord_music_player.application.services.queue_models import QueueSnapshot
-
-        info = QueueSnapshot(
-            current_track=None,
-            upcoming_tracks=[],
-            total_length=0,
-            total_duration_seconds=600,
-        )
-
-        assert info.total_duration == 600
-        assert info.total_duration == info.total_duration_seconds
-
-    def test_total_duration_property_none(self):
-        """total_duration should return None when total_duration_seconds is None."""
-        from discord_music_player.application.services.queue_models import QueueSnapshot
-
-        info = QueueSnapshot(
-            current_track=None,
-            upcoming_tracks=[],
-            total_length=0,
-            total_duration_seconds=None,
+            tracks=[],
+            total_tracks=0,
+            total_duration=None,
         )
 
         assert info.total_duration is None

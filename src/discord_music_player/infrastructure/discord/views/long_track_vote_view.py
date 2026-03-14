@@ -132,11 +132,8 @@ class LongTrackVoteView(BaseInteractiveView):
             )
 
     async def on_timeout(self) -> None:
-        """Auto-reject on timeout."""
-        if self._resolved:
+        if not self._finish_view():
             return
-        self._resolved = True
-        self._disable_buttons()
         if self._message:
             try:
                 await self._message.edit(

@@ -42,6 +42,12 @@ class EventCog(BaseCog):
         self._event_bus.subscribe(QueueExhausted, self._on_queue_exhausted)
         self._event_bus.subscribe(TrackStartedPlaying, self._on_track_started)
 
+    async def cog_unload(self) -> None:
+        from ....domain.shared.events import QueueExhausted, TrackStartedPlaying
+
+        self._event_bus.unsubscribe(QueueExhausted, self._on_queue_exhausted)
+        self._event_bus.unsubscribe(TrackStartedPlaying, self._on_track_started)
+
     @staticmethod
     def _env_flag(key: str) -> bool:  # ConfigKeys constant
         return os.getenv(key, "").strip().lower() in {"1", "true", "yes", "on"}

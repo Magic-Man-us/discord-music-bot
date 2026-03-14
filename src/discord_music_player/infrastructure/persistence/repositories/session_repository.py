@@ -4,18 +4,39 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from pydantic import BaseModel, ConfigDict
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
 from discord_music_player.domain.music.repository import SessionRepository
 from discord_music_player.domain.music.enums import LoopMode, PlaybackState
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
+from discord_music_player.domain.shared.types import DiscordSnowflake, UtcDatetimeField
 from discord_music_player.infrastructure.persistence.models import QUEUE_TRACKS_INSERT_SQL, QueueTrackRow, TrackRow
 
 if TYPE_CHECKING:
     from ..database import Database
 
 logger = logging.getLogger(__name__)
+
+
+class _SessionMetadata(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    state: PlaybackState
+    loop_mode: LoopMode
+    created_at: UtcDatetimeField
+    last_activity: UtcDatetimeField
+
+    @staticmethod
+    def from_row(row: dict[str, Any]) -> _SessionMetadata:
+        return _SessionMetadata(
+            state=PlaybackState(row["state"]),
+            loop_mode=LoopMode(row["loop_mode"]),
+            created_at=UtcDateTime.from_iso(row["created_at"]).dt,
+            last_activity=UtcDateTime.from_iso(row["last_activity"]).dt,
+        )
 
 
 class SQLiteSessionRepository(SessionRepository):
@@ -51,14 +72,12 @@ class SQLiteSessionRepository(SessionRepository):
             else:
                 queue.append(track)
 
+        meta = _SessionMetadata.from_row(session_row)
         return GuildPlaybackSession(
             guild_id=guild_id,
             queue=queue,
             current_track=current_track,
-            state=PlaybackState(session_row["state"]),
-            loop_mode=LoopMode(session_row["loop_mode"]),
-            created_at=UtcDateTime.from_iso(session_row["created_at"]).dt,
-            last_activity=UtcDateTime.from_iso(session_row["last_activity"]).dt,
+            **meta.model_dump(),
         )
 
     async def save(self, session: GuildPlaybackSession) -> None:
@@ -128,16 +147,7 @@ class SQLiteSessionRepository(SessionRepository):
         if session is not None:
             return session
 
-        now = UtcDateTime.now().dt
-        session = GuildPlaybackSession(
-            guild_id=guild_id,
-            queue=[],
-            current_track=None,
-            state=PlaybackState.IDLE,
-            loop_mode=LoopMode.OFF,
-            created_at=now,
-            last_activity=now,
-        )
+        session = GuildPlaybackSession(guild_id=guild_id)
         await self.save(session)
         return session
 
@@ -170,16 +180,11 @@ class SQLiteSessionRepository(SessionRepository):
             cutoff = UtcDateTime.now().dt - timedelta(hours=max_age_hours)
             older_than = cutoff
 
-        count_row = await self._db.fetch_one(
-            "SELECT COUNT(*) as count FROM guild_sessions WHERE last_activity < ?",
-            (older_than.isoformat(),),
-        )
-        count = count_row["count"] if count_row else 0
-
-        await self._db.execute(
+        cursor = await self._db.execute(
             "DELETE FROM guild_sessions WHERE last_activity < ?",
             (older_than.isoformat(),),
         )
+        count = cursor.rowcount
 
         if count > 0:
             logger.info("Cleaned up %s stale sessions", count)

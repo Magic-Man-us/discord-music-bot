@@ -27,6 +27,7 @@ def mock_container():
 
     container.queue_service = MagicMock()
     container.queue_service.enqueue = AsyncMock()
+    container.queue_service.enqueue_batch = AsyncMock()
     container.queue_service.get_queue = AsyncMock()
     container.queue_service.shuffle = AsyncMock()
     container.queue_service.remove = AsyncMock()
@@ -96,15 +97,15 @@ async def test_shuffle_history_success(cog, interaction, mock_container):
     tracks = [_track("t1"), _track("t2"), _track("t3")]
     mock_container.history_repository.get_recent = AsyncMock(return_value=tracks)
 
-    enqueue_result = MagicMock()
-    enqueue_result.success = True
-    enqueue_result.should_start = True
-    mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
+    batch_result = MagicMock()
+    batch_result.enqueued = 3
+    batch_result.should_start = True
+    mock_container.queue_service.enqueue_batch = AsyncMock(return_value=batch_result)
 
     with patch("random.shuffle"):
         await cog.shuffle_history.callback(cog, interaction, limit=100)
 
-    assert mock_container.queue_service.enqueue.await_count == 3
+    mock_container.queue_service.enqueue_batch.assert_awaited_once()
     mock_container.playback_service.start_playback.assert_awaited_once_with(111)
     msg = interaction.followup.send.call_args[0][0]
     assert "3" in msg
@@ -122,19 +123,20 @@ async def test_shuffle_history_no_history(cog, interaction, mock_container):
 
 @pytest.mark.asyncio
 async def test_shuffle_history_deduplicates(cog, interaction, mock_container):
-    # Same track_id appears 3 times
+    # Same track_id appears 3 times — dedup yields 1 unique track
     tracks = [_track("t1"), _track("t1"), _track("t1")]
     mock_container.history_repository.get_recent = AsyncMock(return_value=tracks)
 
-    enqueue_result = MagicMock()
-    enqueue_result.success = True
-    enqueue_result.should_start = False
-    mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
+    batch_result = MagicMock()
+    batch_result.enqueued = 1
+    batch_result.should_start = False
+    mock_container.queue_service.enqueue_batch = AsyncMock(return_value=batch_result)
 
     await cog.shuffle_history.callback(cog, interaction, limit=100)
 
-    # Only 1 unique track, so enqueue called once
-    assert mock_container.queue_service.enqueue.await_count == 1
+    # enqueue_batch called with 1 unique track
+    call_args = mock_container.queue_service.enqueue_batch.call_args
+    assert len(call_args.kwargs["tracks"]) == 1
     msg = interaction.followup.send.call_args[0][0]
     assert "1" in msg
 

@@ -13,7 +13,7 @@ from discord_music_player.infrastructure.discord.guards.voice_guards import (
 )
 from discord_music_player.utils.reply import format_duration, truncate
 
-_FAVORITES_PER_PAGE = 10
+_FAVORITES_PER_PAGE = UIConstants.QUEUE_PER_PAGE
 
 
 class FavoritesCog(BaseCog):
@@ -108,26 +108,18 @@ class FavoritesCog(BaseCog):
 
         random.shuffle(tracks)
 
-        queue_service = self.container.queue_service
-        count = 0
-        should_start = False
-        for track in tracks:
-            result = await queue_service.enqueue(
-                guild_id=interaction.guild.id,
-                track=track,
-                user_id=interaction.user.id,
-                user_name=interaction.user.display_name,
-            )
-            if result.success:
-                count += 1
-                if result.should_start:
-                    should_start = True
+        result = await self.container.queue_service.enqueue_batch(
+            guild_id=interaction.guild.id,
+            tracks=tracks,
+            user_id=interaction.user.id,
+            user_name=interaction.user.display_name,
+        )
 
-        if should_start:
+        if result.should_start:
             await self.container.playback_service.start_playback(interaction.guild.id)
 
         await interaction.followup.send(
-            f"Shuffled and queued **{count}** favorites.", ephemeral=True
+            f"Shuffled and queued **{result.enqueued}** favorites.", ephemeral=True
         )
 
     @favorites.command(name="remove", description="Remove a track from your favorites by position.")
