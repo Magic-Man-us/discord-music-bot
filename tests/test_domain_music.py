@@ -355,7 +355,6 @@ class TestGuildPlaybackSession:
         assert session.current_track is None
         assert session.state == PlaybackState.IDLE
         assert session.loop_mode == LoopMode.OFF
-        assert session.version == 0
 
     def test_invalid_guild_id_raises_error(self):
         """Should raise ValueError for non-positive guild ID."""

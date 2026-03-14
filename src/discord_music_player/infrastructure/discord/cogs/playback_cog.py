@@ -265,6 +265,11 @@ class PlaybackCog(BaseCog):
                 f"Started vote for long track: **{truncate(track.title, UIConstants.TITLE_TRUNCATION)}**",
                 ephemeral=True,
             )
+        else:
+            await interaction.followup.send(
+                "Could not find a channel to post the vote. Please try again.",
+                ephemeral=True,
+            )
         return True
 
     async def _send_now_playing(

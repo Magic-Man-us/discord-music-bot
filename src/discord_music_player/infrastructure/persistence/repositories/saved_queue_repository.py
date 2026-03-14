@@ -106,26 +106,38 @@ class SQLiteSavedQueueRepository:
         user_name: NonEmptyStr,
     ) -> bool:
         """Returns False when the per-guild limit is reached and this is a new name."""
-        count = await self.count(guild_id)
-        existing = await self.get(guild_id, name)
-        # Allow overwrites but reject new queues beyond limit
-        if existing is None and count >= _MAX_SAVED_QUEUES_PER_GUILD:
-            return False
-
         tracks_json = SavedQueueRow.serialize_tracks(tracks)
-        await self._db.execute(
-            """
-            INSERT INTO saved_queues (guild_id, name, tracks_json, track_count, created_by_id, created_by_name)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(guild_id, name) DO UPDATE SET
-                tracks_json = excluded.tracks_json,
-                track_count = excluded.track_count,
-                created_by_id = excluded.created_by_id,
-                created_by_name = excluded.created_by_name,
-                created_at = strftime('%Y-%m-%dT%H:%M:%f','now')
-            """,
-            (guild_id, name, tracks_json, len(tracks), user_id, user_name),
-        )
+
+        async with self._db.transaction() as conn:
+            count_row = await (await conn.execute(
+                "SELECT COUNT(*) as count FROM saved_queues WHERE guild_id = ?",
+                (guild_id,),
+            )).fetchone()
+            count = count_row[0] if count_row else 0
+
+            existing_row = await (await conn.execute(
+                "SELECT 1 FROM saved_queues WHERE guild_id = ? AND name = ?",
+                (guild_id, name),
+            )).fetchone()
+
+            if existing_row is None and count >= _MAX_SAVED_QUEUES_PER_GUILD:
+                return False
+
+            insert_params = (guild_id, name, tracks_json, len(tracks), user_id, user_name)
+            await conn.execute(
+                """
+                INSERT INTO saved_queues (guild_id, name, tracks_json, track_count, created_by_id, created_by_name)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(guild_id, name) DO UPDATE SET
+                    tracks_json = excluded.tracks_json,
+                    track_count = excluded.track_count,
+                    created_by_id = excluded.created_by_id,
+                    created_by_name = excluded.created_by_name,
+                    created_at = strftime('%Y-%m-%dT%H:%M:%f','now')
+                """,
+                insert_params,
+            )
+
         logger.info(
             "Saved queue '%s' for guild %s (%d tracks)",
             name, guild_id, len(tracks),

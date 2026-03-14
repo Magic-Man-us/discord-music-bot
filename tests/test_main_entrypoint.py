@@ -83,7 +83,7 @@ class TestLoggingSetup:
 
             setup_logging("DEBUG")
 
-            mock_root.setLevel.assert_called_once_with(logging.DEBUG)
+            mock_root.setLevel.assert_any_call(logging.DEBUG)
 
     def test_noisy_library_loggers_suppressed_via_json(self):
         """Should suppress noisy library loggers via the JSON config."""

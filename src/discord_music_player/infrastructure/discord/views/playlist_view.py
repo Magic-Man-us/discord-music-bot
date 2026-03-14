@@ -93,6 +93,7 @@ class PlaylistView(BaseInteractiveView):
         super().__init__(timeout=PlaylistConstants.VIEW_TIMEOUT)
         self._entries = entries[:PlaylistConstants.MAX_PLAYLIST_TRACKS]
         self._container = container
+        self._requester_id = interaction.user.id
 
         # Only add select if entries fit (max 25 options)
         if len(self._entries) <= PlaylistConstants.MAX_SELECT_OPTIONS:
@@ -106,6 +107,14 @@ class PlaylistView(BaseInteractiveView):
             )
             select.callback = self._on_select
             self.add_item(select)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self._requester_id:
+            await interaction.response.send_message(
+                "Only the user who requested this playlist can interact.", ephemeral=True
+            )
+            return False
+        return True
 
     @discord.ui.button(label="Add All", style=discord.ButtonStyle.success, row=1)
     async def add_all_button(self, interaction: discord.Interaction, _button: discord.ui.Button[PlaylistView]) -> None:

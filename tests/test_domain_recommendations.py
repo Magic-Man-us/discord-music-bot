@@ -200,12 +200,13 @@ class TestRecommendationSet:
         )
         assert rec_set.is_expired is True
 
-    def test_add_recommendation(self):
-        """Should add recommendation to set."""
+    def test_frozen_set_rejects_mutation(self):
+        """RecommendationSet is frozen — direct mutation should raise."""
         rec_set = RecommendationSet(base_track_title="Base Song", base_track_artist="Base Artist")
-        rec = Recommendation(title="New Song", artist="New Artist")
-        rec_set.add_recommendation(rec)
-        assert rec_set.count == 1
+        import pydantic
+
+        with pytest.raises(pydantic.ValidationError):
+            rec_set.recommendations = []
 
     def test_get_queries(self, sample_recommendations):
         """Should return all search queries."""

@@ -363,7 +363,7 @@ class Container:
             self.auto_dj.start()
 
     async def shutdown(self) -> None:
-        for subscriber in (self._auto_skip_on_requester_leave, self._radio_auto_refill, self._auto_dj):
+        for subscriber in (self._auto_skip_on_requester_leave, self._radio_auto_refill, self._auto_dj, self._cleanup_job):
             if subscriber is not None:
                 try:
                     subscriber.stop()

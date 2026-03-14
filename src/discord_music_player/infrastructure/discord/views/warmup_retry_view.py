@@ -67,14 +67,14 @@ class WarmupRetryView(BaseInteractiveView):
     async def retry_button(
         self, interaction: discord.Interaction, _button: discord.ui.Button[WarmupRetryView]
     ) -> None:
+        if not self._finish_view():
+            return
         await interaction.response.defer(ephemeral=True)
-        self._disable_buttons()
         if self._message is not None:
             try:
                 await self._message.edit(view=self)
             except discord.HTTPException:
                 pass
-        self.stop()
         await self._execute_play(interaction, self._query)
 
     async def on_timeout(self) -> None:

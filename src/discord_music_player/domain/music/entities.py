@@ -128,8 +128,6 @@ class GuildPlaybackSession(BaseModel):
     loop_mode: LoopMode = LoopMode.OFF
     created_at: UtcDatetimeField = Field(default_factory=utcnow)
     last_activity: UtcDatetimeField = Field(default_factory=utcnow)
-    version: NonNegativeInt = 0
-
     @property
     def queue_length(self) -> int:
         return len(self.queue)

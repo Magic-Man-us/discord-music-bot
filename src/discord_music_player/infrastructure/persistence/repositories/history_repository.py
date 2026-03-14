@@ -332,18 +332,17 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         return [(row["weekday"], row[_COUNT]) for row in rows]
 
     @staticmethod
-    def _time_range_clause(time_range: LeaderboardTimeRange) -> str:
-        """Return a SQL WHERE clause fragment for the given time range."""
+    def _time_range_filter(time_range: LeaderboardTimeRange) -> tuple[str, tuple[str, ...]]:
+        """Return a (clause, params) pair for the given time range."""
         if time_range == LeaderboardTimeRange.ALL_TIME:
-            return ""
-        days = 7 if time_range == LeaderboardTimeRange.LAST_7_DAYS else 30
-        return f" AND played_at >= datetime('now', '-{days} days')"
+            return "", ()
+        days_str = "-7 days" if time_range == LeaderboardTimeRange.LAST_7_DAYS else "-30 days"
+        return " AND played_at >= datetime('now', ?)", (days_str,)
 
     async def get_most_played_since(
         self, guild_id: int, time_range: LeaderboardTimeRange, limit: int = 10
     ) -> list[tuple[Track, int]]:
-        """Most-played tracks within a time range."""
-        clause = self._time_range_clause(time_range)
+        clause, time_params = self._time_range_filter(time_range)
         rows = await self._db.fetch_all(
             f"""
             SELECT *, COUNT(*) as play_count
@@ -353,15 +352,14 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             ORDER BY play_count DESC
             LIMIT ?
             """,
-            (guild_id, limit),
+            (guild_id, *time_params, limit),
         )
         return [(TrackRow.model_validate(row).to_track(), row["play_count"]) for row in rows]
 
     async def get_top_requesters_since(
         self, guild_id: int, time_range: LeaderboardTimeRange, limit: int = 10
     ) -> list[tuple[int, str, int]]:
-        """Top requesters within a time range."""
-        clause = self._time_range_clause(time_range)
+        clause, time_params = self._time_range_filter(time_range)
         rows = await self._db.fetch_all(
             f"""
             SELECT requested_by_id, requested_by_name, COUNT(*) as count
@@ -371,7 +369,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             ORDER BY count DESC
             LIMIT ?
             """,
-            (guild_id, limit),
+            (guild_id, *time_params, limit),
         )
         return [
             (row["requested_by_id"], row["requested_by_name"] or "Unknown", row[_COUNT])
@@ -381,8 +379,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
     async def get_most_skipped_since(
         self, guild_id: int, time_range: LeaderboardTimeRange, limit: int = 10
     ) -> list[tuple[str, int]]:
-        """Most-skipped tracks within a time range."""
-        clause = self._time_range_clause(time_range)
+        clause, time_params = self._time_range_filter(time_range)
         rows = await self._db.fetch_all(
             f"""
             SELECT title, COUNT(*) as count
@@ -392,7 +389,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             ORDER BY count DESC
             LIMIT ?
             """,
-            (guild_id, limit),
+            (guild_id, *time_params, limit),
         )
         return [(row[_TITLE], row[_COUNT]) for row in rows]
 

@@ -55,11 +55,11 @@ class VotingDomainService:
         if session.is_expired:
             return VoteResult.VOTE_EXPIRED, session
 
-        if track is not None and listener_count > 0:
+        if track is not None:
             if track.was_requested_by(user_id):
                 return VoteResult.REQUESTER_SKIP, session
 
-            if listener_count <= cls.SMALL_AUDIENCE_SIZE:
+            if listener_count > 0 and listener_count <= cls.SMALL_AUDIENCE_SIZE:
                 return VoteResult.AUTO_SKIP, session
 
         if session.has_voted(user_id):

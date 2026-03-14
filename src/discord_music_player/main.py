@@ -22,7 +22,7 @@ def setup_logging(log_level: str = "INFO") -> None:
         with open(_LOGGING_CONFIG_PATH) as f:
             config = json.load(f)
         logging.config.dictConfig(config)
-    except (FileNotFoundError, json.JSONDecodeError, ValueError):
+    except (FileNotFoundError, json.JSONDecodeError, ValueError, KeyError, ImportError, AttributeError):
         logging.warning(
             "Could not load %s, falling back to basic config", _LOGGING_CONFIG_PATH
         )
@@ -32,7 +32,11 @@ def setup_logging(log_level: str = "INFO") -> None:
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
+    # Apply runtime log level to root and all application loggers
     logging.getLogger().setLevel(resolved_level)
+    for name in list(logging.Logger.manager.loggerDict):
+        if name.startswith("discord_music_player"):
+            logging.getLogger(name).setLevel(resolved_level)
 
 
 def _acquire_pid_lock(logger: logging.Logger) -> int | None:
@@ -88,6 +92,12 @@ def main() -> int:
     except Exception as e:
         logger.exception("Fatal error: %s", e)
         return 1
+    finally:
+        try:
+            lock.close()  # type: ignore[union-attr]
+            _PID_FILE.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def cli() -> None:

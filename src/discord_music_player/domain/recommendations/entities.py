@@ -126,7 +126,7 @@ class Recommendation(BaseModel):
 class RecommendationSet(ExpirableMixin, BaseModel):
     """Aggregate grouping recommendations for a specific base track."""
 
-    model_config = ConfigDict()
+    model_config = ConfigDict(frozen=True)
 
     base_track_title: NonEmptyStr
     base_track_artist: NonEmptyStr | None = None
@@ -152,9 +152,6 @@ class RecommendationSet(ExpirableMixin, BaseModel):
     @property
     def is_empty(self) -> bool:
         return len(self.recommendations) == 0
-
-    def add_recommendation(self, recommendation: Recommendation) -> None:
-        self.recommendations.append(recommendation)
 
     def get_queries(self) -> list[str]:
         return [rec.query for rec in self.recommendations]
