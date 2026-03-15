@@ -168,7 +168,7 @@ class NowPlayingView(BaseInteractiveView):
 
     # ── Radio: seed from current track, show RadioView with rerolls ───
 
-    @discord.ui.button(label="Radio", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Radio", style=discord.ButtonStyle.secondary, emoji="\U0001F4FB")
     async def radio_button(
         self, interaction: discord.Interaction, _button: discord.ui.Button[NowPlayingView]
     ) -> None:
@@ -176,7 +176,7 @@ class NowPlayingView(BaseInteractiveView):
 
         if lock.locked():
             await interaction.response.send_message(
-                "A similar track search is already in progress, please wait.", ephemeral=True
+                "A request is already in progress, please wait.", ephemeral=True
             )
             return
 

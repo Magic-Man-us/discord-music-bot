@@ -13,10 +13,9 @@ class SyncScope(StrEnum):
 
 
 class RadioAction(StrEnum):
-    """Radio command actions."""
 
-    TOGGLE = "toggle"
-    CLEAR = "clear"
+    ON = "on"
+    OFF = "off"
 
 
 class LeaderboardCategory(StrEnum):

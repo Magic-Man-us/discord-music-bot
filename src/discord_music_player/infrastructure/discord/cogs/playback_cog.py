@@ -12,10 +12,10 @@ from discord_music_player.domain.shared.constants import UIConstants
 from discord_music_player.domain.shared.types import DiscordSnowflake, HttpUrlStr
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
-    is_solo_in_channel,
     ensure_dj_role,
     ensure_user_in_voice_and_warm,
     get_member,
+    is_solo_in_channel,
     send_ephemeral,
 )
 from discord_music_player.infrastructure.discord.services.embed_builder import (
@@ -57,7 +57,7 @@ class PlaybackCog(BaseCog):
     # Play
     # ─────────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="play", description="Play a song by URL or search query.")
+    @app_commands.command(name="play", description="Play a song — paste a YouTube link or just type a song name.")
     @app_commands.guild_only()
     @app_commands.describe(
         query="YouTube URL or search query",
@@ -376,7 +376,7 @@ class PlaybackCog(BaseCog):
     # Seek
     # ─────────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="seek", description="Jump to a position in the current track.")
+    @app_commands.command(name="seek", description="Jump to a specific time in the current track (e.g. 1:30).")
     @app_commands.guild_only()
     @app_commands.describe(timestamp='Position (e.g. "1:30", "1:30:00", or seconds like "90")')
     async def seek(self, interaction: discord.Interaction, timestamp: str) -> None:
@@ -422,7 +422,7 @@ class PlaybackCog(BaseCog):
     # Play Next
     # ─────────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="playnext", description="Add a track to play next in the queue.")
+    @app_commands.command(name="playnext", description="Add a song that plays right after the current one.")
     @app_commands.guild_only()
     @app_commands.describe(query="YouTube URL or search query")
     async def playnext(self, interaction: discord.Interaction, query: str) -> None:
@@ -632,7 +632,7 @@ class PlaybackCog(BaseCog):
     # Playback Controls
     # ─────────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="stop", description="Stop playback and clear the queue.")
+    @app_commands.command(name="stop", description="Stop the music and clear the entire queue.")
     @app_commands.guild_only()
     async def stop(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
@@ -706,7 +706,7 @@ class PlaybackCog(BaseCog):
     # Leave
     # ─────────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="leave", description="Disconnect from voice channel.")
+    @app_commands.command(name="leave", description="Disconnect the bot from the voice channel.")
     @app_commands.guild_only()
     async def leave(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(

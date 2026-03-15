@@ -61,24 +61,24 @@ class RadioCog(BaseCog):
 
     @app_commands.command(
         name="radio",
-        description="Toggle AI radio — auto-queue similar songs.",
+        description="AI radio — auto-queues similar songs based on what's playing.",
     )
     @app_commands.guild_only()
     @app_commands.describe(
-        query="Optional: song name or URL to seed radio with",
-        action="Action to perform (default: toggle)",
+        action="Turn radio on or off (default: on)",
+        query="Seed with a specific song instead of what's currently playing",
     )
     @app_commands.choices(
         action=[
-            app_commands.Choice(name="Toggle radio on/off", value=RadioAction.TOGGLE),
-            app_commands.Choice(name="Clear AI recommendations from queue", value=RadioAction.CLEAR),
+            app_commands.Choice(name="on", value=RadioAction.ON),
+            app_commands.Choice(name="off", value=RadioAction.OFF),
         ]
     )
     async def radio(
         self,
         interaction: discord.Interaction,
-        query: str | None = None,
         action: app_commands.Choice[str] | None = None,
+        query: str | None = None,
     ) -> None:
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker
@@ -87,8 +87,8 @@ class RadioCog(BaseCog):
 
         assert interaction.guild is not None
 
-        radio_action = RadioAction(action.value) if action else RadioAction.TOGGLE
-        if radio_action is RadioAction.CLEAR:
+        radio_action = RadioAction(action.value) if action else RadioAction.ON
+        if radio_action is RadioAction.OFF:
             await self._handle_clear(interaction)
             return
 

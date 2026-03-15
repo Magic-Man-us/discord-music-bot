@@ -16,7 +16,7 @@ from discord_music_player.infrastructure.discord.guards.voice_guards import (
 
 class SkipCog(BaseCog):
 
-    @app_commands.command(name="skip", description="Vote to skip the current track.")
+    @app_commands.command(name="skip", description="Vote to skip the current track, or force-skip if you're an admin.")
     @app_commands.guild_only()
     @app_commands.describe(force="Force skip (admin only)")
     async def skip(self, interaction: discord.Interaction, force: bool = False) -> None:

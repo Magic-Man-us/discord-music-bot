@@ -68,6 +68,10 @@ def interaction():
     member.voice = MagicMock()
     member.voice.channel = MagicMock()
     member.voice.channel.id = 333
+    member.bot = False
+    other = MagicMock(spec=discord.Member)
+    other.bot = False
+    member.voice.channel.members = [member, other]
     i.user = member
     return i
 
@@ -87,7 +91,7 @@ def _choice(value: str) -> MagicMock:
 async def test_clear_removes_recommendations(cog, interaction, mock_container):
     mock_container.queue_service.clear_recommendations = AsyncMock(return_value=3)
 
-    await cog.radio.callback(cog, interaction, query=None, action=_choice("clear"))
+    await cog.radio.callback(cog, interaction, action=_choice("off"), query=None)
 
     mock_container.radio_service.disable_radio.assert_called_once_with(111)
     mock_container.queue_service.clear_recommendations.assert_awaited_once_with(111)
@@ -100,7 +104,7 @@ async def test_clear_removes_recommendations(cog, interaction, mock_container):
 async def test_clear_zero_recommendations(cog, interaction, mock_container):
     mock_container.queue_service.clear_recommendations = AsyncMock(return_value=0)
 
-    await cog.radio.callback(cog, interaction, query=None, action=_choice("clear"))
+    await cog.radio.callback(cog, interaction, action=_choice("off"), query=None)
 
     msg = interaction.followup.send.call_args[0][0]
     assert "No AI recommendations" in msg
@@ -127,7 +131,7 @@ async def test_toggle_enable_sends_embed(cog, interaction, mock_container):
     queue_info.total_tracks = 2
     mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
-    await cog.radio.callback(cog, interaction, query=None, action=None)
+    await cog.radio.callback(cog, interaction, action=None, query=None)
 
     call_kwargs = interaction.followup.send.call_args[1]
     assert "embed" in call_kwargs
@@ -148,7 +152,7 @@ async def test_toggle_disable_sends_ephemeral(cog, interaction, mock_container):
     result.message = ""
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=result)
 
-    await cog.radio.callback(cog, interaction, query=None, action=None)
+    await cog.radio.callback(cog, interaction, action=None, query=None)
 
     call_kwargs = interaction.followup.send.call_args[1]
     assert call_kwargs["ephemeral"] is True
@@ -161,7 +165,7 @@ async def test_toggle_disable_with_message(cog, interaction, mock_container):
     result.message = "No current track"
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=result)
 
-    await cog.radio.callback(cog, interaction, query=None, action=None)
+    await cog.radio.callback(cog, interaction, action=None, query=None)
 
     msg = interaction.followup.send.call_args[0][0]
     assert "No current track" in msg
@@ -194,7 +198,7 @@ async def test_toggle_with_query_resolves_and_enqueues(cog, interaction, mock_co
     queue_info.total_tracks = 1
     mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
-    await cog.radio.callback(cog, interaction, query="my query", action=None)
+    await cog.radio.callback(cog, interaction, action=None, query="my query")
 
     mock_container.audio_resolver.resolve.assert_awaited_once_with("my query")
     mock_container.queue_service.enqueue.assert_awaited_once()
@@ -206,7 +210,7 @@ async def test_toggle_with_query_resolve_fails(cog, interaction, mock_container)
     """When audio_resolver returns None, sends ephemeral error and stops."""
     mock_container.audio_resolver.resolve = AsyncMock(return_value=None)
 
-    await cog.radio.callback(cog, interaction, query="bad query", action=None)
+    await cog.radio.callback(cog, interaction, action=None, query="bad query")
 
     msg = interaction.followup.send.call_args[0][0]
     assert "Couldn't find" in msg
@@ -225,7 +229,7 @@ async def test_toggle_with_query_enqueue_fails(cog, interaction, mock_container)
     enqueue_result.message = "Already in queue"
     mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
 
-    await cog.radio.callback(cog, interaction, query="dup query", action=None)
+    await cog.radio.callback(cog, interaction, action=None, query="dup query")
 
     msg = interaction.followup.send.call_args[0][0]
     assert "Already in queue" in msg
@@ -256,7 +260,7 @@ async def test_toggle_with_query_disables_existing_radio(cog, interaction, mock_
     queue_info.total_tracks = 1
     mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
-    await cog.radio.callback(cog, interaction, query="new seed", action=None)
+    await cog.radio.callback(cog, interaction, action=None, query="new seed")
 
     mock_container.radio_service.disable_radio.assert_called_once_with(111)
 
@@ -270,7 +274,7 @@ async def test_toggle_with_query_disables_existing_radio(cog, interaction, mock_
 async def test_voice_check_fails_returns_early(cog, interaction, mock_container):
     interaction.user.voice = None
 
-    await cog.radio.callback(cog, interaction, query=None, action=None)
+    await cog.radio.callback(cog, interaction, action=None, query=None)
 
     interaction.response.send_message.assert_called_once()
     interaction.followup.send.assert_not_called()

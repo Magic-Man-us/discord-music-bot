@@ -18,7 +18,7 @@ from discord_music_player.utils.reply import format_duration, truncate
 
 
 class NowPlayingCog(BaseCog):
-    @app_commands.command(name="current", description="Show the current track.")
+    @app_commands.command(name="current", description="Show what's currently playing.")
     async def current(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker
@@ -57,7 +57,7 @@ class NowPlayingCog(BaseCog):
 
     @app_commands.command(
         name="played",
-        description="Show recently played tracks for this server.",
+        description="See the last 10 tracks that were played in this server.",
     )
     async def played(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(

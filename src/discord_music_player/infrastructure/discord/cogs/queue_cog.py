@@ -21,7 +21,7 @@ from discord_music_player.utils.reply import format_duration, truncate
 
 class QueueCog(BaseCog):
 
-    @app_commands.command(name="queue", description="Show the current queue.")
+    @app_commands.command(name="queue", description="See what's playing now and what's coming up next.")
     @app_commands.guild_only()
     @app_commands.describe(page="Page number")
     async def queue(self, interaction: discord.Interaction, page: int = 1) -> None:
@@ -104,7 +104,7 @@ class QueueCog(BaseCog):
             )
 
     @app_commands.command(
-        name="shuffle_history", description="Queue and shuffle all previously played tracks."
+        name="shuffle_history", description="Re-queue everything that's been played before, shuffled."
     )
     @app_commands.guild_only()
     @app_commands.describe(limit="Max number of tracks to fetch (default: 100)")
@@ -154,7 +154,7 @@ class QueueCog(BaseCog):
                 unique.append(track)
         return unique
 
-    @app_commands.command(name="loop", description="Toggle loop mode.")
+    @app_commands.command(name="loop", description="Cycle loop mode: off → single track → whole queue.")
     @app_commands.guild_only()
     async def loop(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
@@ -172,7 +172,7 @@ class QueueCog(BaseCog):
             ephemeral=True,
         )
 
-    @app_commands.command(name="remove", description="Remove a track from the queue.")
+    @app_commands.command(name="remove", description="Remove a specific track from the queue by its position number.")
     @app_commands.guild_only()
     @app_commands.describe(position="Position in queue (1-based)")
     async def remove(self, interaction: discord.Interaction, position: app_commands.Range[int, 1]) -> None:
@@ -197,7 +197,7 @@ class QueueCog(BaseCog):
                 ephemeral=True,
             )
 
-    @app_commands.command(name="move", description="Move a track to a different position in the queue.")
+    @app_commands.command(name="move", description="Rearrange the queue — move a track from one position to another.")
     @app_commands.guild_only()
     @app_commands.describe(
         from_position="Current position (1-based)",
@@ -232,7 +232,7 @@ class QueueCog(BaseCog):
                 ephemeral=True,
             )
 
-    @app_commands.command(name="clear", description="Clear the queue.")
+    @app_commands.command(name="clear", description="Remove all tracks from the queue (keeps the current song playing).")
     @app_commands.guild_only()
     async def clear(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
