@@ -131,7 +131,7 @@ async def test_toggle_enable_sends_embed(cog, interaction, mock_container):
     queue_info.total_tracks = 2
     mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
-    await cog.radio.callback(cog, interaction, action=None, query=None)
+    await cog.radio.callback(cog, interaction, action=None, count=3, query=None)
 
     call_kwargs = interaction.followup.send.call_args[1]
     assert "embed" in call_kwargs
@@ -152,7 +152,7 @@ async def test_toggle_disable_sends_ephemeral(cog, interaction, mock_container):
     result.message = ""
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=result)
 
-    await cog.radio.callback(cog, interaction, action=None, query=None)
+    await cog.radio.callback(cog, interaction, action=None, count=3, query=None)
 
     call_kwargs = interaction.followup.send.call_args[1]
     assert call_kwargs["ephemeral"] is True
@@ -165,7 +165,7 @@ async def test_toggle_disable_with_message(cog, interaction, mock_container):
     result.message = "No current track"
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=result)
 
-    await cog.radio.callback(cog, interaction, action=None, query=None)
+    await cog.radio.callback(cog, interaction, action=None, count=3, query=None)
 
     msg = interaction.followup.send.call_args[0][0]
     assert "No current track" in msg
@@ -198,7 +198,7 @@ async def test_toggle_with_query_resolves_and_enqueues(cog, interaction, mock_co
     queue_info.total_tracks = 1
     mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
-    await cog.radio.callback(cog, interaction, action=None, query="my query")
+    await cog.radio.callback(cog, interaction, action=None, count=3, query="my query")
 
     mock_container.audio_resolver.resolve.assert_awaited_once_with("my query")
     mock_container.queue_service.enqueue.assert_awaited_once()
@@ -210,7 +210,7 @@ async def test_toggle_with_query_resolve_fails(cog, interaction, mock_container)
     """When audio_resolver returns None, sends ephemeral error and stops."""
     mock_container.audio_resolver.resolve = AsyncMock(return_value=None)
 
-    await cog.radio.callback(cog, interaction, action=None, query="bad query")
+    await cog.radio.callback(cog, interaction, action=None, count=3, query="bad query")
 
     msg = interaction.followup.send.call_args[0][0]
     assert "Couldn't find" in msg
@@ -229,7 +229,7 @@ async def test_toggle_with_query_enqueue_fails(cog, interaction, mock_container)
     enqueue_result.message = "Already in queue"
     mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
 
-    await cog.radio.callback(cog, interaction, action=None, query="dup query")
+    await cog.radio.callback(cog, interaction, action=None, count=3, query="dup query")
 
     msg = interaction.followup.send.call_args[0][0]
     assert "Already in queue" in msg
@@ -260,7 +260,7 @@ async def test_toggle_with_query_disables_existing_radio(cog, interaction, mock_
     queue_info.total_tracks = 1
     mock_container.queue_service.get_queue = AsyncMock(return_value=queue_info)
 
-    await cog.radio.callback(cog, interaction, action=None, query="new seed")
+    await cog.radio.callback(cog, interaction, action=None, count=3, query="new seed")
 
     mock_container.radio_service.disable_radio.assert_called_once_with(111)
 
@@ -274,7 +274,7 @@ async def test_toggle_with_query_disables_existing_radio(cog, interaction, mock_
 async def test_voice_check_fails_returns_early(cog, interaction, mock_container):
     interaction.user.voice = None
 
-    await cog.radio.callback(cog, interaction, action=None, query=None)
+    await cog.radio.callback(cog, interaction, action=None, count=3, query=None)
 
     interaction.response.send_message.assert_called_once()
     interaction.followup.send.assert_not_called()

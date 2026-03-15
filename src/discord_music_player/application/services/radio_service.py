@@ -88,6 +88,7 @@ class RadioApplicationService:
         user_id: DiscordSnowflake,
         user_name: NonEmptyStr,
         channel_id: DiscordSnowflake | None = None,
+        count: int | None = None,
     ) -> RadioToggleResult:
         """Toggle radio on/off.
 
@@ -134,9 +135,10 @@ class RadioApplicationService:
                 message="Couldn't find similar tracks.",
             )
 
-        # Split: resolve visible_count immediately, pool the rest
-        visible_recs = recommendations[: self._settings.visible_count]
-        pool_recs = recommendations[self._settings.visible_count :]
+        # Split: resolve count (or visible_count) immediately, pool the rest
+        effective_count = count or self._settings.visible_count
+        visible_recs = recommendations[:effective_count]
+        pool_recs = recommendations[effective_count:]
 
         enqueued = await self._resolve_and_enqueue_all(
             visible_recs,

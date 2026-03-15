@@ -66,6 +66,7 @@ class RadioCog(BaseCog):
     @app_commands.guild_only()
     @app_commands.describe(
         action="Turn radio on or off (default: on)",
+        count="How many songs to queue (skips the selection menu)",
         query="Seed with a specific song instead of what's currently playing",
     )
     @app_commands.choices(
@@ -78,6 +79,7 @@ class RadioCog(BaseCog):
         self,
         interaction: discord.Interaction,
         action: app_commands.Choice[str] | None = None,
+        count: app_commands.Range[int, 1, 10] | None = None,
         query: str | None = None,
     ) -> None:
         if not await ensure_user_in_voice_and_warm(
@@ -92,7 +94,11 @@ class RadioCog(BaseCog):
             await self._handle_clear(interaction)
             return
 
-        await self._handle_toggle(interaction, query)
+        if count is not None:
+            await interaction.response.defer()
+            await self.start_radio(interaction, count=count, query=query)
+        else:
+            await self._show_count_select(interaction, query)
 
     async def _handle_clear(self, interaction: discord.Interaction) -> None:
         """Disable radio and clear AI recommendations from the queue."""
@@ -109,31 +115,53 @@ class RadioCog(BaseCog):
         )
         await interaction.followup.send(msg, ephemeral=True)
 
-    async def _handle_toggle(
+    async def _show_count_select(
         self, interaction: discord.Interaction, query: str | None,
     ) -> None:
-        """Toggle or seed radio, then display the result."""
+        """Show a select menu asking how many songs to queue."""
         assert interaction.guild is not None
-        await interaction.response.defer()
+        from ..views.radio_count_view import RadioCountView
 
+        view = RadioCountView(
+            guild_id=interaction.guild.id,
+            container=self.container,
+            query=query,
+        )
+        msg = await interaction.response.send_message(
+            "How many songs should radio queue?",
+            view=view,
+            ephemeral=True,
+        )
+        if isinstance(msg, discord.InteractionMessage):
+            view.set_message(msg)
+
+    async def start_radio(
+        self,
+        interaction: discord.Interaction,
+        *,
+        count: int,
+        query: str | None = None,
+    ) -> None:
+        """Start radio with a specific count. Called by both /radio and the count select view."""
+        assert interaction.guild is not None
         guild_id = interaction.guild.id
         user = interaction.user
-        radio_service = self.container.radio_service
 
         if query:
             seeded = await self._seed_track(interaction, query)
             if not seeded:
                 return
 
-        result = await radio_service.toggle_radio(
+        result = await self.container.radio_service.toggle_radio(
             guild_id=guild_id,
             user_id=user.id,
             user_name=user.display_name,
             channel_id=interaction.channel_id,
+            count=count,
         )
 
         if not result.enabled:
-            msg = f"Radio disabled. {result.message}" if result.message else "Radio disabled."
+            msg = result.message or "Couldn't enable radio."
             await interaction.followup.send(msg, ephemeral=True)
             return
 

@@ -22,7 +22,6 @@ from discord_music_player.infrastructure.discord.views.download_view import (
 from discord_music_player.utils.reply import truncate
 
 if TYPE_CHECKING:
-    from ....application.services.radio_models import RadioToggleResult
     from ....config.container import Container
     from ....domain.music.entities import Track
 
@@ -168,73 +167,30 @@ class NowPlayingView(BaseInteractiveView):
 
     # ── Radio: seed from current track, show RadioView with rerolls ───
 
-    @discord.ui.button(label="Radio", style=discord.ButtonStyle.secondary, emoji="\U0001F4FB")
+    @discord.ui.button(label="Radio", style=discord.ButtonStyle.secondary)
     async def radio_button(
         self, interaction: discord.Interaction, _button: discord.ui.Button[NowPlayingView]
     ) -> None:
-        lock = self._get_lock(self.guild_id)
+        radio_service = self._container.radio_service
 
-        if lock.locked():
+        if radio_service.is_enabled(self.guild_id):
             await interaction.response.send_message(
-                "A request is already in progress, please wait.", ephemeral=True
+                "Radio is already active. Use `/radio off` to disable it.",
+                ephemeral=True,
             )
             return
 
-        await interaction.response.defer()
+        from ..views.radio_count_view import RadioCountView
 
-        async with lock:
-            try:
-                radio_service = self._container.radio_service
-
-                # If radio is already on, tell the user
-                if radio_service.is_enabled(self.guild_id):
-                    await interaction.followup.send(
-                        "Radio is already active. Use `/radio` to manage it.",
-                        ephemeral=True,
-                    )
-                    return
-
-                user = interaction.user
-                result = await radio_service.toggle_radio(
-                    guild_id=self.guild_id,
-                    user_id=user.id,
-                    user_name=user.display_name,
-                    channel_id=interaction.channel_id,
-                )
-
-                if not result.enabled:
-                    msg = result.message or "Couldn't enable radio."
-                    await interaction.followup.send(msg, ephemeral=True)
-                    return
-
-                await self._send_radio_view(interaction, result)
-
-            except Exception:
-                logger.exception("Error in radio button handler")
-                await interaction.followup.send(
-                    "An error occurred while starting radio. Please try again.",
-                    ephemeral=True,
-                )
-
-    async def _send_radio_view(
-        self, interaction: discord.Interaction, result: RadioToggleResult
-    ) -> None:
-        """Send the RadioView with reroll buttons, same as RadioCog does."""
-        from ..views.radio_view import RadioView, build_up_next_embed
-
-        queue_info = await self._container.queue_service.get_queue(self.guild_id)
-        queue_start = max(0, queue_info.total_tracks - len(result.generated_tracks))
-
-        embed = build_up_next_embed(result.generated_tracks, result.seed_title)
-        view = RadioView(
+        view = RadioCountView(
             guild_id=self.guild_id,
             container=self._container,
-            tracks=result.generated_tracks,
-            seed_title=result.seed_title,
-            queue_start_position=queue_start,
         )
-        msg = await interaction.followup.send(embed=embed, view=view, wait=True)
-        view.set_message(msg)
+        await interaction.response.send_message(
+            "How many songs should radio queue?",
+            view=view,
+            ephemeral=True,
+        )
 
     # ── Shared helpers ─────────────────────────────────────────────────
 
