@@ -53,6 +53,10 @@ class VoteSkipResult(BaseModel):
         votes_current: int = 0,
         votes_needed: int = 0,
     ) -> VoteSkipResult:
+        if not isinstance(result, VoteResult):
+            raise TypeError(
+                f"Expected VoteResult, got {type(result).__name__}: {result!r}"
+            )
         message = result.get_message(VoteType.SKIP, votes_current, votes_needed)
         return cls(
             result=result,

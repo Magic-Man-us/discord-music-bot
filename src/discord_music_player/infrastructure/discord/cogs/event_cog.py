@@ -109,7 +109,7 @@ class EventCog(BaseCog):
             await repo.delete(guild.id)
             self.logger.debug("Cleaned up session for guild %s", guild.id)
         except Exception:
-            pass
+            self.logger.debug("Failed to cleanup session for guild %s", guild.id)
 
     @commands.Cog.listener()
     async def on_guild_update(self, before: discord.Guild, after: discord.Guild) -> None:
