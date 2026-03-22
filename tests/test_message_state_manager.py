@@ -91,15 +91,17 @@ class TestStateManagement:
         state_b = manager.get_state(222)
         assert state_a is not state_b
 
-    def test_reset_removes_guild_state(self, manager: MessageStateManager) -> None:
+    @pytest.mark.asyncio
+    async def test_reset_removes_guild_state(self, manager: MessageStateManager) -> None:
         manager.get_state(GUILD_ID)
-        manager.reset(GUILD_ID)
+        await manager.reset(GUILD_ID)
         # Next access should create a fresh state
         state = manager.get_state(GUILD_ID)
         assert state.now_playing is None
 
-    def test_reset_nonexistent_guild_is_noop(self, manager: MessageStateManager) -> None:
-        manager.reset(999)  # should not raise
+    @pytest.mark.asyncio
+    async def test_reset_nonexistent_guild_is_noop(self, manager: MessageStateManager) -> None:
+        await manager.reset(999)  # should not raise
 
     def test_clear_all_removes_everything(self, manager: MessageStateManager) -> None:
         manager.get_state(111)

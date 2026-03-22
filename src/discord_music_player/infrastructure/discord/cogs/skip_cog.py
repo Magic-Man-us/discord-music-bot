@@ -84,8 +84,11 @@ class SkipCog(BaseCog):
             skipped_track = await self.container.playback_service.skip_track(
                 interaction.guild.id
             )
-            track_title = skipped_track.title if skipped_track else "track"
-            msg = result.format_display(track_title)
+            if skipped_track is None:
+                # Track ended between the vote check and the skip execution.
+                msg = "Nothing is playing."
+            else:
+                msg = result.format_display(skipped_track.title)
         else:
             msg = result.message
 
