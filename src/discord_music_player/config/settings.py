@@ -119,10 +119,10 @@ class AudioSettings(BaseModel):
     ffmpeg_options: dict[str, str] = Field(
         default_factory=lambda: {
             "before_options": (
-                "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
-                " -analyzeduration 0 -probesize 32768 -thread_queue_size 4096"
+                "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 3"
+                " -analyzeduration 0 -probesize 32768 -thread_queue_size 8192"
             ),
-            "options": "-vn -bufsize 64k",
+            "options": "-vn -bufsize 256k",
         }
     )
     ytdlp_format: NonEmptyStr = "bestaudio/best"
