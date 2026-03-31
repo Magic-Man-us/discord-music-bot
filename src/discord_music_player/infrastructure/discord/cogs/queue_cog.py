@@ -143,6 +143,73 @@ class QueueCog(BaseCog):
             ephemeral=True,
         )
 
+    @app_commands.command(
+        name="shuffle_user_history",
+        description="Re-queue a shuffled mix of tracks played by a specific user.",
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        user="The user whose history to shuffle",
+        limit="Max number of tracks to fetch (default: 100)",
+    )
+    async def shuffle_user_history(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member,
+        limit: app_commands.Range[int, 1, 500] = 100,
+    ) -> None:
+        if not await ensure_voice(
+            interaction, self.container.voice_warmup_tracker, self.container.voice_adapter
+        ):
+            return
+
+        assert interaction.guild is not None
+        await interaction.response.defer(ephemeral=True)
+
+        unique_tracks = await self._fetch_unique_user_history(
+            interaction.guild.id, user.id, limit
+        )
+        if not unique_tracks:
+            await interaction.followup.send(
+                f"No tracks found in history for **{user.display_name}**.",
+                ephemeral=True,
+            )
+            return
+
+        import random
+
+        random.shuffle(unique_tracks)
+
+        result = await self.container.queue_service.enqueue_batch(
+            guild_id=interaction.guild.id,
+            tracks=unique_tracks,
+            user_id=interaction.user.id,
+            user_name=interaction.user.display_name,
+        )
+
+        if result.should_start:
+            await self.container.playback_service.start_playback(interaction.guild.id)
+
+        await interaction.followup.send(
+            f"Shuffled and queued **{result.enqueued}** tracks from **{user.display_name}**'s history.",
+            ephemeral=True,
+        )
+
+    async def _fetch_unique_user_history(
+        self, guild_id: int, user_id: int, limit: int
+    ) -> list[Track]:
+        """Fetch a user's recent tracks and deduplicate by track ID."""
+        tracks = await self.container.history_repository.get_recent_by_user(
+            guild_id, user_id, limit=limit
+        )
+        seen: set[str] = set()
+        unique: list[Track] = []
+        for track in tracks:
+            if track.id.value not in seen:
+                seen.add(track.id.value)
+                unique.append(track)
+        return unique
+
     async def _fetch_unique_history(self, guild_id: int, limit: int) -> list[Track]:
         """Fetch recent tracks and deduplicate by track ID."""
         tracks = await self.container.history_repository.get_recent(guild_id, limit=limit)

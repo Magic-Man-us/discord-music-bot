@@ -174,6 +174,13 @@ class TrackHistoryRepository(ABC):
         ...
 
     @abstractmethod
+    async def get_recent_by_user(
+        self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake, limit: PositiveInt = 100
+    ) -> list[Track]:
+        """Get recently played tracks requested by a specific user, most recent first."""
+        ...
+
+    @abstractmethod
     async def get_user_tracks_for_genre(
         self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake
     ) -> list[GenreTrackInfo]:
