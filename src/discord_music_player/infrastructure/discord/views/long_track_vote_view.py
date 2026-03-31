@@ -106,7 +106,7 @@ class LongTrackVoteView(BaseInteractiveView):
 
         result = await queue_service.enqueue(
             guild_id=self._guild_id,
-            track=self._track,
+            track=self._track.model_copy(update={"is_direct_request": True}),
             user_id=self._requester_id,
             user_name=self._requester_name,
         )

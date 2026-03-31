@@ -230,7 +230,7 @@ class PlaybackCog(BaseCog):
 
             result = await self.container.queue_service.enqueue(
                 guild_id=interaction.guild.id,
-                track=track,
+                track=track.model_copy(update={"is_direct_request": True}),
                 user_id=interaction.user.id,
                 user_name=interaction.user.display_name,
             )
@@ -246,6 +246,7 @@ class PlaybackCog(BaseCog):
             )
             if result.should_start:
                 self.logger.info("Calling start_playback for guild %s", interaction.guild.id)
+                self.container.message_state_manager.reserve_now_playing(interaction.guild.id)
                 await self.container.playback_service.start_playback(
                     interaction.guild.id, start_seconds=start_seconds
                 )
@@ -446,7 +447,7 @@ class PlaybackCog(BaseCog):
 
             result = await self.container.queue_service.enqueue_next(
                 guild_id=interaction.guild.id,
-                track=track,
+                track=track.model_copy(update={"is_direct_request": True}),
                 user_id=interaction.user.id,
                 user_name=interaction.user.display_name,
             )
@@ -503,8 +504,9 @@ class PlaybackCog(BaseCog):
         msm = self.container.message_state_manager
         state = msm.get_state(guild_id)
 
-        # If there's already a tracked now-playing message, promote_next_track handles it
-        if state.now_playing is not None:
+        # If there's already a tracked now-playing message (or one is about to be sent
+        # by the /play command), skip to avoid duplicate embeds
+        if state.now_playing is not None or state.now_playing_reserved:
             return
 
         # Use event payload directly to avoid stale DB reads under rapid track changes

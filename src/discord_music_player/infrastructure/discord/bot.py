@@ -82,12 +82,25 @@ class MusicBot(commands.Bot):
             session_repo = self.container.session_repository
             sessions = await session_repo.get_all_active()
 
+            logger.info(
+                "Session recovery: found %d active session(s)", len(sessions),
+            )
+
             resumed_count = 0
             reset_count = 0
 
             for session in sessions:
+                logger.info(
+                    "Session %s: state=%s has_tracks=%s current=%s queue_len=%d",
+                    session.guild_id,
+                    session.state.value,
+                    session.has_tracks,
+                    session.current_track.title if session.current_track else None,
+                    len(session.queue),
+                )
                 # Skip sessions that are already idle with no tracks
                 if session.state == PlaybackState.IDLE and not session.has_tracks:
+                    logger.info("Skipping idle session with no tracks for guild %s", session.guild_id)
                     continue
 
                 guild = self.get_guild(session.guild_id)
@@ -117,6 +130,9 @@ class MusicBot(commands.Bot):
     async def _try_resume_session(self, session: GuildPlaybackSession, guild: discord.Guild) -> bool:
         """Attempt to resume playback for a single session. Returns True if successful."""
         try:
+            # Clean up any stale now-playing messages from before the restart
+            await self.container.message_state_manager.reset(session.guild_id)
+
             # Skip if no tracks to play
             if not session.has_tracks:
                 logger.debug("Session %s has no tracks, skipping resume", session.guild_id)
@@ -149,12 +165,37 @@ class MusicBot(commands.Bot):
                 )
                 return False
 
+            # Capture elapsed time BEFORE resetting state (uses playback_started_at)
+            from ...domain.music.wrappers import StartSeconds
+            from ...utils.reply import format_duration
+
+            elapsed = session.elapsed_seconds
+            resume_start = StartSeconds.from_optional(elapsed or None)
+
+            # Reset session state to idle so start_playback will actually
+            # begin audio when the user hits Resume.  Also clear stale stream
+            # URLs (YouTube tokens expire) so they get re-resolved.
+            from ...domain.music.enums import PlaybackState
+
+            session.state = PlaybackState.IDLE
+            session.playback_started_at = None
+            if session.current_track is not None:
+                session.current_track = session.current_track.model_copy(
+                    update={"stream_url": None},
+                )
+            for i, track in enumerate(session.queue):
+                session.queue[i] = track.model_copy(update={"stream_url": None})
+            await self.container.session_repository.save(session)
+
             # Determine what track to show in the prompt
             track_title = "Unknown"
             if session.current_track is not None:
                 track_title = session.current_track.title
             elif session.queue:
                 track_title = session.queue[0].title
+            timestamp_label = ""
+            if resume_start is not None:
+                timestamp_label = f" at {format_duration(resume_start.value)}"
 
             # Send resume prompt to channel
             from .views.resume_playback_view import ResumePlaybackView
@@ -165,10 +206,11 @@ class MusicBot(commands.Bot):
                 channel_id=text_channel.id,
                 playback_service=playback_service,
                 track_title=track_title,
+                resume_start_seconds=resume_start,
             )
 
             message = await text_channel.send(
-                f"I was playing **{track_title}** before restarting. Resume playback?",
+                f"I was playing **{track_title}**{timestamp_label} before restarting. Resume playback?",
                 view=view,
             )
             view.set_message(message)
@@ -284,16 +326,17 @@ class MusicBot(commands.Bot):
             for guild_id in test_guilds:
                 guild = discord.Object(id=guild_id)
                 try:
+                    self.tree.copy_global_to(guild=guild)
                     synced = await self.tree.sync(guild=guild)
                     logger.info("Synced %s commands to guild %s", len(synced), guild_id)
                 except Exception as e:
                     logger.warning("Failed to sync to guild %s: %s", guild_id, e)
-
-        try:
-            synced = await self.tree.sync()
-            logger.info("Synced %s commands globally", len(synced))
-        except Exception as e:
-            logger.warning("Failed to sync commands globally: %s", e)
+        else:
+            try:
+                synced = await self.tree.sync()
+                logger.info("Synced %s commands globally", len(synced))
+            except Exception as e:
+                logger.warning("Failed to sync commands globally: %s", e)
 
     async def on_ready(self) -> None:
         logger.info(
@@ -319,6 +362,13 @@ class MusicBot(commands.Bot):
             logger.info("Cleanup job stopped")
         except Exception as e:
             logger.warning("Error stopping cleanup job: %s", e)
+
+        # Disable the track-end callback before disconnecting so that the
+        # normal "track ended → advance queue → clear current track" flow
+        # does NOT run.  This preserves the session state (current track +
+        # queue) in the database so it can be resumed on next startup.
+        voice_adapter = self.container.voice_adapter
+        voice_adapter.set_on_track_end_callback(None)
 
         for vc in self.voice_clients:
             try:

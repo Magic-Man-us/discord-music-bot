@@ -190,7 +190,7 @@ class RadioCog(BaseCog):
 
         result = await self.container.queue_service.enqueue(
             guild_id=guild_id,
-            track=track,
+            track=track.model_copy(update={"is_direct_request": True}),
             user_id=interaction.user.id,
             user_name=interaction.user.display_name,
         )

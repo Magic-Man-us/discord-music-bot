@@ -120,6 +120,7 @@ EXPECTED_SCHEMA = ExpectedSchema(
     tables={
         "guild_sessions": [
             "guild_id", "state", "loop_mode", "created_at", "last_activity",
+            "playback_started_at",
         ],
         _TABLE_QUEUE_TRACKS: [
             "id", "guild_id", "track_id", "title", "webpage_url", "stream_url",
@@ -283,6 +284,7 @@ class Database:
 
         # Migration: add columns that may not exist in older schemas
         _migration_columns = [
+            ("guild_sessions", "playback_started_at", _SQLiteType.TEXT),
             (_TABLE_QUEUE_TRACKS, "artist", _SQLiteType.TEXT),
             (_TABLE_QUEUE_TRACKS, "uploader", _SQLiteType.TEXT),
             (_TABLE_QUEUE_TRACKS, "like_count", _SQLiteType.INTEGER),

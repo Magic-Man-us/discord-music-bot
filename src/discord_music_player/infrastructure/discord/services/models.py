@@ -56,6 +56,7 @@ class GuildMessageState(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     now_playing: TrackedMessage | None = None
+    now_playing_reserved: bool = False
     queued: deque[TrackedMessage] = Field(default_factory=deque)
 
     def pop_matching_queued(self, track: Track) -> TrackedMessage | None:

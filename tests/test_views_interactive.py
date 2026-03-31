@@ -37,7 +37,7 @@ class TestResumePlaybackView:
 
         await view.resume_button.callback(interaction)
 
-        ps.start_playback.assert_awaited_once_with(1)
+        ps.start_playback.assert_awaited_once_with(1, start_seconds=None)
         call_kwargs = interaction.response.edit_message.call_args[1]
         assert "Resumed playback: **Test Song**" in call_kwargs["content"]
 

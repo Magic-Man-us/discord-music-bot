@@ -43,6 +43,11 @@ class MessageStateManager:
 
     # ── State mutation ─────────────────────────────────────────────
 
+    def reserve_now_playing(self, guild_id: DiscordSnowflake) -> None:
+        """Mark now-playing as pending so the auto-poster doesn't duplicate it."""
+        state = self.get_state(guild_id)
+        state.now_playing_reserved = True
+
     def track_now_playing(
         self,
         *,
@@ -52,6 +57,7 @@ class MessageStateManager:
         message_id: DiscordSnowflake,
     ) -> None:
         state = self.get_state(guild_id)
+        state.now_playing_reserved = False
         state.now_playing = TrackedMessage.for_track(
             track,
             channel_id=channel_id,

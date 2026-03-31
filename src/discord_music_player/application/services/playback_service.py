@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from ...domain.music.entities import GuildPlaybackSession, Track
 from ...domain.music.enums import PlaybackState
+from ...domain.shared.datetime_utils import utcnow
 from ...domain.shared.events import QueueExhausted, TrackStartedPlaying, get_event_bus
 from ...domain.shared.types import DiscordSnowflake
 
@@ -203,7 +204,8 @@ class PlaybackApplicationService:
                 current_track=track,
                 state=PlaybackState.PLAYING,
             )
-            await self._history_repo.record_play(guild_id=guild_id, track=track)
+            if track.is_direct_request:
+                await self._history_repo.record_play(guild_id=guild_id, track=track)
             logger.info("Started playing: %s in guild %s", track.title, guild_id)
 
             await get_event_bus().publish(
@@ -445,6 +447,13 @@ class PlaybackApplicationService:
                     "Skipping invalid transition %s -> %s for guild %s",
                     session.state, state, guild_id,
                 )
+
+        # Track when playback started so we can resume from the right position
+        if state == PlaybackState.PLAYING:
+            session.playback_started_at = utcnow()
+        elif state == PlaybackState.IDLE:
+            session.playback_started_at = None
+
         session.touch()
         await self._session_repo.save(session)
 

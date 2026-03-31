@@ -293,7 +293,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
     def set_on_track_end_callback(
         self,
-        callback: Callable[[int], Awaitable[None]],
+        callback: Callable[[int], Awaitable[None]] | None,
     ) -> None:
         self._on_track_end = callback
 

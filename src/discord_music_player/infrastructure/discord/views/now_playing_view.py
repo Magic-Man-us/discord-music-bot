@@ -121,7 +121,7 @@ class NowPlayingView(BaseInteractiveView):
                     )
                     return
 
-                track = track.model_copy(update={"is_from_recommendation": True})
+                track = track.model_copy(update={"is_from_recommendation": True, "is_direct_request": True})
 
                 user = interaction.user
                 result = await self._container.queue_service.enqueue_next(

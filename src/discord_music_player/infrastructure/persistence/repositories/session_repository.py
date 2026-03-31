@@ -28,14 +28,17 @@ class _SessionMetadata(BaseModel):
     loop_mode: LoopMode
     created_at: UtcDatetimeField
     last_activity: UtcDatetimeField
+    playback_started_at: UtcDatetimeField | None = None
 
     @staticmethod
     def from_row(row: dict[str, Any]) -> _SessionMetadata:
+        raw_started = row.get("playback_started_at")
         return _SessionMetadata(
             state=PlaybackState(row["state"]),
             loop_mode=LoopMode(row["loop_mode"]),
             created_at=UtcDateTime.from_iso(row["created_at"]).dt,
             last_activity=UtcDateTime.from_iso(row["last_activity"]).dt,
+            playback_started_at=UtcDateTime.from_iso(raw_started).dt if raw_started else None,
         )
 
 
@@ -82,14 +85,20 @@ class SQLiteSessionRepository(SessionRepository):
 
     async def save(self, session: GuildPlaybackSession) -> None:
         async with self._db.transaction() as conn:
+            started_at_iso = (
+                UtcDateTime(session.playback_started_at).iso
+                if session.playback_started_at is not None
+                else None
+            )
             await conn.execute(
                 """
-                INSERT INTO guild_sessions (guild_id, state, loop_mode, created_at, last_activity)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO guild_sessions (guild_id, state, loop_mode, created_at, last_activity, playback_started_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guild_id) DO UPDATE SET
                     state = excluded.state,
                     loop_mode = excluded.loop_mode,
-                    last_activity = excluded.last_activity
+                    last_activity = excluded.last_activity,
+                    playback_started_at = excluded.playback_started_at
                 """,
                 (
                     session.guild_id,
@@ -97,6 +106,7 @@ class SQLiteSessionRepository(SessionRepository):
                     session.loop_mode.value,
                     UtcDateTime(session.created_at).iso,
                     UtcDateTime(session.last_activity).iso,
+                    started_at_iso,
                 ),
             )
 

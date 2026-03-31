@@ -121,6 +121,14 @@ class PlaylistView(BaseInteractiveView):
         all_indices = list(range(len(self._entries)))
         await self._enqueue_tracks(interaction, all_indices)
 
+    @discord.ui.button(label="Shuffle All", style=discord.ButtonStyle.primary, row=1)
+    async def shuffle_all_button(self, interaction: discord.Interaction, _button: discord.ui.Button[PlaylistView]) -> None:
+        import random
+
+        all_indices = list(range(len(self._entries)))
+        random.shuffle(all_indices)
+        await self._enqueue_tracks(interaction, all_indices)
+
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, row=1)
     async def cancel_button(self, interaction: discord.Interaction, _button: discord.ui.Button[PlaylistView]) -> None:
         if not self._finish_view():

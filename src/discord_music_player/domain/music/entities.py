@@ -57,6 +57,7 @@ class Track(BaseModel):
     requested_by_name: NonEmptyStr | None = None
     requested_at: UtcDatetimeField | None = None
     is_from_recommendation: bool = False
+    is_direct_request: bool = False
 
     @field_validator("id", mode="before")
     @classmethod
@@ -128,6 +129,15 @@ class GuildPlaybackSession(BaseModel):
     loop_mode: LoopMode = LoopMode.OFF
     created_at: UtcDatetimeField = Field(default_factory=utcnow)
     last_activity: UtcDatetimeField = Field(default_factory=utcnow)
+    playback_started_at: UtcDatetimeField | None = None
+
+    @property
+    def elapsed_seconds(self) -> int:
+        """Seconds elapsed since playback started, or 0 if not playing."""
+        if self.playback_started_at is None:
+            return 0
+        return max(0, int((utcnow() - self.playback_started_at).total_seconds()))
+
     @property
     def queue_length(self) -> int:
         return len(self.queue)
