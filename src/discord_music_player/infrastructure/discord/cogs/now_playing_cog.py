@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import discord
 from discord import app_commands
 
@@ -79,6 +81,58 @@ class NowPlayingCog(BaseCog):
         lines = [self._format_history_line(i, t) for i, t in enumerate(tracks, start=1)]
         embed = discord.Embed(
             title="Recently Played",
+            description="\n".join(lines),
+            color=discord.Color.blurple(),
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(
+        name="user_history",
+        description="See tracks played by a specific user in this server.",
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        user="The user whose history to view",
+        page="Page number",
+    )
+    async def user_history(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member,
+        page: int = 1,
+    ) -> None:
+        if not await ensure_user_in_voice_and_warm(
+            interaction, self.container.voice_warmup_tracker
+        ):
+            return
+
+        if not interaction.guild:
+            return
+
+        history_repo = self.container.history_repository
+        per_page = UIConstants.QUEUE_PER_PAGE
+        # Fetch enough to know total count for pagination
+        all_tracks = await history_repo.get_recent_by_user(
+            interaction.guild.id, user.id, limit=500
+        )
+        if not all_tracks:
+            await send_ephemeral(
+                interaction,
+                f"No tracks found in history for **{user.display_name}**.",
+            )
+            return
+
+        total_pages = max(1, math.ceil(len(all_tracks) / per_page))
+        page = max(1, min(page, total_pages))
+        start_idx = (page - 1) * per_page
+        page_tracks = all_tracks[start_idx : start_idx + per_page]
+
+        lines = [
+            self._format_history_line(i, t)
+            for i, t in enumerate(page_tracks, start=start_idx + 1)
+        ]
+        embed = discord.Embed(
+            title=f"{user.display_name}'s History ({len(all_tracks)} tracks) — Page {page}/{total_pages}",
             description="\n".join(lines),
             color=discord.Color.blurple(),
         )
