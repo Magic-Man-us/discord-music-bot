@@ -191,8 +191,11 @@ class TestRadioToggle:
         resolved = _make_track(title="Resolved", track_id="res1")
 
         svc, _ = _make_service(
-            ai_available=True, recommendations=recs,
-            resolve_returns=resolved, enqueue_success=True, session=session,
+            ai_available=True,
+            recommendations=recs,
+            resolve_returns=resolved,
+            enqueue_success=True,
+            session=session,
         )
 
         await svc.toggle_radio(guild_id=1, user_id=100, user_name="User", channel_id=555)
@@ -213,8 +216,11 @@ class TestRadioDisable:
         resolved = _make_track(title="Similar", track_id="res1")
 
         svc, _ = _make_service(
-            ai_available=True, recommendations=recs,
-            resolve_returns=resolved, enqueue_success=True, session=session,
+            ai_available=True,
+            recommendations=recs,
+            resolve_returns=resolved,
+            enqueue_success=True,
+            session=session,
         )
 
         await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
@@ -241,8 +247,11 @@ class TestReplenishFromPool:
         resolved = _make_track(title="Resolved", track_id="res1")
 
         svc, mocks = _make_service(
-            ai_available=True, recommendations=recs,
-            resolve_returns=resolved, enqueue_success=True, session=session,
+            ai_available=True,
+            recommendations=recs,
+            resolve_returns=resolved,
+            enqueue_success=True,
+            session=session,
             settings=RadioSettings(batch_size=5, visible_count=2),
         )
 
@@ -270,8 +279,11 @@ class TestReplenishFromPool:
         resolved = _make_track(title="Resolved", track_id="res1")
 
         svc, _ = _make_service(
-            ai_available=True, recommendations=recs,
-            resolve_returns=resolved, enqueue_success=True, session=session,
+            ai_available=True,
+            recommendations=recs,
+            resolve_returns=resolved,
+            enqueue_success=True,
+            session=session,
             settings=RadioSettings(batch_size=3, visible_count=3),
         )
 
@@ -305,8 +317,11 @@ class TestContinueRadio:
         resolved = _make_track(title="Resolved", track_id="res1")
 
         svc, mocks = _make_service(
-            ai_available=True, recommendations=initial_recs,
-            resolve_returns=resolved, enqueue_success=True, session=session,
+            ai_available=True,
+            recommendations=initial_recs,
+            resolve_returns=resolved,
+            enqueue_success=True,
+            session=session,
         )
 
         await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
@@ -352,9 +367,12 @@ class TestRadioRefill:
         settings = RadioSettings(batch_size=3, visible_count=3, max_tracks_per_session=5)
 
         svc, _ = _make_service(
-            ai_available=True, recommendations=recs,
-            resolve_returns=resolved, enqueue_success=True,
-            session=session, settings=settings,
+            ai_available=True,
+            recommendations=recs,
+            resolve_returns=resolved,
+            enqueue_success=True,
+            session=session,
+            settings=settings,
         )
 
         await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
@@ -377,8 +395,10 @@ class TestRadioRefill:
         resolved = _make_track(title="Resolved", track_id="res1")
 
         svc, mocks = _make_service(
-            ai_available=True, recommendations=recs,
-            resolve_returns=resolved, enqueue_success=True,
+            ai_available=True,
+            recommendations=recs,
+            resolve_returns=resolved,
+            enqueue_success=True,
             session=session,
             settings=RadioSettings(batch_size=6, visible_count=3),
         )
@@ -434,9 +454,7 @@ class TestRadioReroll:
         empty_session = _make_session(current_track=track, queue=[])
         mocks["session_repo"].get.return_value = empty_session
 
-        result = await svc.reroll_track(
-            guild_id=1, queue_position=0, user_id=100, user_name="User"
-        )
+        result = await svc.reroll_track(guild_id=1, queue_position=0, user_id=100, user_name="User")
 
         assert result is not None
         assert result.title == "New Rec"
@@ -445,9 +463,7 @@ class TestRadioReroll:
     @pytest.mark.asyncio
     async def test_reroll_when_not_enabled(self):
         svc, _ = _make_service()
-        result = await svc.reroll_track(
-            guild_id=1, queue_position=0, user_id=100, user_name="User"
-        )
+        result = await svc.reroll_track(guild_id=1, queue_position=0, user_id=100, user_name="User")
         assert result is None
 
 
@@ -533,7 +549,9 @@ class TestRadioAutoRefill:
         )
         subscriber.start()
 
-        event = QueueExhausted(guild_id=1, last_track_id=TrackId(value="abc"), last_track_title="Test")
+        event = QueueExhausted(
+            guild_id=1, last_track_id=TrackId(value="abc"), last_track_title="Test"
+        )
         await get_event_bus().publish(event)
 
         radio_service.refill_queue.assert_not_awaited()

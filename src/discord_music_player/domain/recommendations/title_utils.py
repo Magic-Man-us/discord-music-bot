@@ -20,21 +20,24 @@ _TITLE_CLEANUP_PATTERNS: Final[list[re.Pattern[str]]] = [
 ]
 
 _ARTIST_BY_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"\s+by\s+(.+?)(?:\s*[\[\(]|$)", re.IGNORECASE,
+    r"\s+by\s+(.+?)(?:\s*[\[\(]|$)",
+    re.IGNORECASE,
 )
 
-_COMMON_NON_ARTIST_PREFIXES: Final[frozenset[str]] = frozenset({
-    "official",
-    "vevo",
-    "music",
-    "audio",
-    "video",
-    "topic",
-    "lyrics",
-    "lyric",
-    "hd",
-    "hq",
-})
+_COMMON_NON_ARTIST_PREFIXES: Final[frozenset[str]] = frozenset(
+    {
+        "official",
+        "vevo",
+        "music",
+        "audio",
+        "video",
+        "topic",
+        "lyrics",
+        "lyric",
+        "hd",
+        "hq",
+    }
+)
 
 _ARTIST_DASH_SEPARATOR: Final[str] = " - "
 

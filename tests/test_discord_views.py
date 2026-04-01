@@ -215,5 +215,3 @@ class TestDownloadView:
             if isinstance(child, discord.ui.Button):
                 assert child.label is not None
                 assert len(child.label) > 0
-
-

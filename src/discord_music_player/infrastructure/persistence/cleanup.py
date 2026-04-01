@@ -76,7 +76,9 @@ class CleanupJob:
             except asyncio.CancelledError:
                 break
 
-    async def _run_one(self, label: str, stats: CleanupStats, field: str, coro: Awaitable[int]) -> None:
+    async def _run_one(
+        self, label: str, stats: CleanupStats, field: str, coro: Awaitable[int]
+    ) -> None:
         """Execute a single cleanup operation, logging failures without propagating."""
         try:
             setattr(stats, field, await coro)
@@ -90,10 +92,16 @@ class CleanupJob:
         history_cutoff = utcnow() - timedelta(days=self._settings.history_retention_days)
 
         stats = CleanupStats()
-        await self._run_one("sessions", stats, "sessions_cleaned", self._session_repo.cleanup_stale(stale_cutoff))
-        await self._run_one("history", stats, "history_cleaned", self._history_repo.cleanup_old(history_cutoff))
+        await self._run_one(
+            "sessions", stats, "sessions_cleaned", self._session_repo.cleanup_stale(stale_cutoff)
+        )
+        await self._run_one(
+            "history", stats, "history_cleaned", self._history_repo.cleanup_old(history_cutoff)
+        )
         await self._run_one("cache", stats, "cache_cleaned", self._cache_repo.cleanup_expired())
-        await self._run_one("vote sessions", stats, "votes_cleaned", self._vote_repo.cleanup_expired())
+        await self._run_one(
+            "vote sessions", stats, "votes_cleaned", self._vote_repo.cleanup_expired()
+        )
 
         if stats.total_cleaned > 0:
             logger.info(

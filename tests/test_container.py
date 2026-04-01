@@ -99,7 +99,6 @@ class TestContainerInitialization:
         assert container._auto_skip_on_requester_leave is None
 
 
-
 # =============================================================================
 # Bot Instance Management Tests
 # =============================================================================
@@ -331,10 +330,9 @@ class TestAIClient:
             assert client1 is client2
             MockClient.assert_called_once()
 
-
-# =============================================================================
-# Domain Service Tests
-# =============================================================================
+        # =============================================================================
+        # Domain Service Tests
+        # =============================================================================
         """Should create service with correct dependencies."""
         container.set_bot(mock_bot)
         with patch(
@@ -387,10 +385,9 @@ class TestQueueService:
             assert service1 is service2
             MockService.assert_called_once()
 
-
-# =============================================================================
-# Command Handler Tests
-# =============================================================================
+        # =============================================================================
+        # Command Handler Tests
+        # =============================================================================
         with patch(
             "discord_music_player.application.commands.vote_skip.VoteSkipHandler"
         ) as MockHandler:
@@ -413,10 +410,9 @@ class TestQueueService:
             assert handler1 is handler2
             MockHandler.assert_called_once()
 
-
-# =============================================================================
-# Query Handler Tests
-# =============================================================================
+    # =============================================================================
+    # Query Handler Tests
+    # =============================================================================
 
     def test_lazy_initialization(self, container):
         """Should create tracker with warmup_seconds=60."""

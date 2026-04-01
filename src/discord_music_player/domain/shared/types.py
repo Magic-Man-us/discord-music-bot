@@ -22,6 +22,7 @@ T = TypeVar("T")
 
 # ── Generic single-field wrapper ───────────────────────────────────
 
+
 class ValueWrapper(BaseModel, Generic[T]):
     """Generic base for single-field frozen value objects.
 
@@ -46,6 +47,7 @@ class ValueWrapper(BaseModel, Generic[T]):
         if isinstance(other, type(self)):
             return self.value == other.value
         return NotImplemented
+
 
 # ── Numeric constraints ─────────────────────────────────────────────
 
@@ -139,6 +141,7 @@ RadioMaxTracks = Annotated[int, Field(gt=0, le=200)]
 
 # ── Datetime constraints ────────────────────────────────────────────
 
+
 def _ensure_utc(v: datetime) -> datetime:
     """Validate that a datetime is timezone-aware and normalise to UTC."""
     if v.tzinfo is None:
@@ -161,6 +164,7 @@ ChannelIdField = DiscordSnowflake
 
 # ── Genre classification types ─────────────────────────────────────
 
+
 class TrackForClassification(BaseModel):
     """A track to be classified by the genre classifier."""
 
@@ -168,6 +172,7 @@ class TrackForClassification(BaseModel):
 
     track_id: NonEmptyStr
     description: str | None = None
+
 
 TrackGenreMap = dict[NonEmptyStr, NonEmptyStr]
 """Mapping of track_id → genre name, as returned by the AI classifier and stored in the DB."""

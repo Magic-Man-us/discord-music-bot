@@ -118,7 +118,6 @@ def auto_dj(
 
 
 class TestLifecycle:
-
     def test_start_subscribes_to_events(self, auto_dj: AutoDJ) -> None:
         bus = get_event_bus()
         auto_dj.start()
@@ -167,7 +166,6 @@ class TestLifecycle:
 
 
 class TestOnQueueExhausted:
-
     @pytest.mark.asyncio
     async def test_schedules_timer_on_queue_exhausted(self, auto_dj: AutoDJ) -> None:
         event = QueueExhausted(guild_id=GUILD_ID)
@@ -194,11 +192,12 @@ class TestOnQueueExhausted:
     async def test_skips_if_delay_is_zero(self, auto_dj: AutoDJ) -> None:
         event = QueueExhausted(guild_id=GUILD_ID)
 
-        with patch(
-            "discord_music_player.application.services.auto_dj.TimeConstants"
-        ) as mock_tc, patch(
-            "discord_music_player.application.services.auto_dj.asyncio.create_task"
-        ) as mock_create_task:
+        with (
+            patch("discord_music_player.application.services.auto_dj.TimeConstants") as mock_tc,
+            patch(
+                "discord_music_player.application.services.auto_dj.asyncio.create_task"
+            ) as mock_create_task,
+        ):
             mock_tc.AUTO_DJ_DELAY_SECONDS = 0
             await auto_dj._on_queue_exhausted(event)
 
@@ -228,7 +227,6 @@ class TestOnQueueExhausted:
 
 
 class TestOnTrackStarted:
-
     @pytest.mark.asyncio
     async def test_cancels_pending_timer(self, auto_dj: AutoDJ) -> None:
         auto_dj.start()
@@ -260,7 +258,6 @@ class TestOnTrackStarted:
 
 
 class TestDelayedActivate:
-
     @pytest.mark.asyncio
     async def test_activates_radio_and_starts_playback(
         self,
@@ -324,7 +321,6 @@ class TestDelayedActivate:
 
 
 class TestDelayedActivateGuards:
-
     @pytest.mark.asyncio
     async def test_aborts_if_radio_enabled_after_delay(
         self, auto_dj: AutoDJ, radio_service: MagicMock
@@ -401,15 +397,15 @@ class TestDelayedActivateGuards:
         radio_service.toggle_radio.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_returns_on_cancellation(
-        self, auto_dj: AutoDJ, radio_service: MagicMock
-    ) -> None:
+    async def test_returns_on_cancellation(self, auto_dj: AutoDJ, radio_service: MagicMock) -> None:
         """Simulates the asyncio.sleep being cancelled mid-wait."""
 
         async def _cancelled_sleep(_: int) -> None:
             raise asyncio.CancelledError
 
-        with patch("discord_music_player.application.services.auto_dj.asyncio.sleep", _cancelled_sleep):
+        with patch(
+            "discord_music_player.application.services.auto_dj.asyncio.sleep", _cancelled_sleep
+        ):
             await auto_dj._delayed_activate(GUILD_ID, delay=60)
 
         radio_service.toggle_radio.assert_not_awaited()
@@ -421,7 +417,6 @@ class TestDelayedActivateGuards:
 
 
 class TestDelayedActivateFailures:
-
     @pytest.mark.asyncio
     async def test_does_not_start_playback_when_toggle_fails(
         self, auto_dj: AutoDJ, radio_service: MagicMock, playback_service: MagicMock
@@ -472,7 +467,6 @@ class TestDelayedActivateFailures:
 
 
 class TestMultiGuild:
-
     @pytest.mark.asyncio
     async def test_separate_timers_per_guild(self, auto_dj: AutoDJ) -> None:
         auto_dj.start()

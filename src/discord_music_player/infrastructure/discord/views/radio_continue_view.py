@@ -32,7 +32,6 @@ def build_continue_embed(tracks_consumed: int) -> discord.Embed:
 
 
 class RadioContinueView(BaseInteractiveView):
-
     def __init__(
         self,
         *,
@@ -48,7 +47,9 @@ class RadioContinueView(BaseInteractiveView):
 
     @discord.ui.button(label="Continue", style=discord.ButtonStyle.success)
     async def continue_button(
-        self, interaction: discord.Interaction, _button: discord.ui.Button[RadioContinueView],
+        self,
+        interaction: discord.Interaction,
+        _button: discord.ui.Button[RadioContinueView],
     ) -> None:
         if not self._finish_view():
             return
@@ -92,7 +93,9 @@ class RadioContinueView(BaseInteractiveView):
 
     @discord.ui.button(label="Stop Radio", style=discord.ButtonStyle.danger)
     async def stop_button(
-        self, interaction: discord.Interaction, _button: discord.ui.Button[RadioContinueView],
+        self,
+        interaction: discord.Interaction,
+        _button: discord.ui.Button[RadioContinueView],
     ) -> None:
         if not self._finish_view():
             return

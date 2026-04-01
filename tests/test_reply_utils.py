@@ -3,15 +3,12 @@ format_duration, and truncate."""
 
 from __future__ import annotations
 
-import pytest
-
 from discord_music_player.utils.reply import (
     extract_youtube_timestamp,
     format_duration,
     parse_timestamp,
     truncate,
 )
-
 
 # =============================================================================
 # parse_timestamp

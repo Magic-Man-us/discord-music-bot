@@ -25,7 +25,9 @@ from discord_music_player.infrastructure.ai.models import (
     AIUsageStats,
 )
 
-SYSTEM_PROMPT: Final[str] = """You are an expert music recommender specializing in finding highly similar tracks.
+SYSTEM_PROMPT: Final[
+    str
+] = """You are an expert music recommender specializing in finding highly similar tracks.
 
 Your goal: Recommend songs that share MULTIPLE characteristics with the base track:
 - Same or very similar genre
@@ -85,9 +87,7 @@ class AIRecommendationClient(AIClient):
         title = request.base_track_title.strip().lower()
         artist = (request.base_track_artist or "").strip().lower()
         excludes = ",".join(sorted(request.exclude_tracks))
-        context = ",".join(
-            f"{(s.artist or '')}:{s.title}" for s in request.session_context
-        )
+        context = ",".join(f"{(s.artist or '')}:{s.title}" for s in request.session_context)
         return f"{title}|{artist}|{request.count}|{excludes}|{context}"
 
     @staticmethod

@@ -55,7 +55,8 @@ class ResumePlaybackView(BaseInteractiveView):
 
         msg = f"Resumed playback: **{self._track_title}**{timestamp}"
         await self._playback_service.start_playback(
-            self._guild_id, start_seconds=self._resume_start_seconds,
+            self._guild_id,
+            start_seconds=self._resume_start_seconds,
         )
         await interaction.response.edit_message(content=msg, embed=None, view=None)
         await self._delete_message(delay=_DELETE_AFTER)
@@ -68,7 +69,9 @@ class ResumePlaybackView(BaseInteractiveView):
             return
         await self._playback_service.stop_playback(self._guild_id)
         await interaction.response.edit_message(
-            content="Skipped. Playback cleared.", embed=None, view=None,
+            content="Skipped. Playback cleared.",
+            embed=None,
+            view=None,
         )
         await self._delete_message(delay=_DELETE_AFTER)
 

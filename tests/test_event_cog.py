@@ -269,7 +269,6 @@ class TestHelperMethods:
         assert result is False
 
 
-
 # =============================================================================
 # Lifecycle Event Tests
 # =============================================================================
@@ -347,7 +346,9 @@ class TestGuildEvents:
 
         await event_cog.on_guild_join(mock_guild)
 
-        mock_channel.send.assert_called_once_with("Thanks for inviting me! Use `/help` for commands.")
+        mock_channel.send.assert_called_once_with(
+            "Thanks for inviting me! Use `/help` for commands."
+        )
 
     @pytest.mark.asyncio
     async def test_on_guild_join_handles_no_system_channel(self, event_cog, mock_guild):
@@ -376,7 +377,9 @@ class TestGuildEvents:
         assert any("Left guild" in record.message for record in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_on_guild_remove_cleans_up_message_state(self, event_cog, mock_guild, mock_container):
+    async def test_on_guild_remove_cleans_up_message_state(
+        self, event_cog, mock_guild, mock_container
+    ):
         """Should cleanup message state via container."""
         mock_container.message_state_manager = MagicMock()
         mock_container.message_state_manager.reset = AsyncMock()
@@ -386,7 +389,9 @@ class TestGuildEvents:
         mock_container.message_state_manager.reset.assert_awaited_once_with(mock_guild.id)
 
     @pytest.mark.asyncio
-    async def test_on_guild_remove_handles_message_state_error(self, event_cog, mock_guild, mock_container):
+    async def test_on_guild_remove_handles_message_state_error(
+        self, event_cog, mock_guild, mock_container
+    ):
         """Should handle message state cleanup error gracefully."""
         mock_container.message_state_manager = MagicMock()
         mock_container.message_state_manager.reset = AsyncMock(side_effect=Exception("Error"))
@@ -709,7 +714,9 @@ class TestVoiceStateUpdate:
             event_cog.container.playback_service.cleanup_guild.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_disconnect_and_cleanup_handles_exception(self, event_cog, mock_guild, mock_container, caplog):
+    async def test_disconnect_and_cleanup_handles_exception(
+        self, event_cog, mock_guild, mock_container, caplog
+    ):
         """Should handle cleanup exception gracefully."""
         mock_container.playback_service = MagicMock()
         mock_container.playback_service.cleanup_guild = AsyncMock(
@@ -719,7 +726,9 @@ class TestVoiceStateUpdate:
         with caplog.at_level(logging.ERROR):
             await event_cog._disconnect_and_cleanup(mock_guild)
 
-        assert any("Failed to disconnect and cleanup" in record.message for record in caplog.records)
+        assert any(
+            "Failed to disconnect and cleanup" in record.message for record in caplog.records
+        )
 
 
 # =============================================================================

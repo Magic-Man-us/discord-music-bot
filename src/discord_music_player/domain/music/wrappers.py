@@ -7,8 +7,12 @@ import re
 
 from pydantic import field_validator
 
-from discord_music_player.domain.shared.types import DurationSeconds, NonEmptyStr, NonNegativeInt
-from discord_music_player.domain.shared.types import ValueWrapper
+from discord_music_player.domain.shared.types import (
+    DurationSeconds,
+    NonEmptyStr,
+    NonNegativeInt,
+    ValueWrapper,
+)
 
 _YOUTUBE_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})"),

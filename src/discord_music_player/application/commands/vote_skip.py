@@ -24,7 +24,6 @@ class VoteSkipCommand(BaseModel):
 
 
 class VoteSkipResult(BaseModel):
-
     model_config = ConfigDict(frozen=True, strict=True)
 
     result: VoteResult
@@ -54,9 +53,7 @@ class VoteSkipResult(BaseModel):
         votes_needed: int = 0,
     ) -> VoteSkipResult:
         if not isinstance(result, VoteResult):
-            raise TypeError(
-                f"Expected VoteResult, got {type(result).__name__}: {result!r}"
-            )
+            raise TypeError(f"Expected VoteResult, got {type(result).__name__}: {result!r}")
         message = result.get_message(VoteType.SKIP, votes_current, votes_needed)
         return cls(
             result=result,
@@ -68,7 +65,6 @@ class VoteSkipResult(BaseModel):
 
 
 class VoteSkipHandler:
-
     def __init__(
         self,
         *,

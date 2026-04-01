@@ -6,7 +6,7 @@ import json
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import discord
 from discord.ext import commands, tasks
@@ -142,9 +142,7 @@ class HealthCog(BaseCog):
 
         return queue_len, current_title
 
-    def _atomic_write(
-        self, path: Path, payload: BasicStats | DetailedStats
-    ) -> None:
+    def _atomic_write(self, path: Path, payload: BasicStats | DetailedStats) -> None:
         tmp = path.with_suffix(path.suffix + ".tmp")
         with tmp.open("w", encoding="utf-8") as f:
             json.dump(payload.model_dump(exclude_none=True), f, ensure_ascii=False, indent=2)
@@ -218,7 +216,9 @@ class HealthCog(BaseCog):
             lat_ms = payload.latency_ms
             settings = self.container.settings
             health_settings = _get_health_settings(settings)
-            alert_channel_id = getattr(health_settings, "alert_channel_id", None) if health_settings else None
+            alert_channel_id = (
+                getattr(health_settings, "alert_channel_id", None) if health_settings else None
+            )
 
             if alert_channel_id:
                 ch = self.bot.get_channel(alert_channel_id)
@@ -231,7 +231,9 @@ class HealthCog(BaseCog):
                             self._warned = True
                         except Exception:
                             pass
-                    elif self._warned and lat_ms < (HealthConstants.LATENCY_WARN_MS * HealthConstants.LATENCY_RESET_FACTOR):
+                    elif self._warned and lat_ms < (
+                        HealthConstants.LATENCY_WARN_MS * HealthConstants.LATENCY_RESET_FACTOR
+                    ):
                         self._warned = False
 
             self.logger.debug("Fast heartbeat: latency=%.1fms", lat_ms)
@@ -301,9 +303,7 @@ class HealthCog(BaseCog):
         self, embed: discord.Embed, payload: DetailedStats, lat_ms: float
     ) -> None:
         status_text = self._status_label(payload.connected)
-        embed.add_field(
-            name="Status", value=status_text, inline=True
-        )
+        embed.add_field(name="Status", value=status_text, inline=True)
         embed.add_field(name="Uptime", value=payload.uptime_human, inline=True)
         embed.add_field(
             name="Latency",

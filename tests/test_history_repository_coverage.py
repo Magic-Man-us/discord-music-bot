@@ -64,7 +64,9 @@ class TestHistoryRepositoryEdgeCases:
 
     async def test_get_play_count_returns_zero_for_new_track(self, history_repository):
         """Should return 0 for tracks that haven't been played."""
-        count = await history_repository.get_play_count(guild_id=123, track_id=TrackId(value="never_played"))
+        count = await history_repository.get_play_count(
+            guild_id=123, track_id=TrackId(value="never_played")
+        )
 
         assert count == 0
 

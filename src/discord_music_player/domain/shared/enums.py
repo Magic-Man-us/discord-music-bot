@@ -13,7 +13,6 @@ class SyncScope(StrEnum):
 
 
 class RadioAction(StrEnum):
-
     ON = "on"
     OFF = "off"
 

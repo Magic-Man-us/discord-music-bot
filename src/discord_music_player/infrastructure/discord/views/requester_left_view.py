@@ -42,9 +42,7 @@ class RequesterLeftView(BaseInteractiveView):
         if not self._finish_view():
             return
         await self._playback_service.resume_playback(self._guild_id)
-        await interaction.response.edit_message(
-            content="Playback resumed.", view=self
-        )
+        await interaction.response.edit_message(content="Playback resumed.", view=self)
 
     @discord.ui.button(label="No, skip", style=discord.ButtonStyle.red)
     async def no_button(
@@ -53,9 +51,7 @@ class RequesterLeftView(BaseInteractiveView):
         if not self._finish_view():
             return
         await self._playback_service.skip_track(self._guild_id)
-        await interaction.response.edit_message(
-            content="Track skipped.", view=self
-        )
+        await interaction.response.edit_message(content="Track skipped.", view=self)
 
     async def on_timeout(self) -> None:
         if not self._finish_view():

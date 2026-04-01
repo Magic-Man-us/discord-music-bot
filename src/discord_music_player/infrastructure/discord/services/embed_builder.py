@@ -12,6 +12,7 @@ from discord_music_player.utils.reply import format_duration, truncate
 if TYPE_CHECKING:
     from ....domain.music.entities import Track
 
+
 def format_requester(track: Track) -> str:
     if track.requested_by_id:
         return f"<@{track.requested_by_id}>"
@@ -31,9 +32,7 @@ def format_finished_line(track: Track) -> str:
     return f"Finished playing: **{title}**"
 
 
-def build_now_playing_embed(
-    track: Track, *, next_track: Track | None = None
-) -> discord.Embed:
+def build_now_playing_embed(track: Track, *, next_track: Track | None = None) -> discord.Embed:
     requester_display = format_requester(track)
     artist_or_uploader = track.artist or track.uploader
     likes_display = f"{track.like_count:,}" if track.like_count is not None else None

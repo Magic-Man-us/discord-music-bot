@@ -71,8 +71,13 @@ class YtDlpTrackInfo(BaseModel):
     formats: list[AudioFormatInfo] = []
 
     @field_validator(
-        "webpage_url", "url", "thumbnail",
-        "artist", "creator", "uploader", "channel",
+        "webpage_url",
+        "url",
+        "thumbnail",
+        "artist",
+        "creator",
+        "uploader",
+        "channel",
         mode="before",
     )
     @classmethod

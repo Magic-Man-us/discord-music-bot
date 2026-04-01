@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 class QueueApplicationService:
-
     def __init__(
         self,
         *,
@@ -49,9 +48,15 @@ class QueueApplicationService:
             return EnqueueResult.failure(exc.message)
 
         await self._session_repo.save(session)
-        logger.info("Enqueued track '%s' at position %s in guild %s", track.title, position.value, guild_id)
+        logger.info(
+            "Enqueued track '%s' at position %s in guild %s", track.title, position.value, guild_id
+        )
 
-        message = f"Now playing: {track.title}" if was_idle else f"Added to queue at position {position.value + 1}"
+        message = (
+            f"Now playing: {track.title}"
+            if was_idle
+            else f"Added to queue at position {position.value + 1}"
+        )
         meta = EnqueueMeta(
             track=track_with_requester,
             position=position.value,
@@ -155,7 +160,9 @@ class QueueApplicationService:
         logger.info("Shuffled queue in guild %s", guild_id)
         return True
 
-    async def move(self, guild_id: DiscordSnowflake, from_pos: QueuePositionInt, to_pos: QueuePositionInt) -> bool:
+    async def move(
+        self, guild_id: DiscordSnowflake, from_pos: QueuePositionInt, to_pos: QueuePositionInt
+    ) -> bool:
         session = await self._session_repo.get(guild_id)
         if session is None:
             return False

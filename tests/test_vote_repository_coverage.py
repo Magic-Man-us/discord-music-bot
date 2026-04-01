@@ -29,7 +29,9 @@ class TestVoteRepositoryEdgeCases:
 
     async def test_delete_by_track_returns_false_when_no_session(self, vote_repository):
         """Should return False when no session exists for the track."""
-        result = await vote_repository.delete_by_track(guild_id=999, track_id=TrackId(value="nonexistent"))
+        result = await vote_repository.delete_by_track(
+            guild_id=999, track_id=TrackId(value="nonexistent")
+        )
 
         assert result is False
 
@@ -41,7 +43,9 @@ class TestVoteRepositoryEdgeCases:
         await vote_repository.save(sample_vote_session)
 
         # Delete by track
-        result = await vote_repository.delete_by_track(guild_id=123, track_id=TrackId(value="test_track_123"))
+        result = await vote_repository.delete_by_track(
+            guild_id=123, track_id=TrackId(value="test_track_123")
+        )
 
         assert result is True
 

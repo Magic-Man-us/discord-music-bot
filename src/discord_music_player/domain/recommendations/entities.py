@@ -9,7 +9,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from discord_music_player.domain.shared.datetime_utils import utcnow
 from discord_music_player.domain.shared.mixins import ExpirableMixin
-from discord_music_player.domain.shared.types import HttpUrlStr, NonEmptyStr, NonNegativeInt, PositiveInt, UnitInterval
+from discord_music_player.domain.shared.types import (
+    HttpUrlStr,
+    NonEmptyStr,
+    NonNegativeInt,
+    PositiveInt,
+    UnitInterval,
+)
 
 if TYPE_CHECKING:
     from ..music.entities import Track

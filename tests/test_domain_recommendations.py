@@ -17,9 +17,12 @@ from discord_music_player.domain.recommendations.entities import (
     Recommendation,
     RecommendationRequest,
     RecommendationSet,
+    filter_duplicates,
 )
-from discord_music_player.domain.recommendations.entities import filter_duplicates
-from discord_music_player.domain.recommendations.title_utils import clean_title, extract_artist_from_title
+from discord_music_player.domain.recommendations.title_utils import (
+    clean_title,
+    extract_artist_from_title,
+)
 
 # =============================================================================
 # RecommendationRequest Entity Tests
@@ -285,9 +288,7 @@ class TestRecommendationUtilities:
 
     def test_create_request_with_exclude_ids(self, track):
         """Should include exclude IDs."""
-        request = RecommendationRequest.from_track(
-            track, exclude_ids=["id1", "id2"]
-        )
+        request = RecommendationRequest.from_track(track, exclude_ids=["id1", "id2"])
         assert "id1" in request.exclude_tracks
         assert "id2" in request.exclude_tracks
 
@@ -305,9 +306,7 @@ class TestRecommendationUtilities:
 
     def test_extract_artist_by_format_with_brackets(self):
         """Should handle 'Title by Artist [metadata]' format."""
-        artist = extract_artist_from_title(
-            "Yesterday by The Beatles [Official Audio]"
-        )
+        artist = extract_artist_from_title("Yesterday by The Beatles [Official Audio]")
         assert artist == "The Beatles"
 
     def test_extract_artist_filters_common_prefixes(self):
@@ -360,9 +359,7 @@ class TestRecommendationUtilities:
 
     def test_clean_title_removes_multiple_suffixes(self):
         """Should remove multiple suffixes."""
-        cleaned = clean_title(
-            "Song Title (Official Video) [Lyrics] (HD)"
-        )
+        cleaned = clean_title("Song Title (Official Video) [Lyrics] (HD)")
         assert "official video" not in cleaned.lower()
         assert "lyrics" not in cleaned.lower()
         assert "hd" not in cleaned.lower()

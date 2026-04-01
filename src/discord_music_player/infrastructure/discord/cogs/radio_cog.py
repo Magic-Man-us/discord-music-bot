@@ -19,9 +19,11 @@ from discord_music_player.infrastructure.discord.guards.voice_guards import (
 if TYPE_CHECKING:
     from discord_music_player.application.services.radio_models import RadioToggleResult
 
-class RadioCog(BaseCog):
+    from ....config.container import Container
 
-    def __init__(self, bot: commands.Bot, container: "Container") -> None:  # noqa: F821
+
+class RadioCog(BaseCog):
+    def __init__(self, bot: commands.Bot, container: Container) -> None:
         super().__init__(bot, container)
         self._bus = get_event_bus()
         self._subscribed = False
@@ -116,7 +118,9 @@ class RadioCog(BaseCog):
         await interaction.followup.send(msg, ephemeral=True)
 
     async def _show_count_select(
-        self, interaction: discord.Interaction, query: str | None,
+        self,
+        interaction: discord.Interaction,
+        query: str | None,
     ) -> None:
         """Show a select menu asking how many songs to queue."""
         assert interaction.guild is not None
@@ -168,7 +172,9 @@ class RadioCog(BaseCog):
         await self._send_radio_enabled(interaction, result)
 
     async def _seed_track(
-        self, interaction: discord.Interaction, query: str,
+        self,
+        interaction: discord.Interaction,
+        query: str,
     ) -> bool:
         """Resolve and enqueue a seed track directly. Returns True on success."""
         assert interaction.guild is not None
@@ -183,9 +189,7 @@ class RadioCog(BaseCog):
 
         track = await self.container.audio_resolver.resolve(query)
         if not track:
-            await interaction.followup.send(
-                f"Couldn't find a track for: {query}", ephemeral=True
-            )
+            await interaction.followup.send(f"Couldn't find a track for: {query}", ephemeral=True)
             return False
 
         result = await self.container.queue_service.enqueue(
@@ -209,7 +213,9 @@ class RadioCog(BaseCog):
         return True
 
     async def _send_radio_enabled(
-        self, interaction: discord.Interaction, result: RadioToggleResult,
+        self,
+        interaction: discord.Interaction,
+        result: RadioToggleResult,
     ) -> None:
         """Send the 'Up Next' embed with per-track re-roll buttons."""
         assert interaction.guild is not None

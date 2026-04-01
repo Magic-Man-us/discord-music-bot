@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 
-
 def _make_view(playback_service: AsyncMock):
     from discord_music_player.infrastructure.discord.views.requester_left_view import (
         RequesterLeftView,

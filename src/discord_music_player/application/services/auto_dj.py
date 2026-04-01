@@ -89,9 +89,7 @@ class AutoDJ:
             guild_id,
             delay,
         )
-        self._timers[guild_id] = asyncio.create_task(
-            self._delayed_activate(guild_id, delay)
-        )
+        self._timers[guild_id] = asyncio.create_task(self._delayed_activate(guild_id, delay))
 
     async def _on_track_started(self, event: TrackStartedPlaying) -> None:
         """Cancel any pending auto-DJ timer when a track starts."""
@@ -154,10 +152,14 @@ class AutoDJ:
             )
 
             if result.enabled and result.tracks_added > 0:
-                logger.info("Auto-DJ enabled in guild %s: %d tracks queued", guild_id, result.tracks_added)
+                logger.info(
+                    "Auto-DJ enabled in guild %s: %d tracks queued", guild_id, result.tracks_added
+                )
                 await self._playback_service.start_playback(guild_id)
             else:
-                logger.debug("Auto-DJ could not enable radio in guild %s: %s", guild_id, result.message)
+                logger.debug(
+                    "Auto-DJ could not enable radio in guild %s: %s", guild_id, result.message
+                )
         except Exception:
             logger.exception("Auto-DJ failed for guild %s", guild_id)
         finally:

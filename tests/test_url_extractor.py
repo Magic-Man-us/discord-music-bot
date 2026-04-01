@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -14,14 +14,12 @@ from discord_music_player.utils.url_extractor import (
     is_spotify_url,
 )
 
-
 # ============================================================================
 # Spotify URL Detection
 # ============================================================================
 
 
 class TestIsSpotifyUrl:
-
     @pytest.mark.parametrize(
         "url",
         [
@@ -59,7 +57,6 @@ class TestIsSpotifyUrl:
 
 
 class TestIsAppleMusicUrl:
-
     @pytest.mark.parametrize(
         "url",
         [
@@ -91,7 +88,6 @@ class TestIsAppleMusicUrl:
 
 
 class TestIsExternalMusicUrl:
-
     def test_spotify_is_external(self) -> None:
         assert is_external_music_url("https://open.spotify.com/track/abc123") is True
 
@@ -111,7 +107,6 @@ class TestIsExternalMusicUrl:
 
 
 class TestCleanExtractedTitle:
-
     def test_removes_spotify_suffix_and_rearranges(self) -> None:
         result = _clean_extracted_title("Song Name - song and lyrics by Artist | Spotify")
         assert result == "Artist - Song Name"
@@ -173,7 +168,6 @@ class TestExtractSearchQueryFromUrlSync:
 
 
 class TestExtractSearchQueryFromUrl:
-
     @pytest.mark.asyncio
     async def test_extracts_from_og_title(self) -> None:
         html = '<html><head><meta property="og:title" content="Bohemian Rhapsody - song and lyrics by Queen | Spotify"></head></html>'

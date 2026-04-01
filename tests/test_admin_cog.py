@@ -922,7 +922,11 @@ class TestDatabaseCommands:
         mock_container.database.validate_schema = AsyncMock(
             return_value=SchemaValidationResult(
                 tables=CountValidation(expected=7, found=6, missing=["track_genres"]),
-                columns=ColumnValidation(expected=47, found=44, missing={"track_genres": ["track_id", "genre", "classified_at"]}),
+                columns=ColumnValidation(
+                    expected=47,
+                    found=44,
+                    missing={"track_genres": ["track_id", "genre", "classified_at"]},
+                ),
                 indexes=CountValidation(expected=9, found=8, missing=["idx_track_genres_genre"]),
                 pragmas=PragmaValidation(journal_mode="wal", foreign_keys=1),
                 issues=[

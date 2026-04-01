@@ -5,10 +5,13 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import discord
 from discord.ext import commands
 
 if TYPE_CHECKING:
+    from ....application.services.queue_models import BatchEnqueueResult
     from ....config.container import Container
+    from ....domain.music.entities import Track
 
 
 class BaseCog(commands.Cog):
@@ -18,6 +21,23 @@ class BaseCog(commands.Cog):
         self.bot = bot
         self.container = container
         self.logger = logging.getLogger(type(self).__module__)
+
+    async def enqueue_and_start(
+        self,
+        interaction: discord.Interaction,
+        tracks: list[Track],
+    ) -> BatchEnqueueResult:
+        """Enqueue a batch of tracks and start playback if needed."""
+        assert interaction.guild is not None
+        result = await self.container.queue_service.enqueue_batch(
+            guild_id=interaction.guild.id,
+            tracks=tracks,
+            user_id=interaction.user.id,
+            user_name=interaction.user.display_name,
+        )
+        if result.should_start:
+            await self.container.playback_service.start_playback(interaction.guild.id)
+        return result
 
     @classmethod
     async def setup(cls, bot: commands.Bot) -> None:

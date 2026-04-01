@@ -26,6 +26,14 @@ class RadioState(BaseModel):
     user_name: NonEmptyStr | None = None
     channel_id: DiscordSnowflake | None = None
 
+    @property
+    def effective_user_id(self) -> DiscordSnowflake:
+        return self.user_id or 0
+
+    @property
+    def effective_user_name(self) -> str:
+        return self.user_name or "Radio"
+
 
 class RadioToggleResult(BaseModel):
     model_config = ConfigDict()

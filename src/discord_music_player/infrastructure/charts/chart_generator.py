@@ -84,8 +84,12 @@ class ChartGenerator:
             peak = max(values) if values else 1
             for i, v in enumerate(values):
                 ax.text(
-                    v + peak * _VALUE_OFFSET, i, str(int(v)),
-                    va="center", color=_TEXT, fontsize=_LABEL_FS,
+                    v + peak * _VALUE_OFFSET,
+                    i,
+                    str(int(v)),
+                    va="center",
+                    color=_TEXT,
+                    fontsize=_LABEL_FS,
                 )
 
             return self._fig_to_bytes(fig)

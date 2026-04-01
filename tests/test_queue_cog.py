@@ -9,7 +9,6 @@ import pytest
 
 from discord_music_player.infrastructure.discord.cogs.queue_cog import QueueCog
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -178,7 +177,11 @@ async def test_queue_without_total_duration_no_footer(cog, interaction, mock_con
 
     call_args = interaction.response.send_message.call_args
     embed = call_args[1]["embed"]
-    assert embed.footer.text is discord.utils.MISSING or embed.footer is None or "Total duration" not in str(embed.footer)
+    assert (
+        embed.footer.text is discord.utils.MISSING
+        or embed.footer is None
+        or "Total duration" not in str(embed.footer)
+    )
 
 
 # =============================================================================

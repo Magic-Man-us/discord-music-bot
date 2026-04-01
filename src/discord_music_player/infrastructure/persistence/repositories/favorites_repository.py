@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 _MAX_FAVORITES = 100
 
+
 class _Col(StrEnum):
     TRACK_ID = "track_id"
     TITLE = "title"
@@ -51,7 +52,11 @@ class FavoriteRow(BaseModel):
 
     # Fields shared between FavoriteRow and Track (used for model_dump projection)
     _TRACK_FIELDS: ClassVar[set[str]] = {
-        _Col.TITLE, _Col.WEBPAGE_URL, _Col.DURATION_SECONDS, _Col.ARTIST, _Col.UPLOADER,
+        _Col.TITLE,
+        _Col.WEBPAGE_URL,
+        _Col.DURATION_SECONDS,
+        _Col.ARTIST,
+        _Col.UPLOADER,
     }
 
     @classmethod
@@ -67,7 +72,6 @@ class FavoriteRow(BaseModel):
 
 
 class SQLiteFavoritesRepository:
-
     def __init__(self, database: Database) -> None:
         self._db = database
 
@@ -104,9 +108,7 @@ class SQLiteFavoritesRepository:
         )
         return cursor.rowcount > 0
 
-    async def get_all(
-        self, user_id: DiscordSnowflake, limit: PositiveInt = 50
-    ) -> list[Track]:
+    async def get_all(self, user_id: DiscordSnowflake, limit: PositiveInt = 50) -> list[Track]:
         async with self._db.connection() as conn:
             rows = await conn.execute_fetchall(
                 """

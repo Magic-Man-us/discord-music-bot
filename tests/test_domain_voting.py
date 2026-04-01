@@ -14,8 +14,8 @@ import pytest
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.voting.entities import Vote, VoteSession
-from discord_music_player.domain.voting.services import VotingDomainService
 from discord_music_player.domain.voting.enums import VoteResult, VoteType
+from discord_music_player.domain.voting.services import VotingDomainService
 
 # =============================================================================
 # VoteType Value Object Tests

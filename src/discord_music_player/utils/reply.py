@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
+import math
 import re
 from functools import lru_cache
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
+
+from discord_music_player.domain.shared.constants import (
+    AudioConstants,
+    UIConstants,
+    YouTubeDomains,
+)
+
+if TYPE_CHECKING:
+    from discord_music_player.domain.music.entities import Track
+
+_MAX_TIMESTAMP_PARTS = 3
 
 
 @lru_cache(maxsize=512)
@@ -23,17 +36,12 @@ def format_duration(seconds: int | float | None) -> str:
 
 
 def parse_timestamp(value: str) -> int | None:
-    """Parse a timestamp string into total seconds.
-
-    Accepts formats like "90", "1:30", or "1:30:00".
-    Returns None if the input is invalid.
-    """
     value = value.strip()
     if not value:
         return None
 
     parts = value.split(":")
-    if len(parts) > 3:
+    if len(parts) > _MAX_TIMESTAMP_PARTS:
         return None
 
     try:
@@ -51,29 +59,14 @@ def parse_timestamp(value: str) -> int | None:
     return int_parts[0] * 3600 + int_parts[1] * 60 + int_parts[2]
 
 
-_YOUTUBE_DOMAINS = {
-    "youtube.com",
-    "www.youtube.com",
-    "m.youtube.com",
-    "youtu.be",
-    "www.youtube-nocookie.com",
-}
-
-
 def extract_youtube_timestamp(url: str) -> int | None:
-    """Extract the ``t=`` parameter (seconds) from a YouTube URL.
-
-    Handles ``youtu.be/…?t=123``, ``youtube.com/watch?v=…&t=123``, and
-    the ``t=1h2m3s`` / ``t=2m30s`` / ``t=90s`` human-readable variants.
-    Returns None when no valid timestamp is present.
-    """
     try:
         parsed = urlparse(url)
     except Exception:
         return None
 
     host = (parsed.hostname or "").lower()
-    if host not in _YOUTUBE_DOMAINS:
+    if host not in YouTubeDomains.ALL:
         return None
 
     params = parse_qs(parsed.query)
@@ -81,18 +74,14 @@ def extract_youtube_timestamp(url: str) -> int | None:
     if raw is None:
         return None
 
-    from discord_music_player.domain.shared.constants import AudioConstants
-
     max_seconds = AudioConstants.MAX_SEEK_SECONDS
 
-    # Pure numeric (e.g. t=4778)
     try:
         value = int(raw)
         return value if 0 < value <= max_seconds else None
     except ValueError:
         pass
 
-    # Human-readable (e.g. t=1h19m38s)
     match = re.fullmatch(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?", raw)
     if match and any(match.groups()):
         h = int(match.group(1) or 0)
@@ -109,3 +98,26 @@ def truncate(text: str, max_length: int = 90) -> str:
     if len(text) <= max_length:
         return text
     return text[: max_length - 1] + "…"
+
+
+def deduplicate_tracks(tracks: list[Track]) -> list[Track]:
+    """Remove duplicate tracks by ID, preserving first-seen order."""
+    seen: set[str] = set()
+    unique: list[Track] = []
+    for track in tracks:
+        if track.id.value not in seen:
+            seen.add(track.id.value)
+            unique.append(track)
+    return unique
+
+
+def paginate(
+    total_items: int,
+    page: int,
+    per_page: int = UIConstants.QUEUE_PER_PAGE,
+) -> tuple[int, int, int]:
+    """Return (clamped_page, total_pages, start_index) for paginated display."""
+    total_pages = max(1, math.ceil(total_items / per_page))
+    page = max(1, min(page, total_pages))
+    start_idx = (page - 1) * per_page
+    return page, total_pages, start_idx

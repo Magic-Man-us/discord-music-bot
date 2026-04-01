@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 
 class AutoSkipOnRequesterLeave:
-
     def __init__(
         self,
         *,
@@ -35,9 +34,13 @@ class AutoSkipOnRequesterLeave:
         self._bus = get_event_bus()
         self._guild_locks: dict[DiscordSnowflake, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._started = False
-        self._on_requester_left_callback: Callable[[DiscordSnowflake, DiscordSnowflake, Track], Any] | None = None
+        self._on_requester_left_callback: (
+            Callable[[DiscordSnowflake, DiscordSnowflake, Track], Any] | None
+        ) = None
 
-    def set_on_requester_left_callback(self, callback: Callable[[DiscordSnowflake, DiscordSnowflake, Track], Any]) -> None:
+    def set_on_requester_left_callback(
+        self, callback: Callable[[DiscordSnowflake, DiscordSnowflake, Track], Any]
+    ) -> None:
         self._on_requester_left_callback = callback
 
     def start(self) -> None:
@@ -69,7 +72,10 @@ class AutoSkipOnRequesterLeave:
             # If no listeners remain, skip immediately — no one to click buttons
             listeners = await self._voice_adapter.get_listeners(event.guild_id)
             if not listeners:
-                logger.info("Requester left voice channel in guild %s, no listeners remain — auto-skipping", event.guild_id)
+                logger.info(
+                    "Requester left voice channel in guild %s, no listeners remain — auto-skipping",
+                    event.guild_id,
+                )
                 await self._playback_service.skip_track(event.guild_id)
                 return
 

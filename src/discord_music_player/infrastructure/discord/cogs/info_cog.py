@@ -86,7 +86,9 @@ class InfoCog(BaseCog):
         embed.add_field(name="ID", value=str(user.id), inline=True)
         embed.add_field(name="Mention", value=user.mention, inline=True)
         embed.add_field(name="Type", value="Bot" if user.bot else "Human", inline=True)
-        embed.add_field(name=UIConstants.FIELD_CREATED, value=_format_abs_rel(user.created_at), inline=False)
+        embed.add_field(
+            name=UIConstants.FIELD_CREATED, value=_format_abs_rel(user.created_at), inline=False
+        )
 
     def _add_member_guild_info(
         self, embed: discord.Embed, member: discord.Member, include_roles: bool
@@ -104,7 +106,7 @@ class InfoCog(BaseCog):
     def _add_member_roles_field(self, embed: discord.Embed, member: discord.Member) -> None:
         roles = [r for r in member.roles if r.name != UIConstants.EVERYONE_ROLE]
         roles_sorted = sorted(roles, key=lambda r: r.position, reverse=True)
-        top_roles = roles_sorted[:UIConstants.MAX_DISPLAY_ROLES]
+        top_roles = roles_sorted[: UIConstants.MAX_DISPLAY_ROLES]
         roles_value = ", ".join(r.mention for r in top_roles) or "-"
         embed.add_field(name=f"Roles ({len(roles)})", value=roles_value, inline=False)
 
@@ -133,16 +135,23 @@ class InfoCog(BaseCog):
         interaction: discord.Interaction,
         message: discord.Message,
     ) -> None:
-        embed = discord.Embed(
-            title="Message Info", color=discord.Color.teal()
-        )
+        embed = discord.Embed(title="Message Info", color=discord.Color.teal())
         embed.timestamp = datetime.now(UTC)
 
         embed.add_field(name="ID", value=str(message.id), inline=True)
         embed.add_field(name="Author", value=message.author.mention, inline=True)
 
         ch = message.channel
-        if isinstance(ch, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.ForumChannel, discord.Thread)):
+        if isinstance(
+            ch,
+            (
+                discord.TextChannel,
+                discord.VoiceChannel,
+                discord.StageChannel,
+                discord.ForumChannel,
+                discord.Thread,
+            ),
+        ):
             ch_value = ch.mention
         elif isinstance(ch, discord.DMChannel):
             ch_value = "DM"
@@ -157,7 +166,11 @@ class InfoCog(BaseCog):
         )
 
         content = (message.content or "").strip()
-        snippet = (content[:DiscordEmbedLimits.MESSAGE_CONTENT_SNIPPET] + "\u2026") if len(content) > DiscordEmbedLimits.MESSAGE_CONTENT_SNIPPET else content or "-"
+        snippet = (
+            (content[: DiscordEmbedLimits.MESSAGE_CONTENT_SNIPPET] + "\u2026")
+            if len(content) > DiscordEmbedLimits.MESSAGE_CONTENT_SNIPPET
+            else content or "-"
+        )
         embed.add_field(name="Content", value=snippet, inline=False)
 
         embed.add_field(name="Attachments", value=str(len(message.attachments)), inline=True)
@@ -200,7 +213,9 @@ class InfoCog(BaseCog):
         embed.add_field(name="ID", value=str(guild.id), inline=True)
         if guild.owner:
             embed.add_field(name="Owner", value=guild.owner.mention, inline=True)
-        embed.add_field(name=UIConstants.FIELD_CREATED, value=_format_abs_rel(guild.created_at), inline=False)
+        embed.add_field(
+            name=UIConstants.FIELD_CREATED, value=_format_abs_rel(guild.created_at), inline=False
+        )
 
     def _add_member_counts(self, embed: discord.Embed, guild: discord.Guild) -> None:
         humans = sum(1 for m in guild.members if not m.bot)
@@ -230,7 +245,7 @@ class InfoCog(BaseCog):
         embed.add_field(name="Verification", value=str(guild.verification_level), inline=True)
 
         if guild.features:
-            features = ", ".join(sorted(guild.features)[:UIConstants.MAX_DISPLAY_FEATURES])
+            features = ", ".join(sorted(guild.features)[: UIConstants.MAX_DISPLAY_FEATURES])
             if len(guild.features) > UIConstants.MAX_DISPLAY_FEATURES:
                 features += f" (+{len(guild.features) - UIConstants.MAX_DISPLAY_FEATURES} more)"
             embed.add_field(name="Features", value=features or "-", inline=False)

@@ -28,7 +28,9 @@ def build_up_next_embed(
 ) -> discord.Embed:
     embed = discord.Embed(
         title="Radio Enabled",
-        description=f"Playing similar tracks based on **{seed_title}**" if seed_title else "Radio active",
+        description=f"Playing similar tracks based on **{seed_title}**"
+        if seed_title
+        else "Radio active",
         color=discord.Color.purple(),
     )
 

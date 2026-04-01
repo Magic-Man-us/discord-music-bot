@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from pydantic import TypeAdapter
 
-from discord_music_player.domain.recommendations.entities import CacheStats, Recommendation, RecommendationSet
+from discord_music_player.domain.recommendations.entities import (
+    CacheStats,
+    Recommendation,
+    RecommendationSet,
+)
 from discord_music_player.domain.recommendations.repository import RecommendationCacheRepository
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
 
@@ -41,9 +44,7 @@ class SQLiteCacheRepository(RecommendationCacheRepository):
             return None
 
         try:
-            recommendations = _recommendation_list_ta.validate_json(
-                row["recommendations_json"]
-            )
+            recommendations = _recommendation_list_ta.validate_json(row["recommendations_json"])
 
             expires_at = None
             if row.get("expires_at"):

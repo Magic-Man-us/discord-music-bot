@@ -24,10 +24,18 @@ from discord_music_player.domain.music.entities import GuildPlaybackSession, Tra
 from discord_music_player.domain.music.enums import LoopMode, PlaybackState
 from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.voting.enums import VoteResult
+from discord_music_player.infrastructure.discord.cogs.now_playing_cog import NowPlayingCog
 from discord_music_player.infrastructure.discord.cogs.playback_cog import PlaybackCog
 from discord_music_player.infrastructure.discord.cogs.queue_cog import QueueCog
 from discord_music_player.infrastructure.discord.cogs.skip_cog import SkipCog
-from discord_music_player.infrastructure.discord.cogs.now_playing_cog import NowPlayingCog
+from discord_music_player.infrastructure.discord.guards.voice_guards import (
+    can_force_skip,
+    ensure_user_in_voice_and_warm,
+    ensure_voice,
+    ensure_voice_warmup,
+    get_member,
+    send_ephemeral,
+)
 from discord_music_player.infrastructure.discord.services.embed_builder import (
     build_now_playing_embed,
     format_finished_line,
@@ -41,14 +49,6 @@ from discord_music_player.infrastructure.discord.services.models import (
     GuildMessageState,
     TrackedMessage,
     TrackKey,
-)
-from discord_music_player.infrastructure.discord.guards.voice_guards import (
-    can_force_skip,
-    ensure_user_in_voice_and_warm,
-    ensure_voice,
-    ensure_voice_warmup,
-    get_member,
-    send_ephemeral,
 )
 
 # =============================================================================
@@ -1216,9 +1216,7 @@ class TestMessageStateManagement:
 
     def test_track_now_playing_message(self, msm, sample_track):
         """Should track now playing message."""
-        msm.track_now_playing(
-            guild_id=111, track=sample_track, channel_id=222, message_id=333
-        )
+        msm.track_now_playing(guild_id=111, track=sample_track, channel_id=222, message_id=333)
 
         state = msm.get_state(111)
         assert state.now_playing is not None
@@ -1226,21 +1224,15 @@ class TestMessageStateManagement:
 
     def test_track_queued_message(self, msm, sample_track):
         """Should track queued message."""
-        msm.track_queued(
-            guild_id=111, track=sample_track, channel_id=222, message_id=333
-        )
+        msm.track_queued(guild_id=111, track=sample_track, channel_id=222, message_id=333)
 
         state = msm.get_state(111)
         assert len(state.queued) == 1
 
     @pytest.mark.asyncio
-    async def test_on_track_finished_sends_finished_message(
-        self, msm, mock_bot, sample_track
-    ):
+    async def test_on_track_finished_sends_finished_message(self, msm, mock_bot, sample_track):
         """Should send an auto-deleting 'Finished playing' message beneath now-playing."""
-        msm.track_now_playing(
-            guild_id=111, track=sample_track, channel_id=222, message_id=333
-        )
+        msm.track_now_playing(guild_id=111, track=sample_track, channel_id=222, message_id=333)
 
         mock_channel = AsyncMock(spec=discord.TextChannel)
         mock_bot.get_channel.return_value = mock_channel
@@ -1260,13 +1252,9 @@ class TestMessageStateManagement:
         # Should not raise
 
     @pytest.mark.asyncio
-    async def test_promote_next_track(
-        self, msm, mock_bot, sample_track
-    ):
+    async def test_promote_next_track(self, msm, mock_bot, sample_track):
         """Should promote queued message to now playing."""
-        msm.track_queued(
-            guild_id=111, track=sample_track, channel_id=222, message_id=444
-        )
+        msm.track_queued(guild_id=111, track=sample_track, channel_id=222, message_id=444)
 
         mock_message = AsyncMock()
         mock_channel = AsyncMock(spec=discord.TextChannel)
@@ -1282,12 +1270,8 @@ class TestMessageStateManagement:
     @pytest.mark.asyncio
     async def test_reset_clears_guild_state(self, msm, sample_track):
         """Should clear state for specific guild and delete now-playing message."""
-        msm.track_now_playing(
-            guild_id=111, track=sample_track, channel_id=222, message_id=333
-        )
-        msm.track_now_playing(
-            guild_id=222, track=sample_track, channel_id=222, message_id=444
-        )
+        msm.track_now_playing(guild_id=111, track=sample_track, channel_id=222, message_id=333)
+        msm.track_now_playing(guild_id=222, track=sample_track, channel_id=222, message_id=444)
 
         await msm.reset(111)
 
@@ -1339,9 +1323,7 @@ class TestEdgeCases:
     async def test_message_fetch_failure_graceful(self, mock_bot, sample_track):
         """Should handle message fetch failures gracefully."""
         msm = MessageStateManager(mock_bot)
-        msm.track_now_playing(
-            guild_id=111, track=sample_track, channel_id=222, message_id=333
-        )
+        msm.track_now_playing(guild_id=111, track=sample_track, channel_id=222, message_id=333)
 
         mock_bot.get_channel.return_value = None
         mock_bot.fetch_channel = AsyncMock(
@@ -1355,9 +1337,7 @@ class TestEdgeCases:
     async def test_message_edit_failure_graceful(self, mock_bot, sample_track):
         """Should handle message edit failures gracefully."""
         msm = MessageStateManager(mock_bot)
-        msm.track_now_playing(
-            guild_id=111, track=sample_track, channel_id=222, message_id=333
-        )
+        msm.track_now_playing(guild_id=111, track=sample_track, channel_id=222, message_id=333)
 
         mock_message = AsyncMock()
         mock_message.edit.side_effect = discord.HTTPException(MagicMock(), "Cannot edit")
@@ -1367,7 +1347,6 @@ class TestEdgeCases:
 
         # Should not raise
         await msm.on_track_finished(111, sample_track)
-
 
 
 # =============================================================================
@@ -1380,7 +1359,9 @@ class TestOnRequesterLeft:
 
     GUILD_ID = 111111111
     USER_ID = 333333333
-    VIEW_PATH = "discord_music_player.infrastructure.discord.views.requester_left_view.RequesterLeftView"
+    VIEW_PATH = (
+        "discord_music_player.infrastructure.discord.views.requester_left_view.RequesterLeftView"
+    )
 
     @pytest.mark.asyncio
     @patch(VIEW_PATH)
@@ -1390,9 +1371,7 @@ class TestOnRequesterLeft:
         """Should send view to the now-playing channel when message state exists."""
         # Setup now-playing message state
         state = GuildMessageState()
-        state.now_playing = TrackedMessage.for_track(
-            sample_track, channel_id=222, message_id=333
-        )
+        state.now_playing = TrackedMessage.for_track(sample_track, channel_id=222, message_id=333)
         mock_container.message_state_manager.get_state.return_value = state
 
         # Mock channel returned by bot.get_channel
@@ -1472,9 +1451,7 @@ class TestOnRequesterLeft:
     ):
         """Should format content with user mention and truncated track title."""
         state = GuildMessageState()
-        state.now_playing = TrackedMessage.for_track(
-            sample_track, channel_id=222, message_id=333
-        )
+        state.now_playing = TrackedMessage.for_track(sample_track, channel_id=222, message_id=333)
         mock_container.message_state_manager.get_state.return_value = state
 
         mock_channel = MagicMock(spec=discord.abc.Messageable)

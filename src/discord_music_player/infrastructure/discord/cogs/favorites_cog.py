@@ -17,10 +17,13 @@ _FAVORITES_PER_PAGE = UIConstants.QUEUE_PER_PAGE
 
 
 class FavoritesCog(BaseCog):
+    favorites = app_commands.Group(
+        name="favorites", description="Manage your favorite tracks", guild_only=True
+    )
 
-    favorites = app_commands.Group(name="favorites", description="Manage your favorite tracks", guild_only=True)
-
-    @favorites.command(name="add", description="Save the currently playing track to your favorites.")
+    @favorites.command(
+        name="add", description="Save the currently playing track to your favorites."
+    )
     async def favorites_add(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker
@@ -31,9 +34,7 @@ class FavoritesCog(BaseCog):
 
         session = await self.container.session_repository.get(interaction.guild.id)
         if session is None or session.current_track is None:
-            await interaction.response.send_message(
-                "Nothing is playing right now.", ephemeral=True
-            )
+            await interaction.response.send_message("Nothing is playing right now.", ephemeral=True)
             return
 
         track = session.current_track
@@ -99,9 +100,7 @@ class FavoritesCog(BaseCog):
         tracks = await repo.get_all(interaction.user.id)
 
         if not tracks:
-            await interaction.followup.send(
-                "You don't have any favorites yet.", ephemeral=True
-            )
+            await interaction.followup.send("You don't have any favorites yet.", ephemeral=True)
             return
 
         import random
@@ -147,9 +146,7 @@ class FavoritesCog(BaseCog):
                 f"Removed **{title}** from your favorites.", ephemeral=True
             )
         else:
-            await interaction.response.send_message(
-                "Could not remove that track.", ephemeral=True
-            )
+            await interaction.response.send_message("Could not remove that track.", ephemeral=True)
 
 
 setup = FavoritesCog.setup

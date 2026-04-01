@@ -5,11 +5,18 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import ClassVar
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr, computed_field, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    computed_field,
+    field_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ..domain.shared.enums import EnvironmentType, LogLevel
-
 from ..domain.shared.types import (
     BusyTimeoutMs,
     CommandPrefixStr,
@@ -32,7 +39,6 @@ from ..domain.shared.types import (
 
 
 class DatabaseSettings(BaseModel):
-
     model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
 
     url: str = Field(
@@ -59,7 +65,6 @@ class DatabaseSettings(BaseModel):
 
 
 class DiscordSettings(BaseModel):
-
     model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
 
     token: SecretStr = Field(
@@ -72,6 +77,7 @@ class DiscordSettings(BaseModel):
         if not v.get_secret_value().strip():
             raise ValueError("Discord token must not be empty — set DISCORD_TOKEN")
         return v
+
     command_prefix: CommandPrefixStr = Field(
         default="!",
         validation_alias=AliasChoices("command_prefix", "prefix"),
@@ -111,7 +117,6 @@ class DiscordSettings(BaseModel):
 
 
 class AudioSettings(BaseModel):
-
     model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
 
     default_volume: VolumeFloat = 0.5
@@ -193,7 +198,6 @@ class AISettings(BaseModel):
 
 
 class VotingSettings(BaseModel):
-
     model_config = ConfigDict(frozen=True, strict=True)
 
     skip_threshold_percentage: UnitInterval = 0.5
@@ -202,7 +206,6 @@ class VotingSettings(BaseModel):
 
 
 class RadioSettings(BaseModel):
-
     model_config = ConfigDict(frozen=True, strict=True)
 
     batch_size: RadioBatchSize = 10
@@ -211,7 +214,6 @@ class RadioSettings(BaseModel):
 
 
 class CleanupSettings(BaseModel):
-
     model_config = ConfigDict(frozen=True, strict=True)
 
     stale_session_hours: PositiveInt = 24
@@ -220,7 +222,6 @@ class CleanupSettings(BaseModel):
 
 
 class Settings(BaseSettings):
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_nested_delimiter="__",
@@ -247,6 +248,7 @@ class Settings(BaseSettings):
     voting: VotingSettings = Field(default_factory=VotingSettings)
     cleanup: CleanupSettings = Field(default_factory=CleanupSettings)
     radio: RadioSettings = Field(default_factory=RadioSettings)
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

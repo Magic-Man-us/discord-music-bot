@@ -9,8 +9,18 @@ import discord
 from discord import app_commands
 
 from discord_music_player.domain.shared.constants import AnalyticsConstants, UIConstants
-from discord_music_player.domain.shared.enums import ActivityPeriod, LeaderboardCategory, LeaderboardTimeRange, Weekday
-from discord_music_player.domain.shared.types import DiscordSnowflake, TrackForClassification, TrackGenreMap, UserIdField
+from discord_music_player.domain.shared.enums import (
+    ActivityPeriod,
+    LeaderboardCategory,
+    LeaderboardTimeRange,
+    Weekday,
+)
+from discord_music_player.domain.shared.types import (
+    DiscordSnowflake,
+    TrackForClassification,
+    TrackGenreMap,
+    UserIdField,
+)
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.utils.reply import format_duration
 
@@ -19,11 +29,9 @@ if TYPE_CHECKING:
     from ...persistence.repositories.history_repository import GenreTrackInfo
 
 _LEADERBOARD_CHART_FILENAME: str = "leaderboard.png"
-_NO_MUSIC_YET = "No music has been played yet in this server."
 
 
 class AnalyticsCog(BaseCog):
-
     async def _send_with_chart(
         self,
         interaction: discord.Interaction,
@@ -47,7 +55,7 @@ class AnalyticsCog(BaseCog):
 
         total = await history_repo.get_total_tracks(guild_id)
         if total == 0:
-            await interaction.followup.send(_NO_MUSIC_YET, ephemeral=True)
+            await interaction.followup.send(UIConstants.NO_MUSIC_YET, ephemeral=True)
             return
 
         unique = await history_repo.get_unique_tracks(guild_id)
@@ -79,7 +87,9 @@ class AnalyticsCog(BaseCog):
         if top_tracks:
             try:
                 chart_gen = self.container.chart_generator
-                labels = [t.title[:AnalyticsConstants.CHART_LABEL_TRUNCATION] for t, _ in top_tracks]
+                labels = [
+                    t.title[: AnalyticsConstants.CHART_LABEL_TRUNCATION] for t, _ in top_tracks
+                ]
                 values = [c for _, c in top_tracks]
                 png = await chart_gen.async_horizontal_bar_chart(
                     labels, values, "Top 5 Most Played"
@@ -124,12 +134,14 @@ class AnalyticsCog(BaseCog):
 
         result = await self._fetch_leaderboard(guild_id, cat, time_range)
         if result is None:
-            await interaction.followup.send(_NO_MUSIC_YET, ephemeral=True)
+            await interaction.followup.send(UIConstants.NO_MUSIC_YET, ephemeral=True)
             return
 
         title, labels, values, lines = result
         embed = discord.Embed(
-            title=title, description="\n".join(lines), color=AnalyticsConstants.BLURPLE,
+            title=title,
+            description="\n".join(lines),
+            color=AnalyticsConstants.BLURPLE,
         )
 
         chart_file = None
@@ -151,7 +163,9 @@ class AnalyticsCog(BaseCog):
         time_range: LeaderboardTimeRange = LeaderboardTimeRange.ALL_TIME,
     ) -> tuple[str, list[str], list[int], list[str]] | None:
         """Fetch leaderboard data via category-specific fetcher, then format uniformly."""
-        labels, values, title, unit = await self._fetch_category_data(guild_id, category, time_range)
+        labels, values, title, unit = await self._fetch_category_data(
+            guild_id, category, time_range
+        )
         if not labels:
             return None
 
@@ -163,7 +177,10 @@ class AnalyticsCog(BaseCog):
             f"{title}{suffix}",
             [lbl[:label_trunc] for lbl in labels],
             values,
-            [f"**{i + 1}.** {lbl[:line_trunc]} — {val} {unit}" for i, (lbl, val) in enumerate(zip(labels, values))],
+            [
+                f"**{i + 1}.** {lbl[:line_trunc]} — {val} {unit}"
+                for i, (lbl, val) in enumerate(zip(labels, values, strict=False))
+            ],
         )
 
     async def _fetch_category_data(
@@ -201,7 +218,7 @@ class AnalyticsCog(BaseCog):
 
         user_stats = await history_repo.get_user_stats(guild_id, user_id)
         if user_stats.total_tracks == 0:
-            await interaction.followup.send(_NO_MUSIC_YET, ephemeral=True)
+            await interaction.followup.send(UIConstants.NO_MUSIC_YET, ephemeral=True)
             return
 
         top_tracks = await history_repo.get_user_top_tracks(guild_id, user_id, limit=5)
@@ -224,7 +241,7 @@ class AnalyticsCog(BaseCog):
         embed.add_field(name="Skip Rate", value=f"{user_stats.skip_rate:.0%}", inline=True)
 
         if top_tracks:
-            top_lines = [f"{i+1}. {t[:50]} ({c}x)" for i, (t, c) in enumerate(top_tracks)]
+            top_lines = [f"{i + 1}. {t[:50]} ({c}x)" for i, (t, c) in enumerate(top_tracks)]
             embed.add_field(name="Your Top Songs", value="\n".join(top_lines), inline=False)
 
         # Genre pie chart (lazy classify)
@@ -300,7 +317,8 @@ class AnalyticsCog(BaseCog):
 
     @staticmethod
     def _aggregate_genre_counts(
-        rows: list[GenreTrackInfo], cached: TrackGenreMap,
+        rows: list[GenreTrackInfo],
+        cached: TrackGenreMap,
     ) -> dict[str, int] | None:
         """Count plays per genre from history rows and genre cache."""
         track_id_counts: Counter[str] = Counter(row.track_id for row in rows)
@@ -341,7 +359,7 @@ class AnalyticsCog(BaseCog):
 
         total = await history_repo.get_total_tracks(guild_id)
         if total == 0:
-            await interaction.followup.send(_NO_MUSIC_YET, ephemeral=True)
+            await interaction.followup.send(UIConstants.NO_MUSIC_YET, ephemeral=True)
             return
 
         embed = discord.Embed(title="Listening Activity", color=AnalyticsConstants.BLURPLE)
@@ -382,7 +400,8 @@ class AnalyticsCog(BaseCog):
         embed: discord.Embed,
     ) -> discord.File | None:
         data = await self.container.history_repository.get_activity_by_day(
-            guild_id, days=AnalyticsConstants.ACTIVITY_DAYS_WINDOW,
+            guild_id,
+            days=AnalyticsConstants.ACTIVITY_DAYS_WINDOW,
         )
         if not data:
             return None

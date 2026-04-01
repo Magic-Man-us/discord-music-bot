@@ -62,9 +62,7 @@ class AIGenreClassifier:
         )
         return self._agent
 
-    async def classify_tracks(
-        self, tracks: list[TrackForClassification]
-    ) -> TrackGenreMap:
+    async def classify_tracks(self, tracks: list[TrackForClassification]) -> TrackGenreMap:
         """Batch-classify tracks into genres, splitting into chunks of _BATCH_SIZE."""
         if not tracks:
             return {}
@@ -78,16 +76,11 @@ class AIGenreClassifier:
 
         return results
 
-    async def _classify_batch(
-        self, batch: list[TrackForClassification]
-    ) -> TrackGenreMap:
+    async def _classify_batch(self, batch: list[TrackForClassification]) -> TrackGenreMap:
         try:
             agent = self._get_agent()
 
-            track_lines = [
-                f"- id:{t.track_id} | {t.description or _UNKNOWN_GENRE}"
-                for t in batch
-            ]
+            track_lines = [f"- id:{t.track_id} | {t.description or _UNKNOWN_GENRE}" for t in batch]
 
             user_prompt = f"Classify these tracks:\n{chr(10).join(track_lines)}"
 
@@ -100,8 +93,7 @@ class AIGenreClassifier:
             genres = ai_result.output.genres
 
             result: TrackGenreMap = {
-                t.track_id: genres.get(t.track_id, _UNKNOWN_GENRE)
-                for t in batch
+                t.track_id: genres.get(t.track_id, _UNKNOWN_GENRE) for t in batch
             }
 
             self._logger.info("Classified %d tracks into genres", len(result))

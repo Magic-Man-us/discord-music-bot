@@ -431,7 +431,10 @@ class TestCacheRepository:
     @pytest.mark.asyncio
     async def test_save_and_get_cache(self, cache_repository):
         """Test saving and getting a cache entry."""
-        from discord_music_player.domain.recommendations.entities import Recommendation, RecommendationSet
+        from discord_music_player.domain.recommendations.entities import (
+            Recommendation,
+            RecommendationSet,
+        )
 
         rec_set = RecommendationSet(
             base_track_title="test song",
@@ -458,7 +461,10 @@ class TestCacheRepository:
     @pytest.mark.asyncio
     async def test_delete_cache(self, cache_repository):
         """Test deleting a cache entry."""
-        from discord_music_player.domain.recommendations.entities import Recommendation, RecommendationSet
+        from discord_music_player.domain.recommendations.entities import (
+            Recommendation,
+            RecommendationSet,
+        )
 
         rec_set = RecommendationSet(
             base_track_title="delete me",
@@ -475,7 +481,10 @@ class TestCacheRepository:
     @pytest.mark.asyncio
     async def test_clear_all_cache(self, cache_repository):
         """Test clearing all cache entries."""
-        from discord_music_player.domain.recommendations.entities import Recommendation, RecommendationSet
+        from discord_music_player.domain.recommendations.entities import (
+            Recommendation,
+            RecommendationSet,
+        )
 
         for i in range(5):
             rec_set = RecommendationSet(

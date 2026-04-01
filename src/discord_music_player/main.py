@@ -22,10 +22,15 @@ def setup_logging(log_level: str = "INFO") -> None:
         with open(_LOGGING_CONFIG_PATH) as f:
             config = json.load(f)
         logging.config.dictConfig(config)
-    except (FileNotFoundError, json.JSONDecodeError, ValueError, KeyError, ImportError, AttributeError):
-        logging.warning(
-            "Could not load %s, falling back to basic config", _LOGGING_CONFIG_PATH
-        )
+    except (
+        FileNotFoundError,
+        json.JSONDecodeError,
+        ValueError,
+        KeyError,
+        ImportError,
+        AttributeError,
+    ):
+        logging.warning("Could not load %s, falling back to basic config", _LOGGING_CONFIG_PATH)
         logging.basicConfig(
             level=resolved_level,
             format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",

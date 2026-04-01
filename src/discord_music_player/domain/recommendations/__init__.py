@@ -10,7 +10,10 @@ from discord_music_player.domain.recommendations.entities import (
     RecommendationSet,
 )
 from discord_music_player.domain.recommendations.repository import RecommendationCacheRepository
-from discord_music_player.domain.recommendations.title_utils import clean_title, extract_artist_from_title
+from discord_music_player.domain.recommendations.title_utils import (
+    clean_title,
+    extract_artist_from_title,
+)
 
 __all__ = [
     # Entities

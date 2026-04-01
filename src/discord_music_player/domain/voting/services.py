@@ -29,7 +29,9 @@ class VotingDomainService:
         return max(cls.MINIMUM_THRESHOLD, threshold)
 
     @classmethod
-    def can_auto_skip(cls, user_id: DiscordSnowflake, track: Track, listener_count: NonNegativeInt) -> bool:
+    def can_auto_skip(
+        cls, user_id: DiscordSnowflake, track: Track, listener_count: NonNegativeInt
+    ) -> bool:
         """Check if a user can skip without voting (requester or small audience)."""
         if track.was_requested_by(user_id):
             return True

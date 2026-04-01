@@ -35,7 +35,6 @@ if TYPE_CHECKING:
 
 
 class PlaybackCog(BaseCog):
-
     async def cog_load(self) -> None:
         self.container.playback_service.set_track_finished_callback(self._on_track_finished)
         self.container.auto_skip_on_requester_leave.set_on_requester_left_callback(
@@ -57,7 +56,9 @@ class PlaybackCog(BaseCog):
     # Play
     # ─────────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="play", description="Play a song — paste a YouTube link or just type a song name.")
+    @app_commands.command(
+        name="play", description="Play a song — paste a YouTube link or just type a song name."
+    )
     @app_commands.guild_only()
     @app_commands.describe(
         query="YouTube URL or search query",
@@ -118,7 +119,9 @@ class PlaybackCog(BaseCog):
 
         voice_adapter = self.container.voice_adapter
         if not voice_adapter.is_connected(interaction.guild.id):
-            success = await voice_adapter.ensure_connected(interaction.guild.id, member.voice.channel.id)
+            success = await voice_adapter.ensure_connected(
+                interaction.guild.id, member.voice.channel.id
+            )
             if not success:
                 await send_ephemeral(interaction, "I couldn't join your voice channel.")
                 return None
@@ -175,9 +178,7 @@ class PlaybackCog(BaseCog):
         if not voice_adapter.is_connected(interaction.guild.id):
             success = await voice_adapter.ensure_connected(interaction.guild.id, channel_id)
             if not success:
-                await send_ephemeral(
-                    interaction, "I couldn't join your voice channel."
-                )
+                await send_ephemeral(interaction, "I couldn't join your voice channel.")
                 return
 
         # Detect Spotify/Apple Music URLs and convert to search queries
@@ -263,7 +264,9 @@ class PlaybackCog(BaseCog):
             await interaction.followup.send("Command failed. See logs.", ephemeral=True)
 
     async def _start_long_track_vote(
-        self, interaction: discord.Interaction, track: Track,
+        self,
+        interaction: discord.Interaction,
+        track: Track,
     ) -> bool:
         """If the track exceeds the duration threshold and there are enough listeners,
         start a community vote. Returns True if a vote was initiated (caller should return)."""
@@ -271,7 +274,10 @@ class PlaybackCog(BaseCog):
 
         assert interaction.guild is not None
 
-        if not track.duration_seconds or track.duration_seconds <= LimitConstants.LONG_TRACK_THRESHOLD_SECONDS:
+        if (
+            not track.duration_seconds
+            or track.duration_seconds <= LimitConstants.LONG_TRACK_THRESHOLD_SECONDS
+        ):
             return False
 
         listeners = await self.container.voice_adapter.get_listeners(interaction.guild.id)
@@ -314,7 +320,9 @@ class PlaybackCog(BaseCog):
         return True
 
     async def _send_now_playing(
-        self, interaction: discord.Interaction, track: Track,
+        self,
+        interaction: discord.Interaction,
+        track: Track,
     ) -> None:
         """Send the Now Playing embed with interactive view."""
         assert interaction.guild is not None
@@ -346,7 +354,9 @@ class PlaybackCog(BaseCog):
             )
 
     async def _send_queued(
-        self, interaction: discord.Interaction, track: Track,
+        self,
+        interaction: discord.Interaction,
+        track: Track,
     ) -> None:
         """Send the 'added to queue' message and update the Now Playing embed."""
         assert interaction.guild is not None
@@ -377,7 +387,9 @@ class PlaybackCog(BaseCog):
     # Seek
     # ─────────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="seek", description="Jump to a specific time in the current track (e.g. 1:30).")
+    @app_commands.command(
+        name="seek", description="Jump to a specific time in the current track (e.g. 1:30)."
+    )
     @app_commands.guild_only()
     @app_commands.describe(timestamp='Position (e.g. "1:30", "1:30:00", or seconds like "90")')
     async def seek(self, interaction: discord.Interaction, timestamp: str) -> None:
@@ -406,33 +418,29 @@ class PlaybackCog(BaseCog):
             return
 
         playback_service = self.container.playback_service
-        success = await playback_service.seek_playback(
-            interaction.guild.id, start_seconds=seek
-        )
+        success = await playback_service.seek_playback(interaction.guild.id, start_seconds=seek)
 
         if success:
             await interaction.response.send_message(
                 f"Seeked to **{format_duration(raw_seconds)}**.", ephemeral=True
             )
         else:
-            await interaction.response.send_message(
-                "Nothing is playing to seek.", ephemeral=True
-            )
+            await interaction.response.send_message("Nothing is playing to seek.", ephemeral=True)
 
     # ─────────────────────────────────────────────────────────────────
     # Play Next
     # ─────────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="playnext", description="Add a song that plays right after the current one.")
+    @app_commands.command(
+        name="playnext", description="Add a song that plays right after the current one."
+    )
     @app_commands.guild_only()
     @app_commands.describe(query="YouTube URL or search query")
     async def playnext(self, interaction: discord.Interaction, query: str) -> None:
         await interaction.response.defer()
         await self._execute_playnext(interaction, query)
 
-    async def _execute_playnext(
-        self, interaction: discord.Interaction, query: str
-    ) -> None:
+    async def _execute_playnext(self, interaction: discord.Interaction, query: str) -> None:
         member = await self._ensure_voice_ready(interaction)
         if member is None or interaction.guild is None:
             return
@@ -476,9 +484,7 @@ class PlaybackCog(BaseCog):
         entries = await resolver.preview_playlist(url)
 
         if not entries:
-            await interaction.followup.send(
-                "That playlist appears to be empty.", ephemeral=True
-            )
+            await interaction.followup.send("That playlist appears to be empty.", ephemeral=True)
             return
 
         from ..views.playlist_view import PlaylistView, build_playlist_embed
@@ -489,9 +495,7 @@ class PlaybackCog(BaseCog):
             interaction=interaction,
             container=self.container,
         )
-        msg = await interaction.followup.send(
-            embed=embed, view=view, wait=True
-        )
+        msg = await interaction.followup.send(embed=embed, view=view, wait=True)
         view.set_message(msg)
 
     # ─────────────────────────────────────────────────────────────────
@@ -579,7 +583,9 @@ class PlaybackCog(BaseCog):
         candidates.extend(guild.text_channels)
         return candidates
 
-    async def _on_requester_left(self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake, track: Track) -> None:
+    async def _on_requester_left(
+        self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake, track: Track
+    ) -> None:
         from ..views.requester_left_view import RequesterLeftView
 
         msm = self.container.message_state_manager
@@ -660,9 +666,7 @@ class PlaybackCog(BaseCog):
                 "Stopped playback and cleared the queue.", ephemeral=True
             )
         else:
-            await interaction.response.send_message(
-                "Nothing is playing.", ephemeral=True
-            )
+            await interaction.response.send_message("Nothing is playing.", ephemeral=True)
 
     @app_commands.command(name="pause", description="Pause the current track.")
     @app_commands.guild_only()
@@ -700,9 +704,7 @@ class PlaybackCog(BaseCog):
         if resumed:
             await interaction.response.send_message("Resumed playback.", ephemeral=True)
         else:
-            await interaction.response.send_message(
-                "Nothing is paused.", ephemeral=True
-            )
+            await interaction.response.send_message("Nothing is paused.", ephemeral=True)
 
     # ─────────────────────────────────────────────────────────────────
     # Leave

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
@@ -38,7 +37,9 @@ class PlaybackApplicationService:
         self._voice_adapter = voice_adapter
         self._audio_resolver = audio_resolver
 
-        self._on_track_finished_callback: Callable[[DiscordSnowflake, Track], Awaitable[None]] | None = None
+        self._on_track_finished_callback: (
+            Callable[[DiscordSnowflake, Track], Awaitable[None]] | None
+        ) = None
 
         # Optional seek offset consumed on next playback start per guild.
         self._pending_start_seconds: dict[DiscordSnowflake, StartSeconds] = {}
@@ -73,7 +74,9 @@ class PlaybackApplicationService:
         if current_track:
             await self.handle_track_finished(guild_id, current_track)
 
-    def set_track_finished_callback(self, callback: Callable[[DiscordSnowflake, Track], Awaitable[None]]) -> None:
+    def set_track_finished_callback(
+        self, callback: Callable[[DiscordSnowflake, Track], Awaitable[None]]
+    ) -> None:
         self._on_track_finished_callback = callback
 
     _MAX_RESOLVE_RETRIES: int = 3
@@ -186,9 +189,7 @@ class PlaybackApplicationService:
     ) -> bool:
         try:
             seek = self._pending_start_seconds.pop(guild_id, None)
-            success = await self._voice_adapter.play(
-                guild_id, track, start_seconds=seek
-            )
+            success = await self._voice_adapter.play(guild_id, track, start_seconds=seek)
             if not success:
                 logger.error("Voice adapter failed to play in guild %s", guild_id)
                 session.set_current_track(None)
@@ -312,9 +313,7 @@ class PlaybackApplicationService:
             return False
 
         try:
-            success = await self._voice_adapter.play(
-                guild_id, track, start_seconds=start_seconds
-            )
+            success = await self._voice_adapter.play(guild_id, track, start_seconds=start_seconds)
             if not success:
                 logger.error("Voice adapter failed to play after seek in guild %s", guild_id)
                 self._ignore_next_voice_track_end.discard(guild_id)
@@ -445,7 +444,9 @@ class PlaybackApplicationService:
             else:
                 logger.warning(
                     "Skipping invalid transition %s -> %s for guild %s",
-                    session.state, state, guild_id,
+                    session.state,
+                    state,
+                    guild_id,
                 )
 
         # Track when playback started so we can resume from the right position

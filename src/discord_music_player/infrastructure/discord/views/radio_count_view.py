@@ -34,10 +34,7 @@ class RadioCountView(BaseInteractiveView):
 
         select = discord.ui.Select(
             placeholder="How many songs?",
-            options=[
-                discord.SelectOption(label=f"{n} songs", value=str(n))
-                for n in _COUNTS
-            ],
+            options=[discord.SelectOption(label=f"{n} songs", value=str(n)) for n in _COUNTS],
         )
         select.callback = self._on_select
         self.add_item(select)

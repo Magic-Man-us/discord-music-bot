@@ -192,44 +192,23 @@ class RadioApplicationService:
         if state is None:
             return 0
 
-        if state.tracks_consumed >= self._settings.max_tracks_per_session:
-            logger.info(
-                "Radio session limit reached in guild %s (%d/%d tracks)",
-                guild_id,
-                state.tracks_consumed,
-                self._settings.max_tracks_per_session,
-            )
-            self.disable_radio(guild_id)
+        if self._check_session_limit(guild_id, state):
             return 0
 
         if not state.pool:
-            # Pool exhausted — publish event so the UI can prompt "Continue?"
             await self._publish_pool_exhausted(guild_id, state)
             return 0
 
-        # Try recommendations from the pool until one resolves
-        user_id = state.user_id or 0
-        user_name = state.user_name or "Radio"
-
-        while state.pool:
-            rec = state.pool.pop(0)
-            track = await self._try_resolve_and_enqueue(
-                rec,
-                guild_id=guild_id,
-                user_id=user_id,
-                user_name=user_name,
+        resolved = await self._drain_pool(state, guild_id, max_count=1)
+        if resolved:
+            logger.debug(
+                "Radio pool: queued '%s' for guild %s (pool remaining=%d)",
+                resolved[0].title,
+                guild_id,
+                len(state.pool),
             )
-            if track is not None:
-                state.tracks_consumed += 1
-                logger.debug(
-                    "Radio pool: queued '%s' for guild %s (pool remaining=%d)",
-                    track.title,
-                    guild_id,
-                    len(state.pool),
-                )
-                return 1
+            return len(resolved)
 
-        # Exhausted pool trying to resolve — publish event
         await self._publish_pool_exhausted(guild_id, state)
         return 0
 
@@ -273,14 +252,11 @@ class RadioApplicationService:
         visible_recs = recommendations[:visible_count]
         pool_recs = recommendations[visible_count:]
 
-        user_id = state.user_id or 0
-        user_name = state.user_name or "Radio"
-
         enqueued = await self._resolve_and_enqueue_all(
             visible_recs,
             guild_id=guild_id,
-            user_id=user_id,
-            user_name=user_name,
+            user_id=state.effective_user_id,
+            user_name=state.effective_user_name,
         )
 
         state.pool = list(pool_recs)
@@ -368,14 +344,7 @@ class RadioApplicationService:
         if state is None:
             return 0
 
-        if state.tracks_consumed >= self._settings.max_tracks_per_session:
-            logger.info(
-                "Radio session limit reached in guild %s (%d/%d tracks)",
-                guild_id,
-                state.tracks_consumed,
-                self._settings.max_tracks_per_session,
-            )
-            self.disable_radio(guild_id)
+        if self._check_session_limit(guild_id, state):
             return 0
 
         logger.info("Radio refill triggered in guild %s", guild_id)
@@ -388,35 +357,16 @@ class RadioApplicationService:
         if remaining_capacity <= 0:
             return 0
 
-        # Draw from pool up to visible_count or remaining capacity
         target = min(self._settings.visible_count, remaining_capacity)
-        added = 0
+        resolved = await self._drain_pool(state, guild_id, max_count=target)
 
-        user_id = state.user_id or 0
-        user_name = state.user_name or "Radio"
+        if resolved:
+            logger.info("Radio refill completed in guild %s: %d tracks from pool", guild_id, len(resolved))
 
-        for _ in range(target):
-            if not state.pool:
-                break
-            rec = state.pool.pop(0)
-            track = await self._try_resolve_and_enqueue(
-                rec,
-                guild_id=guild_id,
-                user_id=user_id,
-                user_name=user_name,
-            )
-            if track is not None:
-                state.tracks_consumed += 1
-                added += 1
-
-        if added > 0:
-            logger.info("Radio refill completed in guild %s: %d tracks from pool", guild_id, added)
-
-        # If pool is now empty after refill, notify
         if not state.pool:
             await self._publish_pool_exhausted(guild_id, state)
 
-        return added
+        return len(resolved)
 
     async def warmup_next(self, guild_id: DiscordSnowflake) -> int:
         """Pre-fetch a single track from the pool so the queue is never empty.
@@ -438,23 +388,11 @@ class RadioApplicationService:
             await self._publish_pool_exhausted(guild_id, state)
             return 0
 
-        user_id = state.user_id or 0
-        user_name = state.user_name or "Radio"
+        resolved = await self._drain_pool(state, guild_id, max_count=1)
+        if resolved:
+            logger.debug("Radio warmup: queued 1 track for guild %s", guild_id)
+            return 1
 
-        while state.pool:
-            rec = state.pool.pop(0)
-            track = await self._try_resolve_and_enqueue(
-                rec,
-                guild_id=guild_id,
-                user_id=user_id,
-                user_name=user_name,
-            )
-            if track is not None:
-                state.tracks_consumed += 1
-                logger.debug("Radio warmup: queued 1 track for guild %s", guild_id)
-                return 1
-
-        # Exhausted pool trying to resolve
         await self._publish_pool_exhausted(guild_id, state)
         return 0
 
@@ -508,7 +446,42 @@ class RadioApplicationService:
             logger.warning("Radio: failed to resolve '%s': %s", rec.query, exc)
             return None
 
-    # ── Shared helpers (no duplication) ───────────────────────────────
+    # ── Shared helpers ─────────────────────────────────────────────────
+
+    def _check_session_limit(self, guild_id: DiscordSnowflake, state: RadioState) -> bool:
+        """Return True (and disable radio) if the session track limit is reached."""
+        if state.tracks_consumed >= self._settings.max_tracks_per_session:
+            logger.info(
+                "Radio session limit reached in guild %s (%d/%d tracks)",
+                guild_id,
+                state.tracks_consumed,
+                self._settings.max_tracks_per_session,
+            )
+            self.disable_radio(guild_id)
+            return True
+        return False
+
+    async def _drain_pool(
+        self,
+        state: RadioState,
+        guild_id: DiscordSnowflake,
+        *,
+        max_count: int = 1,
+    ) -> list[Track]:
+        """Pop from pool and resolve up to *max_count* tracks. Returns resolved tracks."""
+        resolved: list[Track] = []
+        while state.pool and len(resolved) < max_count:
+            rec = state.pool.pop(0)
+            track = await self._try_resolve_and_enqueue(
+                rec,
+                guild_id=guild_id,
+                user_id=state.effective_user_id,
+                user_name=state.effective_user_name,
+            )
+            if track is not None:
+                state.tracks_consumed += 1
+                resolved.append(track)
+        return resolved
 
     async def _restore_removed_track(
         self,
@@ -563,7 +536,9 @@ class RadioApplicationService:
         return ids
 
     async def _collect_exclude_ids(
-        self, guild_id: DiscordSnowflake, *extra_ids: str,
+        self,
+        guild_id: DiscordSnowflake,
+        *extra_ids: str,
     ) -> list[str]:
         """Build exclusion list from session state plus any extra IDs."""
         session = await self._session_repo.get(guild_id)

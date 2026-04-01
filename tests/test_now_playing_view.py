@@ -9,8 +9,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -43,7 +41,13 @@ def _make_container(*, ai_enabled: bool = True):
     return container
 
 
-def _make_view(*, container=None, webpage_url="https://www.youtube.com/watch?v=abc123", title="Test Song", guild_id=1):
+def _make_view(
+    *,
+    container=None,
+    webpage_url="https://www.youtube.com/watch?v=abc123",
+    title="Test Song",
+    guild_id=1,
+):
     from discord_music_player.infrastructure.discord.views.now_playing_view import (
         NowPlayingView,
     )
@@ -58,7 +62,9 @@ def _make_view(*, container=None, webpage_url="https://www.youtube.com/watch?v=a
     return view, c
 
 
-def _make_track(title="Test Song", artist="Test Artist", webpage_url="https://youtube.com/watch?v=abc"):
+def _make_track(
+    title="Test Song", artist="Test Artist", webpage_url="https://youtube.com/watch?v=abc"
+):
     track = MagicMock()
     track.title = title
     track.artist = artist
@@ -117,7 +123,8 @@ class TestNowPlayingViewInit:
     def test_has_youtube_link_button(self):
         view, _ = _make_view(webpage_url="https://youtube.com/watch?v=test")
         link_buttons = [
-            item for item in view.children
+            item
+            for item in view.children
             if isinstance(item, discord.ui.Button) and item.style == discord.ButtonStyle.link
         ]
         youtube_btn = [b for b in link_buttons if "YouTube" in (b.label or "")]
@@ -128,7 +135,8 @@ class TestNowPlayingViewInit:
         url = "https://youtube.com/watch?v=test"
         view, _ = _make_view(webpage_url=url)
         link_buttons = [
-            item for item in view.children
+            item
+            for item in view.children
             if isinstance(item, discord.ui.Button) and item.style == discord.ButtonStyle.link
         ]
         download_btn = [b for b in link_buttons if "Download" in (b.label or "")]
@@ -139,7 +147,8 @@ class TestNowPlayingViewInit:
     def test_has_similar_button(self):
         view, _ = _make_view()
         similar_buttons = [
-            item for item in view.children
+            item
+            for item in view.children
             if isinstance(item, discord.ui.Button) and "Similar" in (item.label or "")
         ]
         assert len(similar_buttons) == 1
@@ -148,7 +157,8 @@ class TestNowPlayingViewInit:
     def test_has_radio_button(self):
         view, _ = _make_view()
         radio_buttons = [
-            item for item in view.children
+            item
+            for item in view.children
             if isinstance(item, discord.ui.Button) and "Radio" in (item.label or "")
         ]
         assert len(radio_buttons) == 1
@@ -158,9 +168,9 @@ class TestNowPlayingViewInit:
         container = _make_container(ai_enabled=False)
         view, _ = _make_view(container=container)
         interactive_buttons = [
-            item for item in view.children
-            if isinstance(item, discord.ui.Button)
-            and item.style != discord.ButtonStyle.link
+            item
+            for item in view.children
+            if isinstance(item, discord.ui.Button) and item.style != discord.ButtonStyle.link
         ]
         assert len(interactive_buttons) == 0
 
@@ -486,7 +496,8 @@ class TestSimilarButton:
             )
             # Button should be re-enabled after error
             shuffle_btn = [
-                item for item in view.children
+                item
+                for item in view.children
                 if isinstance(item, discord.ui.Button) and "Similar" in (item.label or "")
             ]
             assert len(shuffle_btn) == 1

@@ -12,7 +12,7 @@ import discord
 
 from discord_music_player.application.interfaces.voice_adapter import VoiceAdapter
 from discord_music_player.config.settings import AudioSettings
-from discord_music_player.domain.shared.constants import AudioConstants
+from discord_music_player.domain.shared.constants import AudioConstants, TimeConstants
 
 if TYPE_CHECKING:
     from ....domain.music.entities import Track
@@ -20,8 +20,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-CONNECT_TIMEOUT: float = 10.0
-FADE_IN_SECONDS: float = 0.5
 DEFAULT_VOLUME: float = 0.2
 
 
@@ -80,7 +78,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
             return False
 
         async def _do() -> bool:
-            async with asyncio.timeout(CONNECT_TIMEOUT):
+            async with asyncio.timeout(TimeConstants.VOICE_CONNECT_TIMEOUT):
                 await channel.connect(self_deaf=True)
             logger.info("Connected to voice channel %s in %s", channel.name, guild.name)
             return True
@@ -144,7 +142,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
             return False
 
         async def _do() -> bool:
-            async with asyncio.timeout(CONNECT_TIMEOUT):
+            async with asyncio.timeout(TimeConstants.VOICE_CONNECT_TIMEOUT):
                 await vc.move_to(channel)
             await self._ensure_self_deaf(guild, channel)
             logger.info("Moved to voice channel %s", channel.name)
@@ -179,7 +177,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
                 before_opts = f"-ss {start_seconds.value} {before_opts}"
             base_opts = self._ffmpeg_options.get("options", "")
 
-            af_filters = [f"afade=t=in:ss=0:d={FADE_IN_SECONDS}"]
+            af_filters = [f"afade=t=in:ss=0:d={AudioConstants.FADE_IN_SECONDS}"]
             if self._normalize_audio:
                 af_filters.append(AudioConstants.LOUDNORM_FILTER)
             fade_opts = f'{base_opts} -af "{",".join(af_filters)}"'

@@ -280,9 +280,9 @@ class TestVoiceAdapterErrorHandling:
         assert isinstance(source, FakeVolumeTransformer)
         assert source.volume == adapter._volume
         assert source.source.url == sample_track.stream_url
-        assert '-ss 12' in source.source.before_options
-        assert 'User-Agent:' in source.source.before_options
-        assert 'afade=t=in:ss=0:d=0.5' in source.source.options
+        assert "-ss 12" in source.source.before_options
+        assert "User-Agent:" in source.source.before_options
+        assert "afade=t=in:ss=0:d=0.5" in source.source.options
 
         after = captured_play["after"]
         assert callable(after)

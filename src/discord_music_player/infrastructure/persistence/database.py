@@ -119,33 +119,80 @@ class _ExistingSchema(BaseModel):
 EXPECTED_SCHEMA = ExpectedSchema(
     tables={
         "guild_sessions": [
-            "guild_id", "state", "loop_mode", "created_at", "last_activity",
+            "guild_id",
+            "state",
+            "loop_mode",
+            "created_at",
+            "last_activity",
             "playback_started_at",
         ],
         _TABLE_QUEUE_TRACKS: [
-            "id", "guild_id", "track_id", "title", "webpage_url", "stream_url",
-            "duration_seconds", "thumbnail_url", "artist", "uploader", "like_count",
-            "view_count", "requested_by_id", "requested_by_name", "requested_at",
-            "position", "is_current",
+            "id",
+            "guild_id",
+            "track_id",
+            "title",
+            "webpage_url",
+            "stream_url",
+            "duration_seconds",
+            "thumbnail_url",
+            "artist",
+            "uploader",
+            "like_count",
+            "view_count",
+            "requested_by_id",
+            "requested_by_name",
+            "requested_at",
+            "position",
+            "is_current",
         ],
         _TABLE_TRACK_HISTORY: [
-            "id", "guild_id", "track_id", "title", "webpage_url", "duration_seconds",
-            "artist", "uploader", "like_count", "view_count", "requested_by_id",
-            "requested_by_name", "played_at", "finished_at", "skipped",
+            "id",
+            "guild_id",
+            "track_id",
+            "title",
+            "webpage_url",
+            "duration_seconds",
+            "artist",
+            "uploader",
+            "like_count",
+            "view_count",
+            "requested_by_id",
+            "requested_by_name",
+            "played_at",
+            "finished_at",
+            "skipped",
         ],
         "vote_sessions": [
-            "id", "guild_id", "track_id", "vote_type", "threshold",
-            "started_at", "completed_at", "result",
+            "id",
+            "guild_id",
+            "track_id",
+            "vote_type",
+            "threshold",
+            "started_at",
+            "completed_at",
+            "result",
         ],
         "votes": ["vote_session_id", "user_id"],
         "recommendation_cache": [
-            "id", "cache_key", "base_track_id", "base_track_title",
-            "base_track_artist", "recommendations_json", "generated_at", "expires_at",
+            "id",
+            "cache_key",
+            "base_track_id",
+            "base_track_title",
+            "base_track_artist",
+            "recommendations_json",
+            "generated_at",
+            "expires_at",
         ],
         "track_genres": ["track_id", "genre", "classified_at"],
         "saved_queues": [
-            "id", "guild_id", "name", "tracks_json", "track_count",
-            "created_by_id", "created_by_name", "created_at",
+            "id",
+            "guild_id",
+            "name",
+            "tracks_json",
+            "track_count",
+            "created_by_id",
+            "created_by_name",
+            "created_at",
         ],
     },
     indexes=[
@@ -468,9 +515,7 @@ class Database:
                 await conn.rollback()
                 raise
 
-    async def execute(
-        self, sql: str, parameters: SqlParams | None = None
-    ) -> aiosqlite.Cursor:
+    async def execute(self, sql: str, parameters: SqlParams | None = None) -> aiosqlite.Cursor:
         async with self.transaction() as conn:
             if parameters is not None:
                 cursor = await conn.execute(sql, parameters)
@@ -517,9 +562,7 @@ class Database:
         if self._initialized:
             try:
                 async with self.connection() as conn:
-                    cursor = await conn.execute(
-                        "SELECT name FROM sqlite_master WHERE type='table'"
-                    )
+                    cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
                     table_rows = await cursor.fetchall()
 
                     allowed_tables = frozenset(EXPECTED_SCHEMA.tables.keys())
@@ -562,8 +605,16 @@ class Database:
 
         async with self.connection() as conn:
             existing = await self._fetch_existing_schema(conn)
-            self._check_names(EXPECTED_SCHEMA.tables.keys(), existing.tables, result.tables, result.issues, "tables")
-            self._check_names(EXPECTED_SCHEMA.indexes, existing.indexes, result.indexes, result.issues, "indexes")
+            self._check_names(
+                EXPECTED_SCHEMA.tables.keys(),
+                existing.tables,
+                result.tables,
+                result.issues,
+                "tables",
+            )
+            self._check_names(
+                EXPECTED_SCHEMA.indexes, existing.indexes, result.indexes, result.issues, "indexes"
+            )
             await self._check_columns(conn, EXPECTED_SCHEMA.tables, existing.tables, result)
             await self._check_pragmas(conn, result)
 
@@ -630,9 +681,7 @@ class Database:
         result.columns.found = total_found
 
     @staticmethod
-    async def _check_pragmas(
-        conn: aiosqlite.Connection, result: SchemaValidationResult
-    ) -> None:
+    async def _check_pragmas(conn: aiosqlite.Connection, result: SchemaValidationResult) -> None:
         """Check journal_mode and foreign_keys pragmas."""
         jm_row = await (await conn.execute("PRAGMA journal_mode")).fetchone()
         result.pragmas.journal_mode = jm_row[0] if jm_row else None

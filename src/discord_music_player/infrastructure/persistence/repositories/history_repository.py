@@ -393,7 +393,9 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         )
         return [(row[_TITLE], row[_COUNT]) for row in rows]
 
-    async def get_recent_by_user(self, guild_id: int, user_id: int, limit: int = 100) -> list[Track]:
+    async def get_recent_by_user(
+        self, guild_id: int, user_id: int, limit: int = 100
+    ) -> list[Track]:
         rows = await self._db.fetch_all(
             """
             SELECT * FROM track_history
@@ -405,9 +407,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         )
         return [TrackRow.model_validate(row).to_track() for row in rows]
 
-    async def get_user_tracks_for_genre(
-        self, guild_id: int, user_id: int
-    ) -> list[GenreTrackInfo]:
+    async def get_user_tracks_for_genre(self, guild_id: int, user_id: int) -> list[GenreTrackInfo]:
         rows = await self._db.fetch_all(
             """
             SELECT track_id, title, artist

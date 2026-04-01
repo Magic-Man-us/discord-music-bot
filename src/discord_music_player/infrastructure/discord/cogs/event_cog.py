@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from ....config.container import Container
     from ....domain.shared.events import QueueExhausted, TrackStartedPlaying
 
+
 class EventCog(BaseCog):
     def __init__(self, bot: commands.Bot, container: Container) -> None:
         super().__init__(bot, container)
@@ -126,9 +127,7 @@ class EventCog(BaseCog):
         ch = member.guild.system_channel
         if ch:
             try:
-                await ch.send(
-                    f"Welcome {member.mention}!"
-                )
+                await ch.send(f"Welcome {member.mention}!")
             except discord.HTTPException:
                 pass
 
@@ -163,9 +162,7 @@ class EventCog(BaseCog):
             guild_id,
             timeout,
         )
-        self._idle_timers[guild_id] = asyncio.create_task(
-            self._idle_disconnect(guild_id, timeout)
-        )
+        self._idle_timers[guild_id] = asyncio.create_task(self._idle_disconnect(guild_id, timeout))
 
     async def _on_track_started(self, event: TrackStartedPlaying) -> None:
         """Cancel any pending idle timer when a new track starts."""
@@ -413,7 +410,11 @@ class EventCog(BaseCog):
     async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
         if isinstance(error, commands.CommandOnCooldown):
             retry_after = error.retry_after
-            time_str = f"{retry_after:.1f}s" if retry_after >= 1 else f"{retry_after * UIConstants.MS_PER_SECOND:.0f}ms"
+            time_str = (
+                f"{retry_after:.1f}s"
+                if retry_after >= 1
+                else f"{retry_after * UIConstants.MS_PER_SECOND:.0f}ms"
+            )
             self.logger.debug(
                 "Cooldown triggered for command '%s' by %s (%.2fs remaining)",
                 ctx.command.qualified_name if ctx.command else "<unknown>",

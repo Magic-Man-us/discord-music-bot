@@ -70,7 +70,6 @@ class AudioConstants:
     # Audio Settings
     DEFAULT_VOLUME = 0.5
     FADE_IN_SECONDS = 0.5
-    CONNECT_TIMEOUT_SECONDS = 10.0
 
     # Timestamp / seek limits
     MAX_SEEK_SECONDS = 86_400  # 24 hours
@@ -121,7 +120,6 @@ class LimitConstants:
     # Volume limits
     MIN_VOLUME = 0.0
     MAX_VOLUME = 2.0
-    DEFAULT_VOLUME = 0.5
 
     # Recommendation limits
     MIN_RECOMMENDATION_COUNT = 1
@@ -205,6 +203,21 @@ class PlaylistConstants:
     MAX_PLAYLIST_TRACKS = 50  # Max tracks to show from a playlist
     VIEW_TIMEOUT = 120.0  # 2 minutes
 
+
+class YouTubeDomains:
+    """Known YouTube hostnames for URL detection."""
+
+    ALL: frozenset[str] = frozenset(
+        {
+            "youtube.com",
+            "www.youtube.com",
+            "m.youtube.com",
+            "youtu.be",
+            "www.youtube-nocookie.com",
+        }
+    )
+
+
 class UIConstants:
     """Cross-cog UI presentation constants."""
 
@@ -228,5 +241,6 @@ class UIConstants:
     FINISHED_DELETE_AFTER = 30.0
     QUEUED_DELETE_AFTER = 15.0
 
-    # Voice guard messages
+    # Common messages
+    NO_MUSIC_YET = "No music has been played yet in this server."
     NOT_IN_VOICE = "You need to be in a voice channel first."

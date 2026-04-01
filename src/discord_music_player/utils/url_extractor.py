@@ -14,14 +14,15 @@ _SPOTIFY_TRACK_PATTERN = re.compile(
 _SPOTIFY_ALBUM_PATTERN = re.compile(
     r"https?://open\.spotify\.com/(?:intl-[a-z]+/)?album/([a-zA-Z0-9]+)"
 )
-_APPLE_MUSIC_PATTERN = re.compile(
-    r"https?://music\.apple\.com/.+/album/.+"
-)
+_APPLE_MUSIC_PATTERN = re.compile(r"https?://music\.apple\.com/.+/album/.+")
 
 
 def is_spotify_url(query: str) -> bool:
     """Return True if the query is a Spotify track or album URL."""
-    return _SPOTIFY_TRACK_PATTERN.search(query) is not None or _SPOTIFY_ALBUM_PATTERN.search(query) is not None
+    return (
+        _SPOTIFY_TRACK_PATTERN.search(query) is not None
+        or _SPOTIFY_ALBUM_PATTERN.search(query) is not None
+    )
 
 
 def is_apple_music_url(query: str) -> bool:
@@ -44,13 +45,17 @@ _HTML_TITLE_PATTERN = re.compile(
 )
 # Spotify titles usually look like: "Song Name - song and target by Artist Name | Spotify"
 _SPOTIFY_TITLE_CLEANUP = re.compile(r"\s*\|\s*Spotify\s*$", re.IGNORECASE)
-_SPOTIFY_TITLE_SEPARATOR = re.compile(r"\s*-\s*(?:song\s+(?:and\s+\w+\s+)?by|[^-]+\s+by)\s+", re.IGNORECASE)
+_SPOTIFY_TITLE_SEPARATOR = re.compile(
+    r"\s*-\s*(?:song\s+(?:and\s+\w+\s+)?by|[^-]+\s+by)\s+", re.IGNORECASE
+)
 
 
-_ALLOWED_HOSTS: frozenset[str] = frozenset({
-    "open.spotify.com",
-    "music.apple.com",
-})
+_ALLOWED_HOSTS: frozenset[str] = frozenset(
+    {
+        "open.spotify.com",
+        "music.apple.com",
+    }
+)
 
 
 async def extract_search_query_from_url(url: str) -> str | None:

@@ -1,6 +1,5 @@
 """Tests for analytics: repository queries, chart generator, genre classifier, genre repository, and cog commands."""
 
-from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -12,7 +11,11 @@ from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.shared.types import TrackForClassification
 from discord_music_player.infrastructure.discord.cogs.analytics_cog import AnalyticsCog
-from discord_music_player.infrastructure.persistence.repositories.history_repository import GenreTrackInfo, UserStats
+from discord_music_player.infrastructure.persistence.repositories.history_repository import (
+    GenreTrackInfo,
+    UserStats,
+)
+
 
 def _track(tid: str, desc: str | None = None) -> TrackForClassification:
     return TrackForClassification(track_id=tid, description=desc)
@@ -26,7 +29,15 @@ def _track(tid: str, desc: str | None = None) -> TrackForClassification:
 @pytest.fixture
 def make_track():
     """Factory for creating test tracks."""
-    def _make(track_id="t1", title="Song A", artist="Artist A", duration=180, requester_id=100, requester_name="Alice"):
+
+    def _make(
+        track_id="t1",
+        title="Song A",
+        artist="Artist A",
+        duration=180,
+        requester_id=100,
+        requester_name="Alice",
+    ):
         return Track(
             id=TrackId(value=track_id),
             title=title,
@@ -36,6 +47,7 @@ def make_track():
             requested_by_id=requester_id,
             requested_by_name=requester_name,
         )
+
     return _make
 
 
@@ -44,6 +56,7 @@ async def genre_repository(in_memory_database):
     from discord_music_player.infrastructure.persistence.repositories.genre_repository import (
         SQLiteGenreCacheRepository,
     )
+
     return SQLiteGenreCacheRepository(in_memory_database)
 
 
@@ -161,7 +174,6 @@ class TestHistoryAnalytics:
 
 
 class TestGenreRepository:
-
     async def test_save_and_get_genres(self, genre_repository):
         await genre_repository.save_genres({"t1": "Rock", "t2": "Pop"})
         result = await genre_repository.get_genres(["t1", "t2", "t3"])
@@ -187,10 +199,10 @@ class TestGenreRepository:
 
 
 class TestChartGenerator:
-
     @pytest.fixture
     def chart_gen(self):
         from discord_music_player.infrastructure.charts.chart_generator import ChartGenerator
+
         return ChartGenerator()
 
     def test_horizontal_bar_chart_returns_png(self, chart_gen):
@@ -215,6 +227,7 @@ class TestChartGenerator:
 
     def test_to_discord_file(self, chart_gen):
         import discord
+
         png = chart_gen.horizontal_bar_chart(["A"], [1], "Test")
         f = chart_gen.to_discord_file(png, "test.png")
         assert isinstance(f, discord.File)
@@ -236,26 +249,26 @@ class TestChartGenerator:
 
 
 class TestGenreClassifier:
-
     @pytest.fixture
     def ai_settings(self):
         from discord_music_player.config.settings import AISettings
+
         return AISettings(model="openai:gpt-5-mini")
 
     @pytest.fixture
     def classifier(self, ai_settings):
         from discord_music_player.infrastructure.ai.genre_classifier import AIGenreClassifier
+
         return AIGenreClassifier(ai_settings)
 
     def test_is_available(self, classifier):
-        with patch(
-            "discord_music_player.infrastructure.ai.genre_classifier.Agent"
-        ):
+        with patch("discord_music_player.infrastructure.ai.genre_classifier.Agent"):
             assert classifier.is_available() is True
 
     def test_is_not_available_on_error(self):
         from discord_music_player.config.settings import AISettings
         from discord_music_player.infrastructure.ai.genre_classifier import AIGenreClassifier
+
         settings = AISettings(model="openai:gpt-5-mini")
         c = AIGenreClassifier(settings)
         with patch(
@@ -269,7 +282,9 @@ class TestGenreClassifier:
         assert result == {}
 
     async def test_classify_tracks_success(self, classifier):
-        from discord_music_player.infrastructure.ai.genre_classifier import GenreClassificationResponse
+        from discord_music_player.infrastructure.ai.genre_classifier import (
+            GenreClassificationResponse,
+        )
 
         mock_output = GenreClassificationResponse(genres={"t1": "Rock", "t2": "Pop"})
         mock_result = MagicMock()
@@ -279,7 +294,9 @@ class TestGenreClassifier:
         mock_agent.run = AsyncMock(return_value=mock_result)
         classifier._agent = mock_agent
 
-        result = await classifier.classify_tracks([_track("t1", "Rock Anthem - Band A"), _track("t2", "Pop Hit - Singer B")])
+        result = await classifier.classify_tracks(
+            [_track("t1", "Rock Anthem - Band A"), _track("t2", "Pop Hit - Singer B")]
+        )
         assert result["t1"] == "Rock"
         assert result["t2"] == "Pop"
 
@@ -292,7 +309,9 @@ class TestGenreClassifier:
         assert result == {"t1": "Unknown"}
 
     async def test_classify_tracks_passes_through_ai_genre(self, classifier):
-        from discord_music_player.infrastructure.ai.genre_classifier import GenreClassificationResponse
+        from discord_music_player.infrastructure.ai.genre_classifier import (
+            GenreClassificationResponse,
+        )
 
         mock_output = GenreClassificationResponse(genres={"t1": "Synthwave"})
         mock_result = MagicMock()
@@ -316,7 +335,9 @@ class TestGenreClassifier:
 
     async def test_classify_batch_empty_response(self, classifier):
         """Should return Unknown for all tracks when AI returns empty genres."""
-        from discord_music_player.infrastructure.ai.genre_classifier import GenreClassificationResponse
+        from discord_music_player.infrastructure.ai.genre_classifier import (
+            GenreClassificationResponse,
+        )
 
         mock_output = GenreClassificationResponse(genres={})
         mock_result = MagicMock()
@@ -331,7 +352,12 @@ class TestGenreClassifier:
 
     async def test_classify_tracks_batching(self, classifier):
         """Should process tracks in batches of BATCH_SIZE."""
-        from discord_music_player.infrastructure.ai.genre_classifier import _BATCH_SIZE as BATCH_SIZE, GenreClassificationResponse
+        from discord_music_player.infrastructure.ai.genre_classifier import (
+            _BATCH_SIZE as BATCH_SIZE,
+        )
+        from discord_music_player.infrastructure.ai.genre_classifier import (
+            GenreClassificationResponse,
+        )
 
         call_count = 0
 
@@ -361,7 +387,9 @@ class TestGenreClassifier:
 
     async def test_classify_batch_none_description(self, classifier):
         """Should handle None descriptions gracefully."""
-        from discord_music_player.infrastructure.ai.genre_classifier import GenreClassificationResponse
+        from discord_music_player.infrastructure.ai.genre_classifier import (
+            GenreClassificationResponse,
+        )
 
         mock_output = GenreClassificationResponse(genres={"t1": "Rock"})
         mock_result = MagicMock()
@@ -565,7 +593,9 @@ class TestTopCogCommand:
     @pytest.mark.asyncio
     async def test_top_tracks_default(self, analytics_cog, mock_interaction):
         """Should default to tracks category."""
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=None, period=None)
+        await analytics_cog.top.callback(
+            analytics_cog, mock_interaction, category=None, period=None
+        )
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
@@ -578,7 +608,9 @@ class TestTopCogCommand:
         choice = MagicMock()
         choice.value = "tracks"
 
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice, period=None)
+        await analytics_cog.top.callback(
+            analytics_cog, mock_interaction, category=choice, period=None
+        )
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
@@ -590,7 +622,9 @@ class TestTopCogCommand:
         choice = MagicMock()
         choice.value = "users"
 
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice, period=None)
+        await analytics_cog.top.callback(
+            analytics_cog, mock_interaction, category=choice, period=None
+        )
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
@@ -603,7 +637,9 @@ class TestTopCogCommand:
         choice = MagicMock()
         choice.value = "skipped"
 
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice, period=None)
+        await analytics_cog.top.callback(
+            analytics_cog, mock_interaction, category=choice, period=None
+        )
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
@@ -615,7 +651,9 @@ class TestTopCogCommand:
         """Should send no-data message when no tracks."""
         mock_history_repo.get_most_played_since = AsyncMock(return_value=[])
 
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=None, period=None)
+        await analytics_cog.top.callback(
+            analytics_cog, mock_interaction, category=None, period=None
+        )
 
         args = mock_interaction.followup.send.call_args[0]
         assert args[0] == "No music has been played yet in this server."
@@ -627,7 +665,9 @@ class TestTopCogCommand:
         choice = MagicMock()
         choice.value = "users"
 
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice, period=None)
+        await analytics_cog.top.callback(
+            analytics_cog, mock_interaction, category=choice, period=None
+        )
 
         args = mock_interaction.followup.send.call_args[0]
         assert args[0] == "No music has been played yet in this server."
@@ -639,7 +679,9 @@ class TestTopCogCommand:
         choice = MagicMock()
         choice.value = "skipped"
 
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=choice, period=None)
+        await analytics_cog.top.callback(
+            analytics_cog, mock_interaction, category=choice, period=None
+        )
 
         args = mock_interaction.followup.send.call_args[0]
         assert args[0] == "No music has been played yet in this server."
@@ -651,7 +693,9 @@ class TestTopCogCommand:
         """Should still send embed even if chart generation fails."""
         mock_chart_gen.async_horizontal_bar_chart = AsyncMock(side_effect=Exception("chart error"))
 
-        await analytics_cog.top.callback(analytics_cog, mock_interaction, category=None, period=None)
+        await analytics_cog.top.callback(
+            analytics_cog, mock_interaction, category=None, period=None
+        )
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         assert "embed" in call_kwargs
@@ -704,9 +748,7 @@ class TestMystatsCogCommand:
         assert "Rock Anthem" in field_values["Your Top Songs"]
 
     @pytest.mark.asyncio
-    async def test_mystats_no_top_tracks(
-        self, analytics_cog, mock_interaction, mock_history_repo
-    ):
+    async def test_mystats_no_top_tracks(self, analytics_cog, mock_interaction, mock_history_repo):
         """Should omit top songs field when empty."""
         mock_history_repo.get_user_top_tracks = AsyncMock(return_value=[])
 
@@ -726,9 +768,7 @@ class TestMystatsCogCommand:
         mock_history_repo.get_user_tracks_for_genre = AsyncMock(
             return_value=[GenreTrackInfo(track_id="t1", title="Song", artist="A")]
         )
-        analytics_cog.container.genre_repository.get_genres = AsyncMock(
-            return_value={"t1": "Rock"}
-        )
+        analytics_cog.container.genre_repository.get_genres = AsyncMock(return_value={"t1": "Rock"})
         mock_chart_gen.async_pie_chart = AsyncMock(side_effect=Exception("chart error"))
 
         await analytics_cog.mystats.callback(analytics_cog, mock_interaction)
@@ -870,9 +910,7 @@ class TestGetUserGenreData:
         assert result == {"Unknown": 1}
 
     @pytest.mark.asyncio
-    async def test_uncached_classified_when_ai_available(
-        self, analytics_cog, mock_history_repo
-    ):
+    async def test_uncached_classified_when_ai_available(self, analytics_cog, mock_history_repo):
         """Should classify uncached tracks when AI is available."""
         mock_history_repo.get_user_tracks_for_genre = AsyncMock(
             return_value=[GenreTrackInfo(track_id="t1", title="Rock Song", artist="Band A")]

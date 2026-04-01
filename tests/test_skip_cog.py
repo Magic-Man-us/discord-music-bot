@@ -11,7 +11,6 @@ from discord_music_player.application.commands.vote_skip import VoteSkipResult
 from discord_music_player.domain.voting.enums import VoteResult, VoteType
 from discord_music_player.infrastructure.discord.cogs.skip_cog import SkipCog
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -142,7 +141,9 @@ async def test_handle_vote_skip_action_executed(cog, interaction, mock_container
 
 @pytest.mark.asyncio
 async def test_handle_vote_skip_no_action(cog, interaction, mock_container):
-    result = VoteSkipResult.from_vote_result(VoteResult.VOTE_RECORDED, votes_current=2, votes_needed=3)
+    result = VoteSkipResult.from_vote_result(
+        VoteResult.VOTE_RECORDED, votes_current=2, votes_needed=3
+    )
     mock_container.vote_skip_handler.handle = AsyncMock(return_value=result)
 
     await cog._handle_vote_skip(interaction, interaction.user)

@@ -130,7 +130,9 @@ def mock_container():
 
     # Mock database
     database = MagicMock()
-    database.get_stats = AsyncMock(return_value=DatabaseStats(db_path=":memory:", initialized=True, file_size_mb=2.5))
+    database.get_stats = AsyncMock(
+        return_value=DatabaseStats(db_path=":memory:", initialized=True, file_size_mb=2.5)
+    )
     container.database = database
 
     return container

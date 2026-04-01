@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 class BaseInteractiveView(discord.ui.View):
-
     def __init__(self, *, timeout: float | None = 180.0) -> None:
         super().__init__(timeout=timeout)
         self._message: discord.Message | None = None

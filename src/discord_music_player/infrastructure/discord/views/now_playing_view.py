@@ -121,7 +121,9 @@ class NowPlayingView(BaseInteractiveView):
                     )
                     return
 
-                track = track.model_copy(update={"is_from_recommendation": True, "is_direct_request": True})
+                track = track.model_copy(
+                    update={"is_from_recommendation": True, "is_direct_request": True}
+                )
 
                 user = interaction.user
                 result = await self._container.queue_service.enqueue_next(
@@ -147,9 +149,7 @@ class NowPlayingView(BaseInteractiveView):
                 if self._message:
                     from ..services.embed_builder import build_now_playing_embed
 
-                    embed = build_now_playing_embed(
-                        current, next_track=resolved_track
-                    )
+                    embed = build_now_playing_embed(current, next_track=resolved_track)
                     await self._try_edit_message(embed=embed)
                 edited = True
 

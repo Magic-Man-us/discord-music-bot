@@ -124,9 +124,7 @@ async def ensure_voice(
     return True
 
 
-async def check_user_in_voice(
-    interaction: discord.Interaction, guild_id: DiscordSnowflake
-) -> bool:
+async def check_user_in_voice(interaction: discord.Interaction, guild_id: DiscordSnowflake) -> bool:
     """Return True if the interacting user is in the bot's voice channel.
 
     Sends an ephemeral rejection and returns False otherwise.
@@ -140,9 +138,7 @@ async def check_user_in_voice(
         return False
 
     if not user.voice or not user.voice.channel:
-        await interaction.response.send_message(
-            UIConstants.NOT_IN_VOICE, ephemeral=True
-        )
+        await interaction.response.send_message(UIConstants.NOT_IN_VOICE, ephemeral=True)
         return False
 
     guild = interaction.client.get_guild(guild_id)
@@ -150,7 +146,10 @@ async def check_user_in_voice(
         bot_channel = guild.voice_client.channel
         # voice_client.channel is typed as Connectable in discord.py stubs,
         # but at runtime it's always VoiceChannel/StageChannel which have .id
-        if isinstance(bot_channel, discord.abc.GuildChannel) and user.voice.channel.id != bot_channel.id:
+        if (
+            isinstance(bot_channel, discord.abc.GuildChannel)
+            and user.voice.channel.id != bot_channel.id
+        ):
             await interaction.response.send_message(
                 "You must be in a voice channel to use this command!", ephemeral=True
             )

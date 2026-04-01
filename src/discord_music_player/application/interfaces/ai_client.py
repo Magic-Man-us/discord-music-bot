@@ -24,8 +24,7 @@ class AIClient(ABC):
         ...
 
     @abstractmethod
-    async def is_available(self) -> bool:
-        ...
+    async def is_available(self) -> bool: ...
 
     @abstractmethod
     def clear_cache(self) -> int:

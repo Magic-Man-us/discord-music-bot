@@ -24,7 +24,6 @@ from discord_music_player.domain.shared.types import (
     VolumeFloat,
 )
 
-
 # ── Helper: build a one-field model for each type ────────────────────
 
 

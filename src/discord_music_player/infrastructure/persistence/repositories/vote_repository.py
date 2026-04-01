@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
 from discord_music_player.domain.voting.entities import VoteSession
-from discord_music_player.domain.voting.repository import VoteSessionRepository
 from discord_music_player.domain.voting.enums import VoteType
+from discord_music_player.domain.voting.repository import VoteSessionRepository
 
 if TYPE_CHECKING:
     from ..database import Database
@@ -155,14 +155,16 @@ class SQLiteVoteSessionRepository(VoteSessionRepository):
 
     async def delete(self, guild_id: int, vote_type: VoteType) -> bool:
         async with self._db.transaction() as conn:
-            row = await (await conn.execute(
-                """
+            row = await (
+                await conn.execute(
+                    """
                 SELECT id FROM vote_sessions
                 WHERE guild_id = ? AND vote_type = ?
                 AND completed_at IS NULL
                 """,
-                (guild_id, vote_type.value),
-            )).fetchone()
+                    (guild_id, vote_type.value),
+                )
+            ).fetchone()
 
             if row is None:
                 return False

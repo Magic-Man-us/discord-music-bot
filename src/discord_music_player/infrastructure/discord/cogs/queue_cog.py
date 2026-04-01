@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import math
+from typing import TYPE_CHECKING
 
 import discord
 from discord import app_commands
 
-from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.shared.constants import UIConstants
+
+if TYPE_CHECKING:
+    from discord_music_player.domain.music.entities import Track
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_dj_role,
@@ -16,12 +18,13 @@ from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_voice,
 )
 from discord_music_player.infrastructure.discord.services.embed_builder import format_requester
-from discord_music_player.utils.reply import format_duration, truncate
+from discord_music_player.utils.reply import deduplicate_tracks, format_duration, paginate, truncate
 
 
 class QueueCog(BaseCog):
-
-    @app_commands.command(name="queue", description="See what's playing now and what's coming up next.")
+    @app_commands.command(
+        name="queue", description="See what's playing now and what's coming up next."
+    )
     @app_commands.guild_only()
     @app_commands.describe(page="Page number")
     async def queue(self, interaction: discord.Interaction, page: int = 1) -> None:
@@ -36,15 +39,10 @@ class QueueCog(BaseCog):
         queue_info = await queue_service.get_queue(interaction.guild.id)
 
         if queue_info.total_tracks == 0:
-            await interaction.response.send_message(
-                "Queue is empty.", ephemeral=True
-            )
+            await interaction.response.send_message("Queue is empty.", ephemeral=True)
             return
 
-        per_page = UIConstants.QUEUE_PER_PAGE
-        total_pages = max(1, math.ceil(queue_info.total_tracks / per_page))
-        page = max(1, min(page, total_pages))
-        start_idx = (page - 1) * per_page
+        page, total_pages, start_idx = paginate(queue_info.total_tracks, page)
 
         embed = discord.Embed(
             title=f"Queue ({queue_info.total_tracks} tracks) — Page {page}/{total_pages}",
@@ -68,7 +66,7 @@ class QueueCog(BaseCog):
                 inline=False,
             )
 
-        tracks = queue_info.tracks[start_idx : start_idx + per_page]
+        tracks = queue_info.tracks[start_idx : start_idx + UIConstants.QUEUE_PER_PAGE]
         for idx, track in enumerate(tracks, start=start_idx + 1):
             embed.add_field(
                 name=f"{idx}. {truncate(track.title)}",
@@ -95,20 +93,19 @@ class QueueCog(BaseCog):
         shuffled = await queue_service.shuffle(interaction.guild.id)
 
         if shuffled:
-            await interaction.response.send_message(
-                "Shuffled the queue.", ephemeral=True
-            )
+            await interaction.response.send_message("Shuffled the queue.", ephemeral=True)
         else:
-            await interaction.response.send_message(
-                "Not enough tracks to shuffle.", ephemeral=True
-            )
+            await interaction.response.send_message("Not enough tracks to shuffle.", ephemeral=True)
 
     @app_commands.command(
-        name="shuffle_history", description="Re-queue everything that's been played before, shuffled."
+        name="shuffle_history",
+        description="Re-queue everything that's been played before, shuffled.",
     )
     @app_commands.guild_only()
     @app_commands.describe(limit="Max number of tracks to fetch (default: 100)")
-    async def shuffle_history(self, interaction: discord.Interaction, limit: app_commands.Range[int, 1, 500] = 100) -> None:
+    async def shuffle_history(
+        self, interaction: discord.Interaction, limit: app_commands.Range[int, 1, 500] = 100
+    ) -> None:
         if not await ensure_voice(
             interaction, self.container.voice_warmup_tracker, self.container.voice_adapter
         ):
@@ -128,15 +125,7 @@ class QueueCog(BaseCog):
 
         random.shuffle(unique_tracks)
 
-        result = await self.container.queue_service.enqueue_batch(
-            guild_id=interaction.guild.id,
-            tracks=unique_tracks,
-            user_id=interaction.user.id,
-            user_name=interaction.user.display_name,
-        )
-
-        if result.should_start:
-            await self.container.playback_service.start_playback(interaction.guild.id)
+        result = await self.enqueue_and_start(interaction, unique_tracks)
 
         await interaction.followup.send(
             f"Shuffled and queued **{result.enqueued}** tracks from history.",
@@ -166,9 +155,7 @@ class QueueCog(BaseCog):
         assert interaction.guild is not None
         await interaction.response.defer(ephemeral=True)
 
-        unique_tracks = await self._fetch_unique_user_history(
-            interaction.guild.id, user.id, limit
-        )
+        unique_tracks = await self._fetch_unique_user_history(interaction.guild.id, user.id, limit)
         if not unique_tracks:
             await interaction.followup.send(
                 f"No tracks found in history for **{user.display_name}**.",
@@ -180,15 +167,7 @@ class QueueCog(BaseCog):
 
         random.shuffle(unique_tracks)
 
-        result = await self.container.queue_service.enqueue_batch(
-            guild_id=interaction.guild.id,
-            tracks=unique_tracks,
-            user_id=interaction.user.id,
-            user_name=interaction.user.display_name,
-        )
-
-        if result.should_start:
-            await self.container.playback_service.start_playback(interaction.guild.id)
+        result = await self.enqueue_and_start(interaction, unique_tracks)
 
         await interaction.followup.send(
             f"Shuffled and queued **{result.enqueued}** tracks from **{user.display_name}**'s history.",
@@ -198,30 +177,18 @@ class QueueCog(BaseCog):
     async def _fetch_unique_user_history(
         self, guild_id: int, user_id: int, limit: int
     ) -> list[Track]:
-        """Fetch a user's recent tracks and deduplicate by track ID."""
         tracks = await self.container.history_repository.get_recent_by_user(
             guild_id, user_id, limit=limit
         )
-        seen: set[str] = set()
-        unique: list[Track] = []
-        for track in tracks:
-            if track.id.value not in seen:
-                seen.add(track.id.value)
-                unique.append(track)
-        return unique
+        return deduplicate_tracks(tracks)
 
     async def _fetch_unique_history(self, guild_id: int, limit: int) -> list[Track]:
-        """Fetch recent tracks and deduplicate by track ID."""
         tracks = await self.container.history_repository.get_recent(guild_id, limit=limit)
-        seen: set[str] = set()
-        unique: list[Track] = []
-        for track in tracks:
-            if track.id.value not in seen:
-                seen.add(track.id.value)
-                unique.append(track)
-        return unique
+        return deduplicate_tracks(tracks)
 
-    @app_commands.command(name="loop", description="Cycle loop mode: off → single track → whole queue.")
+    @app_commands.command(
+        name="loop", description="Cycle loop mode: off → single track → whole queue."
+    )
     @app_commands.guild_only()
     async def loop(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
@@ -239,10 +206,14 @@ class QueueCog(BaseCog):
             ephemeral=True,
         )
 
-    @app_commands.command(name="remove", description="Remove a specific track from the queue by its position number.")
+    @app_commands.command(
+        name="remove", description="Remove a specific track from the queue by its position number."
+    )
     @app_commands.guild_only()
     @app_commands.describe(position="Position in queue (1-based)")
-    async def remove(self, interaction: discord.Interaction, position: app_commands.Range[int, 1]) -> None:
+    async def remove(
+        self, interaction: discord.Interaction, position: app_commands.Range[int, 1]
+    ) -> None:
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker
         ):
@@ -264,7 +235,9 @@ class QueueCog(BaseCog):
                 ephemeral=True,
             )
 
-    @app_commands.command(name="move", description="Rearrange the queue — move a track from one position to another.")
+    @app_commands.command(
+        name="move", description="Rearrange the queue — move a track from one position to another."
+    )
     @app_commands.guild_only()
     @app_commands.describe(
         from_position="Current position (1-based)",
@@ -284,9 +257,7 @@ class QueueCog(BaseCog):
         assert interaction.guild is not None
 
         queue_service = self.container.queue_service
-        success = await queue_service.move(
-            interaction.guild.id, from_position - 1, to_position - 1
-        )
+        success = await queue_service.move(interaction.guild.id, from_position - 1, to_position - 1)
 
         if success:
             await interaction.response.send_message(
@@ -299,7 +270,10 @@ class QueueCog(BaseCog):
                 ephemeral=True,
             )
 
-    @app_commands.command(name="clear", description="Remove all tracks from the queue (keeps the current song playing).")
+    @app_commands.command(
+        name="clear",
+        description="Remove all tracks from the queue (keeps the current song playing).",
+    )
     @app_commands.guild_only()
     async def clear(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
@@ -321,9 +295,7 @@ class QueueCog(BaseCog):
                 f"Cleared {count} tracks from the queue.", ephemeral=True
             )
         else:
-            await interaction.response.send_message(
-                "Queue is already empty.", ephemeral=True
-            )
+            await interaction.response.send_message("Queue is already empty.", ephemeral=True)
 
 
 setup = QueueCog.setup

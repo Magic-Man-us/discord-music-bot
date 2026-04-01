@@ -32,7 +32,7 @@ def build_playlist_embed(entries: list[PlaylistEntry]) -> discord.Embed:
     )
 
     lines: list[str] = []
-    for idx, entry in enumerate(entries[:PlaylistConstants.MAX_PLAYLIST_TRACKS], start=1):
+    for idx, entry in enumerate(entries[: PlaylistConstants.MAX_PLAYLIST_TRACKS], start=1):
         duration = format_duration(entry.duration_seconds) if entry.duration_seconds else "?"
         lines.append(f"`{idx}.` {truncate(entry.title, 55)} [{duration}]")
 
@@ -76,7 +76,7 @@ def _build_select_options(entries: list[PlaylistEntry]) -> list[discord.SelectOp
             value=str(idx),
             description=format_duration(entry.duration_seconds) if entry.duration_seconds else None,
         )
-        for idx, entry in enumerate(entries[:PlaylistConstants.MAX_SELECT_OPTIONS])
+        for idx, entry in enumerate(entries[: PlaylistConstants.MAX_SELECT_OPTIONS])
     ]
 
 
@@ -91,7 +91,7 @@ class PlaylistView(BaseInteractiveView):
         container: Container,
     ) -> None:
         super().__init__(timeout=PlaylistConstants.VIEW_TIMEOUT)
-        self._entries = entries[:PlaylistConstants.MAX_PLAYLIST_TRACKS]
+        self._entries = entries[: PlaylistConstants.MAX_PLAYLIST_TRACKS]
         self._container = container
         self._requester_id = interaction.user.id
 
@@ -117,12 +117,16 @@ class PlaylistView(BaseInteractiveView):
         return True
 
     @discord.ui.button(label="Add All", style=discord.ButtonStyle.success, row=1)
-    async def add_all_button(self, interaction: discord.Interaction, _button: discord.ui.Button[PlaylistView]) -> None:
+    async def add_all_button(
+        self, interaction: discord.Interaction, _button: discord.ui.Button[PlaylistView]
+    ) -> None:
         all_indices = list(range(len(self._entries)))
         await self._enqueue_tracks(interaction, all_indices)
 
     @discord.ui.button(label="Shuffle All", style=discord.ButtonStyle.primary, row=1)
-    async def shuffle_all_button(self, interaction: discord.Interaction, _button: discord.ui.Button[PlaylistView]) -> None:
+    async def shuffle_all_button(
+        self, interaction: discord.Interaction, _button: discord.ui.Button[PlaylistView]
+    ) -> None:
         import random
 
         all_indices = list(range(len(self._entries)))
@@ -130,7 +134,9 @@ class PlaylistView(BaseInteractiveView):
         await self._enqueue_tracks(interaction, all_indices)
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, row=1)
-    async def cancel_button(self, interaction: discord.Interaction, _button: discord.ui.Button[PlaylistView]) -> None:
+    async def cancel_button(
+        self, interaction: discord.Interaction, _button: discord.ui.Button[PlaylistView]
+    ) -> None:
         if not self._finish_view():
             return
         self._disable_all_items()
@@ -149,9 +155,7 @@ class PlaylistView(BaseInteractiveView):
                 await self._enqueue_tracks(interaction, selected_indices)
                 return
 
-    async def _enqueue_tracks(
-        self, interaction: discord.Interaction, indices: list[int]
-    ) -> None:
+    async def _enqueue_tracks(self, interaction: discord.Interaction, indices: list[int]) -> None:
         if not self._finish_view():
             await interaction.response.send_message(
                 "Already processing, please wait.", ephemeral=True
@@ -216,7 +220,9 @@ class PlaylistView(BaseInteractiveView):
         return added, should_start
 
     async def _ensure_voice_and_play(
-        self, guild: discord.Guild, user: discord.User | discord.Member,
+        self,
+        guild: discord.Guild,
+        user: discord.User | discord.Member,
     ) -> None:
         """Connect to voice (if needed) and start playback."""
         voice_adapter = self._container.voice_adapter
@@ -228,7 +234,9 @@ class PlaylistView(BaseInteractiveView):
         if not voice_adapter.is_connected(guild.id):
             connected = await voice_adapter.ensure_connected(guild.id, member.voice.channel.id)
             if not connected:
-                logger.warning("Failed to connect to voice for playlist playback in guild %s", guild.id)
+                logger.warning(
+                    "Failed to connect to voice for playlist playback in guild %s", guild.id
+                )
                 return
 
         await self._container.playback_service.start_playback(guild.id)

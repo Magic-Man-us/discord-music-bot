@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import discord
 from discord import app_commands
-from discord.ext import commands
 
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
@@ -15,8 +14,9 @@ from discord_music_player.infrastructure.discord.guards.voice_guards import (
 
 
 class SkipCog(BaseCog):
-
-    @app_commands.command(name="skip", description="Vote to skip the current track, or force-skip if you're an admin.")
+    @app_commands.command(
+        name="skip", description="Vote to skip the current track, or force-skip if you're an admin."
+    )
     @app_commands.guild_only()
     @app_commands.describe(force="Force skip (admin only)")
     async def skip(self, interaction: discord.Interaction, force: bool = False) -> None:
@@ -29,9 +29,7 @@ class SkipCog(BaseCog):
 
         user = interaction.user
         if not isinstance(user, discord.Member):
-            await send_ephemeral(
-                interaction, "Could not verify your permissions."
-            )
+            await send_ephemeral(interaction, "Could not verify your permissions.")
             return
 
         if force:
@@ -56,9 +54,7 @@ class SkipCog(BaseCog):
                 ephemeral=True,
             )
         else:
-            await interaction.response.send_message(
-                "Nothing is playing.", ephemeral=True
-            )
+            await interaction.response.send_message("Nothing is playing.", ephemeral=True)
 
     async def _handle_vote_skip(
         self, interaction: discord.Interaction, user: discord.Member
@@ -81,9 +77,7 @@ class SkipCog(BaseCog):
         result = await handler.handle(command)
 
         if result.action_executed:
-            skipped_track = await self.container.playback_service.skip_track(
-                interaction.guild.id
-            )
+            skipped_track = await self.container.playback_service.skip_track(interaction.guild.id)
             if skipped_track is None:
                 # Track ended between the vote check and the skip execution.
                 msg = "Nothing is playing."

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
 from discord_music_player.domain.music.wrappers import TrackId
+from discord_music_player.domain.shared.enums import LeaderboardTimeRange
 from discord_music_player.domain.shared.types import DiscordSnowflake, NonEmptyStr, PositiveInt
 
 if TYPE_CHECKING:
@@ -145,13 +146,18 @@ class TrackHistoryRepository(ABC):
         ...
 
     @abstractmethod
-    async def get_user_stats(self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake) -> UserStats:
+    async def get_user_stats(
+        self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake
+    ) -> UserStats:
         """Get personal stats for a user in a guild."""
         ...
 
     @abstractmethod
     async def get_user_top_tracks(
-        self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake, limit: PositiveInt = 10
+        self,
+        guild_id: DiscordSnowflake,
+        user_id: DiscordSnowflake,
+        limit: PositiveInt = 10,
     ) -> list[tuple[NonEmptyStr, int]]:
         """Get a user's most played tracks. Returns (title, count)."""
         ...
@@ -175,7 +181,10 @@ class TrackHistoryRepository(ABC):
 
     @abstractmethod
     async def get_recent_by_user(
-        self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake, limit: PositiveInt = 100
+        self,
+        guild_id: DiscordSnowflake,
+        user_id: DiscordSnowflake,
+        limit: PositiveInt = 100,
     ) -> list[Track]:
         """Get recently played tracks requested by a specific user, most recent first."""
         ...
@@ -185,4 +194,34 @@ class TrackHistoryRepository(ABC):
         self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake
     ) -> list[GenreTrackInfo]:
         """Get track metadata for genre classification."""
+        ...
+
+    @abstractmethod
+    async def get_most_played_since(
+        self,
+        guild_id: DiscordSnowflake,
+        time_range: LeaderboardTimeRange,
+        limit: PositiveInt = 10,
+    ) -> list[tuple[Track, int]]:
+        """Get most played tracks in a time range. Returns (track, play_count)."""
+        ...
+
+    @abstractmethod
+    async def get_top_requesters_since(
+        self,
+        guild_id: DiscordSnowflake,
+        time_range: LeaderboardTimeRange,
+        limit: PositiveInt = 10,
+    ) -> list[tuple[DiscordSnowflake, NonEmptyStr, int]]:
+        """Get top requesters in a time range. Returns (user_id, name, count)."""
+        ...
+
+    @abstractmethod
+    async def get_most_skipped_since(
+        self,
+        guild_id: DiscordSnowflake,
+        time_range: LeaderboardTimeRange,
+        limit: PositiveInt = 10,
+    ) -> list[tuple[NonEmptyStr, int]]:
+        """Get most skipped tracks in a time range. Returns (title, skip_count)."""
         ...

@@ -347,12 +347,8 @@ class TestCaching:
     @pytest.mark.asyncio
     async def test_cache_expiry(self, client, sample_request):
         """Should refetch after cache expiry."""
-        mock_response1 = AIRecommendationResponse(
-            recs=[AIRecommendationItem(title="Song 1")]
-        )
-        mock_response2 = AIRecommendationResponse(
-            recs=[AIRecommendationItem(title="Song 2")]
-        )
+        mock_response1 = AIRecommendationResponse(recs=[AIRecommendationItem(title="Song 1")])
+        mock_response2 = AIRecommendationResponse(recs=[AIRecommendationItem(title="Song 2")])
 
         # First call
         with patch.object(client, "_call_api", return_value=mock_response1):
@@ -374,9 +370,7 @@ class TestCaching:
     @pytest.mark.asyncio
     async def test_singleflight_deduplication(self, client, sample_request):
         """Should deduplicate concurrent requests for same cache key."""
-        mock_response = AIRecommendationResponse(
-            recs=[AIRecommendationItem(title="Song 1")]
-        )
+        mock_response = AIRecommendationResponse(recs=[AIRecommendationItem(title="Song 1")])
         api_call_count = 0
 
         async def mock_api_call(user_prompt):
@@ -404,9 +398,7 @@ class TestAPICallHandling:
     @pytest.mark.asyncio
     async def test_call_api_success(self, client):
         """Should execute API call and return structured response."""
-        mock_response = AIRecommendationResponse(
-            recs=[AIRecommendationItem(title="Test")]
-        )
+        mock_response = AIRecommendationResponse(recs=[AIRecommendationItem(title="Test")])
         mock_result = MagicMock()
         mock_result.output = mock_response
 

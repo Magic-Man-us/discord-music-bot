@@ -11,11 +11,11 @@ if TYPE_CHECKING:
     from ..application.interfaces.ai_client import AIClient
     from ..application.interfaces.audio_resolver import AudioResolver
     from ..application.interfaces.voice_adapter import VoiceAdapter
+    from ..application.services.auto_dj import AutoDJ
     from ..application.services.playback_service import PlaybackApplicationService
     from ..application.services.queue_service import QueueApplicationService
     from ..application.services.radio_auto_refill import RadioAutoRefill
     from ..application.services.radio_service import RadioApplicationService
-    from ..application.services.auto_dj import AutoDJ
     from ..application.services.requester_leave_autoskip import (
         AutoSkipOnRequesterLeave,
     )
@@ -31,17 +31,16 @@ if TYPE_CHECKING:
     from ..infrastructure.persistence.repositories.favorites_repository import (
         SQLiteFavoritesRepository,
     )
-    from ..infrastructure.persistence.repositories.saved_queue_repository import (
-        SQLiteSavedQueueRepository,
-    )
     from ..infrastructure.persistence.repositories.genre_repository import (
         SQLiteGenreCacheRepository,
+    )
+    from ..infrastructure.persistence.repositories.saved_queue_repository import (
+        SQLiteSavedQueueRepository,
     )
     from .settings import Settings
 
 
 class Container:
-
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._bot: Bot | None = None
@@ -363,7 +362,12 @@ class Container:
             self.auto_dj.start()
 
     async def shutdown(self) -> None:
-        for subscriber in (self._auto_skip_on_requester_leave, self._radio_auto_refill, self._auto_dj, self._cleanup_job):
+        for subscriber in (
+            self._auto_skip_on_requester_leave,
+            self._radio_auto_refill,
+            self._auto_dj,
+            self._cleanup_job,
+        ):
             if subscriber is not None:
                 try:
                     subscriber.stop()

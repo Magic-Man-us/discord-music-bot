@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import discord
 from discord import app_commands
 
@@ -16,7 +14,7 @@ from discord_music_player.infrastructure.discord.guards.voice_guards import (
 from discord_music_player.infrastructure.discord.services.embed_builder import (
     build_now_playing_embed,
 )
-from discord_music_player.utils.reply import format_duration, truncate
+from discord_music_player.utils.reply import format_duration, paginate, truncate
 
 
 class NowPlayingCog(BaseCog):
@@ -110,11 +108,7 @@ class NowPlayingCog(BaseCog):
             return
 
         history_repo = self.container.history_repository
-        per_page = UIConstants.QUEUE_PER_PAGE
-        # Fetch enough to know total count for pagination
-        all_tracks = await history_repo.get_recent_by_user(
-            interaction.guild.id, user.id, limit=500
-        )
+        all_tracks = await history_repo.get_recent_by_user(interaction.guild.id, user.id, limit=500)
         if not all_tracks:
             await send_ephemeral(
                 interaction,
@@ -122,14 +116,11 @@ class NowPlayingCog(BaseCog):
             )
             return
 
-        total_pages = max(1, math.ceil(len(all_tracks) / per_page))
-        page = max(1, min(page, total_pages))
-        start_idx = (page - 1) * per_page
-        page_tracks = all_tracks[start_idx : start_idx + per_page]
+        page, total_pages, start_idx = paginate(len(all_tracks), page)
+        page_tracks = all_tracks[start_idx : start_idx + UIConstants.QUEUE_PER_PAGE]
 
         lines = [
-            self._format_history_line(i, t)
-            for i, t in enumerate(page_tracks, start=start_idx + 1)
+            self._format_history_line(i, t) for i, t in enumerate(page_tracks, start=start_idx + 1)
         ]
         embed = discord.Embed(
             title=f"{user.display_name}'s History ({len(all_tracks)} tracks) — Page {page}/{total_pages}",

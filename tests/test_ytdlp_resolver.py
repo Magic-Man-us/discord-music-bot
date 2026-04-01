@@ -325,9 +325,7 @@ class TestStreamURLExtraction:
 
     def test_extract_stream_url_with_no_audio(self, resolver):
         """Should return None when no audio formats."""
-        info = YtDlpTrackInfo(
-            formats=[AudioFormatInfo(acodec="none", url="video.mp4")]
-        )
+        info = YtDlpTrackInfo(formats=[AudioFormatInfo(acodec="none", url="video.mp4")])
         url = resolver._extract_stream_url(info)
         assert url is None
 
@@ -744,9 +742,7 @@ class TestCaching:
                 # Make first batch of entries expired
                 if i < expired_count:
                     info = YtDlpTrackInfo.model_validate(mock_raw)
-                    _info_cache[url] = CacheEntry(
-                        info=info, cached_at=time.time() - CACHE_TTL - 1
-                    )
+                    _info_cache[url] = CacheEntry(info=info, cached_at=time.time() - CACHE_TTL - 1)
                 else:
                     resolver._extract_info_sync(url)
 
@@ -898,7 +894,12 @@ class TestModelValidation:
 
     def test_audio_format_info_ignores_extra_fields(self):
         """Should silently ignore extra format fields from yt-dlp."""
-        raw = {"url": "https://example.com/stream", "acodec": "opus", "vcodec": "none", "ext": "webm"}
+        raw = {
+            "url": "https://example.com/stream",
+            "acodec": "opus",
+            "vcodec": "none",
+            "ext": "webm",
+        }
         fmt = AudioFormatInfo.model_validate(raw)
         assert fmt.url == "https://example.com/stream"
         assert fmt.acodec == "opus"

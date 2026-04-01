@@ -72,7 +72,6 @@ def _generate_track_id(url: HttpUrlStr) -> str:
 
 
 class YtDlpResolver(AudioResolver):
-
     def __init__(self, settings: AudioSettings | None = None) -> None:
         self._settings = settings or AudioSettings()
         self._format = (
@@ -287,7 +286,9 @@ class YtDlpResolver(AudioResolver):
 
         return tracks
 
-    async def search(self, query: NonEmptyStr, limit: PositiveInt = DEFAULT_SEARCH_LIMIT) -> list[Track]:
+    async def search(
+        self, query: NonEmptyStr, limit: PositiveInt = DEFAULT_SEARCH_LIMIT
+    ) -> list[Track]:
         try:
             async with asyncio.timeout(EXTRACT_TIMEOUT):
                 results = await asyncio.to_thread(self._search_sync, query, limit)
@@ -323,7 +324,9 @@ class YtDlpResolver(AudioResolver):
 
             return tracks
         except TimeoutError:
-            logger.error("yt-dlp playlist extraction timed out after %ds for %s", EXTRACT_TIMEOUT, url)
+            logger.error(
+                "yt-dlp playlist extraction timed out after %ds for %s", EXTRACT_TIMEOUT, url
+            )
             return []
         except Exception as e:
             logger.error("Playlist extraction failed for %s: %s", url, e)

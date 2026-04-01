@@ -109,16 +109,20 @@ class SQLiteSavedQueueRepository:
         tracks_json = SavedQueueRow.serialize_tracks(tracks)
 
         async with self._db.transaction() as conn:
-            count_row = await (await conn.execute(
-                "SELECT COUNT(*) as count FROM saved_queues WHERE guild_id = ?",
-                (guild_id,),
-            )).fetchone()
+            count_row = await (
+                await conn.execute(
+                    "SELECT COUNT(*) as count FROM saved_queues WHERE guild_id = ?",
+                    (guild_id,),
+                )
+            ).fetchone()
             count = count_row[0] if count_row else 0
 
-            existing_row = await (await conn.execute(
-                "SELECT 1 FROM saved_queues WHERE guild_id = ? AND name = ?",
-                (guild_id, name),
-            )).fetchone()
+            existing_row = await (
+                await conn.execute(
+                    "SELECT 1 FROM saved_queues WHERE guild_id = ? AND name = ?",
+                    (guild_id, name),
+                )
+            ).fetchone()
 
             if existing_row is None and count >= _MAX_SAVED_QUEUES_PER_GUILD:
                 return False
@@ -140,7 +144,9 @@ class SQLiteSavedQueueRepository:
 
         logger.info(
             "Saved queue '%s' for guild %s (%d tracks)",
-            name, guild_id, len(tracks),
+            name,
+            guild_id,
+            len(tracks),
         )
         return True
 

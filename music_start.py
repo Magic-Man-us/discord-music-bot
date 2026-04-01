@@ -117,14 +117,14 @@ def start_session(
             f"EXIT_CODE=$?; "
             f'echo "[respawn] process exited with code $EXIT_CODE"; '
             f"NOW=$(date +%s); "
-            f"CRASH_TIMES+=(\"$NOW\"); "
+            f'CRASH_TIMES+=("$NOW"); '
             # Trim crash times outside the window
             f"CUTOFF=$((NOW - {RAPID_CRASH_WINDOW})); "
             f"RECENT=(); "
             f'for T in "${{CRASH_TIMES[@]}}"; do '
             f'  [ "$T" -ge "$CUTOFF" ] && RECENT+=("$T"); '
             f"done; "
-            f"CRASH_TIMES=(\"${{RECENT[@]}}\"); "
+            f'CRASH_TIMES=("${{RECENT[@]}}"); '
             # Check if crash limit exceeded
             f'if [ "${{#CRASH_TIMES[@]}}" -ge {MAX_RAPID_CRASHES} ]; then '
             f'  echo "[respawn] {MAX_RAPID_CRASHES} crashes in {RAPID_CRASH_WINDOW}s — stopping respawn loop"; '

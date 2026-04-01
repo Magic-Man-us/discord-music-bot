@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-
 # =============================================================================
 # ResumePlaybackView
 # =============================================================================
@@ -483,8 +482,11 @@ class TestRadioView:
         container = MagicMock()
         tracks = _make_radio_tracks()
         view = RadioView(
-            guild_id=1, container=container, tracks=tracks,
-            seed_title="Song", queue_start_position=3,
+            guild_id=1,
+            container=container,
+            tracks=tracks,
+            seed_title="Song",
+            queue_start_position=3,
         )
 
         reroll_buttons = _get_reroll_buttons(view)

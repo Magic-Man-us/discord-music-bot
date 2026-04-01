@@ -9,11 +9,15 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, ConfigDict
 
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
-from discord_music_player.domain.music.repository import SessionRepository
 from discord_music_player.domain.music.enums import LoopMode, PlaybackState
+from discord_music_player.domain.music.repository import SessionRepository
 from discord_music_player.domain.shared.datetime_utils import UtcDateTime
-from discord_music_player.domain.shared.types import DiscordSnowflake, UtcDatetimeField
-from discord_music_player.infrastructure.persistence.models import QUEUE_TRACKS_INSERT_SQL, QueueTrackRow, TrackRow
+from discord_music_player.domain.shared.types import UtcDatetimeField
+from discord_music_player.infrastructure.persistence.models import (
+    QUEUE_TRACKS_INSERT_SQL,
+    QueueTrackRow,
+    TrackRow,
+)
 
 if TYPE_CHECKING:
     from ..database import Database
@@ -117,13 +121,19 @@ class SQLiteSessionRepository(SessionRepository):
 
             if session.current_track:
                 row = QueueTrackRow.from_track(
-                    session.current_track, guild_id=session.guild_id, position=-1, is_current=True,
+                    session.current_track,
+                    guild_id=session.guild_id,
+                    position=-1,
+                    is_current=True,
                 )
                 await conn.execute(QUEUE_TRACKS_INSERT_SQL, row.model_dump())
 
             for position, track in enumerate(session.queue):
                 row = QueueTrackRow.from_track(
-                    track, guild_id=session.guild_id, position=position, is_current=False,
+                    track,
+                    guild_id=session.guild_id,
+                    position=position,
+                    is_current=False,
                 )
                 await conn.execute(QUEUE_TRACKS_INSERT_SQL, row.model_dump())
 

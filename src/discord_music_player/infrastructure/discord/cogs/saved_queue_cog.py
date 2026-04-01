@@ -7,19 +7,18 @@ import random
 import discord
 from discord import app_commands
 
-from discord_music_player.domain.shared.constants import UIConstants
 from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
 from discord_music_player.infrastructure.discord.guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     ensure_voice,
 )
-from discord_music_player.utils.reply import format_duration, truncate
 
 
 class SavedQueueCog(BaseCog):
-
     saved = app_commands.Group(
-        name="playlist", description="Save and load named queue playlists.", guild_only=True,
+        name="playlist",
+        description="Save and load named queue playlists.",
+        guild_only=True,
     )
 
     @saved.command(name="save", description="Save the current queue as a named playlist.")
@@ -94,15 +93,7 @@ class SavedQueueCog(BaseCog):
         if shuffle:
             random.shuffle(tracks)
 
-        result = await self.container.queue_service.enqueue_batch(
-            guild_id=interaction.guild.id,
-            tracks=tracks,
-            user_id=interaction.user.id,
-            user_name=interaction.user.display_name,
-        )
-
-        if result.should_start:
-            await self.container.playback_service.start_playback(interaction.guild.id)
+        result = await self.enqueue_and_start(interaction, tracks)
 
         shuffle_label = " (shuffled)" if shuffle else ""
         await interaction.followup.send(
@@ -147,9 +138,7 @@ class SavedQueueCog(BaseCog):
         deleted = await repo.delete(interaction.guild.id, name.strip().lower())
 
         if deleted:
-            await interaction.response.send_message(
-                f"Deleted playlist **{name}**.", ephemeral=True
-            )
+            await interaction.response.send_message(f"Deleted playlist **{name}**.", ephemeral=True)
         else:
             await interaction.response.send_message(
                 f"No playlist named **{name}** found.", ephemeral=True

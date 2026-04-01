@@ -785,7 +785,6 @@ class TestAvatarCommand:
 class TestEdgeCases:
     """Tests for edge cases and error conditions."""
 
-
     def test_build_user_info_embed_member_no_top_role(self, info_cog, mock_member):
         """Should handle members where top role is @everyone."""
         everyone_role = MagicMock()

@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any
 import discord
 from discord.ext import commands
 
-
 if TYPE_CHECKING:
     from ...config.container import Container
     from ...config.settings import Settings
@@ -83,7 +82,8 @@ class MusicBot(commands.Bot):
             sessions = await session_repo.get_all_active()
 
             logger.info(
-                "Session recovery: found %d active session(s)", len(sessions),
+                "Session recovery: found %d active session(s)",
+                len(sessions),
             )
 
             resumed_count = 0
@@ -100,14 +100,14 @@ class MusicBot(commands.Bot):
                 )
                 # Skip sessions that are already idle with no tracks
                 if session.state == PlaybackState.IDLE and not session.has_tracks:
-                    logger.info("Skipping idle session with no tracks for guild %s", session.guild_id)
+                    logger.info(
+                        "Skipping idle session with no tracks for guild %s", session.guild_id
+                    )
                     continue
 
                 guild = self.get_guild(session.guild_id)
                 if guild is None:
-                    logger.debug(
-                        "Guild %s not found, resetting session", session.guild_id
-                    )
+                    logger.debug("Guild %s not found, resetting session", session.guild_id)
                     await self._reset_session(session, session_repo)
                     reset_count += 1
                     continue
@@ -127,7 +127,9 @@ class MusicBot(commands.Bot):
         except Exception as e:
             logger.warning("Failed to reset stale sessions: %s", e)
 
-    async def _try_resume_session(self, session: GuildPlaybackSession, guild: discord.Guild) -> bool:
+    async def _try_resume_session(
+        self, session: GuildPlaybackSession, guild: discord.Guild
+    ) -> bool:
         """Attempt to resume playback for a single session. Returns True if successful."""
         try:
             # Clean up any stale now-playing messages from before the restart
@@ -141,9 +143,7 @@ class MusicBot(commands.Bot):
             # Find a voice channel with members
             voice_channel = await self._find_resumable_voice_channel(guild)
             if voice_channel is None:
-                logger.debug(
-                    "No suitable voice channel found for guild %s", session.guild_id
-                )
+                logger.debug("No suitable voice channel found for guild %s", session.guild_id)
                 return False
 
             # Find a text channel to post the resume prompt
@@ -156,13 +156,9 @@ class MusicBot(commands.Bot):
 
             # Connect to voice first
             voice_adapter = self.container.voice_adapter
-            success = await voice_adapter.ensure_connected(
-                session.guild_id, voice_channel.id
-            )
+            success = await voice_adapter.ensure_connected(session.guild_id, voice_channel.id)
             if not success:
-                logger.debug(
-                    "Failed to connect to voice in guild %s", session.guild_id
-                )
+                logger.debug("Failed to connect to voice in guild %s", session.guild_id)
                 return False
 
             # Capture elapsed time BEFORE resetting state (uses playback_started_at)
@@ -223,9 +219,7 @@ class MusicBot(commands.Bot):
             return True
 
         except Exception as e:
-            logger.warning(
-                "Failed to resume session for guild %s: %s", session.guild_id, e
-            )
+            logger.warning("Failed to resume session for guild %s: %s", session.guild_id, e)
             return False
 
     async def _find_text_channel(
@@ -254,7 +248,9 @@ class MusicBot(commands.Bot):
                 return channel
         return None
 
-    async def _reset_session(self, session: GuildPlaybackSession, session_repo: SessionRepository) -> None:
+    async def _reset_session(
+        self, session: GuildPlaybackSession, session_repo: SessionRepository
+    ) -> None:
         """Reset a session to IDLE state."""
         from ...domain.music.enums import PlaybackState
 
@@ -301,7 +297,9 @@ class MusicBot(commands.Bot):
         self, interaction: discord.Interaction, error: Exception
     ) -> None:
         """Global slash-command error handler; sends ephemeral messages to avoid channel spam."""
-        original = error.original if isinstance(error, discord.app_commands.CommandInvokeError) else error
+        original = (
+            error.original if isinstance(error, discord.app_commands.CommandInvokeError) else error
+        )
 
         logger.error(
             "Slash command error in '%s': %s",
@@ -395,7 +393,10 @@ class MusicBot(commands.Bot):
                     try:
                         await asyncio.wait_for(self.close(), timeout=shutdown_timeout)
                     except TimeoutError:
-                        logger.warning("Graceful shutdown timed out after %.0fs, forcing exit", shutdown_timeout)
+                        logger.warning(
+                            "Graceful shutdown timed out after %.0fs, forcing exit",
+                            shutdown_timeout,
+                        )
 
                 for sig in (signal.SIGINT, signal.SIGTERM):
                     loop.add_signal_handler(sig, lambda: asyncio.create_task(_graceful_close()))

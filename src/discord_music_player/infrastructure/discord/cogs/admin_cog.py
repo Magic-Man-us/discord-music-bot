@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import discord
 from discord.ext import commands
 
@@ -15,12 +16,13 @@ _FAILED_RELOAD_LOG = "Failed to reload %s"
 
 def _is_bot_owner(ctx: commands.Context) -> bool:
     """Check if the user is a configured bot owner or the application owner."""
-    app_info = ctx.bot.application
+    bot = ctx.bot
+    app_info = bot.application
     if app_info and app_info.owner:
         if ctx.author.id == app_info.owner.id:
             return True
 
-    container = getattr(ctx.bot, "container", None)
+    container = bot.container
     if container:
         owner_ids = container.settings.discord.owner_ids
         if ctx.author.id in owner_ids:
@@ -62,6 +64,12 @@ def require_owner_or_admin() -> commands.Check[commands.Context]:
 
 
 class AdminCog(BaseCog):
+    async def _require_ai(self, ctx: commands.Context) -> bool:
+        """Return True if AI is enabled, otherwise reply and return False."""
+        if not self.container.ai_enabled:
+            await self._reply(ctx, "AI features are disabled.")
+            return False
+        return True
 
     async def _reply(
         self,
@@ -81,9 +89,7 @@ class AdminCog(BaseCog):
             return
 
         if isinstance(error, commands.MissingRequiredArgument):
-            await self._reply(
-                ctx, f"Missing argument: {error.param.name}"
-            )
+            await self._reply(ctx, f"Missing argument: {error.param.name}")
             return
 
         if isinstance(error, commands.BadArgument):
@@ -106,18 +112,14 @@ class AdminCog(BaseCog):
 
             if scope_lower == SyncScope.GLOBAL:
                 synced = await self.bot.tree.sync()
-                await self._reply(
-                    ctx, f"Synced {len(synced)} slash commands globally."
-                )
+                await self._reply(ctx, f"Synced {len(synced)} slash commands globally.")
             else:
                 if not ctx.guild:
                     await self._reply(ctx, "Run in a server or use `!sync global`.")
                     return
 
                 synced = await self.bot.tree.sync(guild=ctx.guild)
-                await self._reply(
-                    ctx, f"Synced {len(synced)} slash commands to this server."
-                )
+                await self._reply(ctx, f"Synced {len(synced)} slash commands to this server.")
         except Exception:
             self.logger.exception("Failed to sync commands")
             await self._reply(ctx, "Failed to sync. See logs.")
@@ -140,9 +142,7 @@ class AdminCog(BaseCog):
                 limit = DiscordEmbedLimits.SLASH_STATUS_TRUNCATION
                 return result[:limit] + "..." if len(result) > limit else result
 
-            embed = discord.Embed(
-                title="Slash Command Status", color=discord.Color.blurple()
-            )
+            embed = discord.Embed(title="Slash Command Status", color=discord.Color.blurple())
             embed.add_field(name="Global (Live)", value=str(len(global_cmds)), inline=True)
             if ctx.guild:
                 embed.add_field(name="Guild (Live)", value=str(len(guild_cmds)), inline=True)
@@ -179,14 +179,10 @@ class AdminCog(BaseCog):
             old_mod = f"cog.{extension}"
             try:
                 await self.bot.reload_extension(old_mod)
-                await self._reply(
-                    ctx, f"Reloaded `{old_mod}`"
-                )
+                await self._reply(ctx, f"Reloaded `{old_mod}`")
             except Exception:
                 self.logger.exception(_FAILED_RELOAD_LOG, extension)
-                await self._reply(
-                    ctx, f"Failed to reload `{extension}`"
-                )
+                await self._reply(ctx, f"Failed to reload `{extension}`")
         except Exception:
             self.logger.exception(_FAILED_RELOAD_LOG, mod)
             await self._reply(ctx, f"Failed to reload `{mod}`")
@@ -209,9 +205,7 @@ class AdminCog(BaseCog):
                 failed += 1
                 self.logger.exception(_FAILED_RELOAD_LOG, mod)
 
-        await self._reply(
-            ctx, f"Reloaded {ok} extensions, {failed} failed."
-        )
+        await self._reply(ctx, f"Reloaded {ok} extensions, {failed} failed.")
 
     # ─────────────────────────────────────────────────────────────────
     # Cache Management
@@ -220,17 +214,14 @@ class AdminCog(BaseCog):
     @commands.command(name="cache_status", description="Show cache statistics.")
     @require_owner_or_admin()
     async def cache_status(self, ctx: commands.Context) -> None:
-        if not self.container.ai_enabled:
-            await self._reply(ctx, "AI features are disabled.")
+        if not await self._require_ai(ctx):
             return
 
         try:
             ai_client = self.container.ai_client
             stats = ai_client.get_cache_stats()
 
-            embed = discord.Embed(
-                title="Cache Statistics", color=discord.Color.blue()
-            )
+            embed = discord.Embed(title="Cache Statistics", color=discord.Color.blue())
             embed.add_field(name="Size", value=str(stats.size), inline=True)
             embed.add_field(name="Hits", value=str(stats.hits), inline=True)
             embed.add_field(name="Misses", value=str(stats.misses), inline=True)
@@ -245,19 +236,18 @@ class AdminCog(BaseCog):
     @commands.command(name="ai_usage", description="Show AI token usage statistics.")
     @require_owner_or_admin()
     async def ai_usage(self, ctx: commands.Context) -> None:
-        if not self.container.ai_enabled:
-            await self._reply(ctx, "AI features are disabled.")
+        if not await self._require_ai(ctx):
             return
 
         try:
             stats = self.container.ai_client.get_cache_stats()
             usage = stats.usage
 
-            embed = discord.Embed(
-                title="AI Token Usage", color=discord.Color.purple()
-            )
+            embed = discord.Embed(title="AI Token Usage", color=discord.Color.purple())
             embed.add_field(name="Input Tokens", value=f"{usage.total_input_tokens:,}", inline=True)
-            embed.add_field(name="Output Tokens", value=f"{usage.total_output_tokens:,}", inline=True)
+            embed.add_field(
+                name="Output Tokens", value=f"{usage.total_output_tokens:,}", inline=True
+            )
             embed.add_field(name="Total Tokens", value=f"{usage.total_tokens:,}", inline=True)
             embed.add_field(name="API Calls", value=str(usage.total_calls), inline=True)
             embed.add_field(name="API Requests", value=str(usage.total_requests), inline=True)
@@ -271,8 +261,7 @@ class AdminCog(BaseCog):
     @commands.command(name="cache_clear", description="Clear the AI cache.")
     @require_owner()
     async def cache_clear(self, ctx: commands.Context) -> None:
-        if not self.container.ai_enabled:
-            await self._reply(ctx, "AI features are disabled.")
+        if not await self._require_ai(ctx):
             return
 
         try:
@@ -286,8 +275,7 @@ class AdminCog(BaseCog):
     @commands.command(name="cache_prune", description="Prune old cache entries.")
     @require_owner()
     async def cache_prune(self, ctx: commands.Context, max_age_seconds: int = 3600) -> None:
-        if not self.container.ai_enabled:
-            await self._reply(ctx, "AI features are disabled.")
+        if not await self._require_ai(ctx):
             return
 
         try:
@@ -309,9 +297,7 @@ class AdminCog(BaseCog):
             cleanup_job = self.container.cleanup_job
             stats = await cleanup_job.run_cleanup()
 
-            embed = discord.Embed(
-                title="Cleanup Results", color=discord.Color.green()
-            )
+            embed = discord.Embed(title="Cleanup Results", color=discord.Color.green())
             embed.add_field(name="Sessions", value=str(stats.sessions_cleaned), inline=True)
             embed.add_field(name="Votes", value=str(stats.votes_cleaned), inline=True)
             embed.add_field(name="Cache", value=str(stats.cache_cleaned), inline=True)
@@ -330,22 +316,20 @@ class AdminCog(BaseCog):
             db = self.container.database
             stats = await db.get_stats()
 
-            embed = discord.Embed(
-                title="Database Statistics", color=discord.Color.gold()
-            )
+            embed = discord.Embed(title="Database Statistics", color=discord.Color.gold())
             embed.add_field(
                 name="Initialized", value="Yes" if stats.initialized else "No", inline=True
             )
-            embed.add_field(
-                name="File Size", value=f"{stats.file_size_mb or 0} MB", inline=True
-            )
+            embed.add_field(name="File Size", value=f"{stats.file_size_mb or 0} MB", inline=True)
             embed.add_field(name="Page Count", value=str(stats.page_count or 0), inline=True)
 
             db_name = Path(stats.db_path).name if stats.db_path else "Unknown"
             embed.add_field(name="Database", value=db_name, inline=True)
 
             if stats.tables:
-                table_info = "\n".join(f"{name}: {count} rows" for name, count in stats.tables.items())
+                table_info = "\n".join(
+                    f"{name}: {count} rows" for name, count in stats.tables.items()
+                )
                 embed.add_field(name="Tables", value=table_info or "No tables", inline=False)
 
             await self._reply(ctx, embed=embed)
@@ -363,9 +347,7 @@ class AdminCog(BaseCog):
             issues = result.issues
             color = discord.Color.green() if not issues else discord.Color.orange()
 
-            embed = discord.Embed(
-                title="Database Validation", color=color
-            )
+            embed = discord.Embed(title="Database Validation", color=color)
 
             embed.add_field(
                 name="Tables",
@@ -393,7 +375,9 @@ class AdminCog(BaseCog):
             if issues:
                 embed.add_field(
                     name="Issues",
-                    value="\n".join(f"- {i}" for i in issues)[:DiscordEmbedLimits.EMBED_FIELD_VALUE_MAX],
+                    value="\n".join(f"- {i}" for i in issues)[
+                        : DiscordEmbedLimits.EMBED_FIELD_VALUE_MAX
+                    ],
                     inline=False,
                 )
 
@@ -411,9 +395,15 @@ class AdminCog(BaseCog):
     async def status(self, ctx: commands.Context) -> None:
         embed = discord.Embed(title="Bot Status", color=discord.Color.green())
         embed.add_field(name="Guilds", value=str(len(self.bot.guilds)), inline=True)
-        embed.add_field(name="Latency", value=f"{self.bot.latency * UIConstants.MS_PER_SECOND:.0f}ms", inline=True)
+        embed.add_field(
+            name="Latency",
+            value=f"{self.bot.latency * UIConstants.MS_PER_SECOND:.0f}ms",
+            inline=True,
+        )
 
-        embed.add_field(name="Voice Connections", value=str(len(self.bot.voice_clients)), inline=True)
+        embed.add_field(
+            name="Voice Connections", value=str(len(self.bot.voice_clients)), inline=True
+        )
         embed.add_field(name="Extensions", value=str(len(self.bot.extensions)), inline=True)
         embed.add_field(name="Cogs", value=str(len(self.bot.cogs)), inline=True)
 
@@ -429,7 +419,7 @@ class AdminCog(BaseCog):
 
         try:
             cleanup_job = self.container.cleanup_job
-            await cleanup_job.shutdown()
+            await cleanup_job.stop()
         except Exception:
             pass
 

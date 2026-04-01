@@ -9,8 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from discord_music_player.domain.music.enums import LoopMode, PlaybackState
 from discord_music_player.domain.music.wrappers import QueuePosition, TrackId
-from discord_music_player.domain.shared.datetime_utils import UtcDateTime, utcnow
 from discord_music_player.domain.shared.constants import LimitConstants
+from discord_music_player.domain.shared.datetime_utils import UtcDateTime, utcnow
 from discord_music_player.domain.shared.exceptions import (
     BusinessRuleViolationError,
     InvalidOperationError,
@@ -26,10 +26,15 @@ from discord_music_player.domain.shared.types import (
     UtcDatetimeField,
 )
 
-_RESOLVE_EXCLUDE_FIELDS: frozenset[str] = frozenset({
-    "id", "requested_by_id", "requested_by_name",
-    "requested_at", "is_from_recommendation",
-})
+_RESOLVE_EXCLUDE_FIELDS: frozenset[str] = frozenset(
+    {
+        "id",
+        "requested_by_id",
+        "requested_by_name",
+        "requested_at",
+        "is_from_recommendation",
+    }
+)
 
 
 class PlaylistEntry(BaseModel):
@@ -96,7 +101,10 @@ class Track(BaseModel):
         return self.title
 
     def with_requester(
-        self, user_id: DiscordSnowflake, user_name: NonEmptyStr, requested_at: datetime | None = None
+        self,
+        user_id: DiscordSnowflake,
+        user_name: NonEmptyStr,
+        requested_at: datetime | None = None,
     ) -> Track:
         return self.model_copy(
             update={
@@ -109,7 +117,8 @@ class Track(BaseModel):
     def with_resolved(self, resolved: Track) -> Track:
         """Merge resolver data onto this track, preserving requester metadata and identity."""
         resolved_dump = resolved.model_dump(
-            exclude_none=True, exclude=_RESOLVE_EXCLUDE_FIELDS,
+            exclude_none=True,
+            exclude=_RESOLVE_EXCLUDE_FIELDS,
         )
         return self.model_copy(update=resolved_dump)
 
@@ -170,7 +179,7 @@ class GuildPlaybackSession(BaseModel):
             return True
         return any(t.id == track.id for t in self.queue)
 
-    def enqueue(self, track: Track) -> QueuePosition:
+    def _assert_can_enqueue(self, track: Track) -> None:
         if self.is_duplicate(track):
             raise BusinessRuleViolationError(
                 rule="NO_DUPLICATES",
@@ -181,22 +190,15 @@ class GuildPlaybackSession(BaseModel):
                 rule="MAX_QUEUE_SIZE", message=f"Queue is full (max {self.MAX_QUEUE_SIZE} tracks)"
             )
 
+    def enqueue(self, track: Track) -> QueuePosition:
+        self._assert_can_enqueue(track)
         position = QueuePosition(value=len(self.queue))
         self.queue.append(track)
         self.touch()
         return position
 
     def enqueue_next(self, track: Track) -> QueuePosition:
-        if self.is_duplicate(track):
-            raise BusinessRuleViolationError(
-                rule="NO_DUPLICATES",
-                message=f'"{track.title}" is already in the queue or currently playing',
-            )
-        if not self.can_add_to_queue:
-            raise BusinessRuleViolationError(
-                rule="MAX_QUEUE_SIZE", message=f"Queue is full (max {self.MAX_QUEUE_SIZE} tracks)"
-            )
-
+        self._assert_can_enqueue(track)
         self.queue.insert(0, track)
         self.touch()
         return QueuePosition(value=0)

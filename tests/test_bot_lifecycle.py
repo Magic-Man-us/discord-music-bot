@@ -343,9 +343,7 @@ class TestResumeSessions:
         mock_container.session_repository.get_all_active.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_resume_sessions_resets_when_guild_not_found(
-        self, mock_container, mock_settings
-    ):
+    async def test_resume_sessions_resets_when_guild_not_found(self, mock_container, mock_settings):
         """Should reset sessions when guild is not found."""
         from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
         from discord_music_player.domain.music.enums import PlaybackState

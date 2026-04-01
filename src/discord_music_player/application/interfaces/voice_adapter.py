@@ -27,7 +27,9 @@ class VoiceAdapter(ABC):
         ...
 
     @abstractmethod
-    async def ensure_connected(self, guild_id: DiscordSnowflake, channel_id: ChannelIdField) -> bool:
+    async def ensure_connected(
+        self, guild_id: DiscordSnowflake, channel_id: ChannelIdField
+    ) -> bool:
         """Ensure bot is connected to the specified channel, connecting or moving as needed."""
         ...
 
@@ -63,16 +65,13 @@ class VoiceAdapter(ABC):
         ...
 
     @abstractmethod
-    def is_connected(self, guild_id: DiscordSnowflake) -> bool:
-        ...
+    def is_connected(self, guild_id: DiscordSnowflake) -> bool: ...
 
     @abstractmethod
-    def is_playing(self, guild_id: DiscordSnowflake) -> bool:
-        ...
+    def is_playing(self, guild_id: DiscordSnowflake) -> bool: ...
 
     @abstractmethod
-    def is_paused(self, guild_id: DiscordSnowflake) -> bool:
-        ...
+    def is_paused(self, guild_id: DiscordSnowflake) -> bool: ...
 
     @abstractmethod
     async def get_listeners(self, guild_id: DiscordSnowflake) -> list[DiscordSnowflake]:
