@@ -7,7 +7,7 @@ import re
 
 from pydantic import field_validator
 
-from discord_music_player.domain.shared.types import (
+from ..shared.types import (
     DurationSeconds,
     NonEmptyStr,
     NonNegativeInt,

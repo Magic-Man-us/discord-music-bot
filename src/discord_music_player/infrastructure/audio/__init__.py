@@ -1,6 +1,6 @@
 """Audio infrastructure - yt-dlp resolver and FFmpeg player."""
 
-from discord_music_player.infrastructure.audio.models import (
+from .models import (
     AudioFormatInfo,
     CacheEntry,
     ExtractorArgs,
@@ -8,7 +8,7 @@ from discord_music_player.infrastructure.audio.models import (
     YtDlpOpts,
     YtDlpTrackInfo,
 )
-from discord_music_player.infrastructure.audio.ytdlp_resolver import YtDlpResolver
+from .ytdlp_resolver import YtDlpResolver
 
 __all__ = [
     "AudioFormatInfo",

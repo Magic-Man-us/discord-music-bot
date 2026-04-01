@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from discord_music_player.domain.shared.types import DiscordSnowflake, NonEmptyStr, UserIdField
+from ....domain.shared.types import DiscordSnowflake, NonEmptyStr, UserIdField
 
 if TYPE_CHECKING:
     from ....domain.music.entities import Track

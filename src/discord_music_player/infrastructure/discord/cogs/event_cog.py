@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING
 import discord
 from discord.ext import commands
 
-from discord_music_player.domain.shared.constants import ConfigKeys, DiscordEmbedLimits, UIConstants
-from discord_music_player.domain.shared.types import DiscordSnowflake
-from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
-from discord_music_player.utils.reply import truncate
+from ....domain.shared.constants import ConfigKeys, DiscordEmbedLimits, UIConstants
+from ....domain.shared.types import DiscordSnowflake
+from .base_cog import BaseCog
+from ....utils.reply import truncate
 
 if TYPE_CHECKING:
     from ....config.container import Container

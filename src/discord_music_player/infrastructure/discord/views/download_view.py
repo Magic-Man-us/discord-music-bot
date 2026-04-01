@@ -6,8 +6,8 @@ import urllib.parse
 
 import discord
 
-from discord_music_player.domain.shared.types import HttpUrlStr, NonEmptyStr
-from discord_music_player.infrastructure.discord.views.base_view import BaseInteractiveView
+from ....domain.shared.types import HttpUrlStr, NonEmptyStr
+from .base_view import BaseInteractiveView
 
 
 def build_cobalt_url(video_url: str) -> str:

@@ -6,10 +6,10 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
-from discord_music_player.domain.music.wrappers import TrackId
-from discord_music_player.domain.shared.enums import LeaderboardTimeRange
-from discord_music_player.domain.shared.types import DiscordSnowflake, NonEmptyStr, PositiveInt
+from .entities import GuildPlaybackSession, Track
+from .wrappers import TrackId
+from ..shared.enums import LeaderboardTimeRange
+from ..shared.types import DiscordSnowflake, NonEmptyStr, PositiveInt
 
 if TYPE_CHECKING:
     from discord_music_player.infrastructure.persistence.repositories.history_repository import (

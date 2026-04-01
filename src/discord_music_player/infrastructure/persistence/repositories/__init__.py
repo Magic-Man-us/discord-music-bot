@@ -1,12 +1,12 @@
 """SQLite repository implementations."""
 
-from discord_music_player.infrastructure.persistence.repositories.cache_repository import (
+from .cache_repository import (
     SQLiteCacheRepository,
 )
-from discord_music_player.infrastructure.persistence.repositories.history_repository import (
+from .history_repository import (
     SQLiteHistoryRepository,
 )
-from discord_music_player.infrastructure.persistence.repositories.session_repository import (
+from .session_repository import (
     SQLiteSessionRepository,
 )
 

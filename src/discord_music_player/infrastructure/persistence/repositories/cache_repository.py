@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 
 from pydantic import TypeAdapter
 
-from discord_music_player.domain.recommendations.entities import (
+from ....domain.recommendations.entities import (
     CacheStats,
     Recommendation,
     RecommendationSet,
 )
-from discord_music_player.domain.recommendations.repository import RecommendationCacheRepository
-from discord_music_player.domain.shared.datetime_utils import UtcDateTime
+from ....domain.recommendations.repository import RecommendationCacheRepository
+from ....domain.shared.datetime_utils import UtcDateTime
 
 if TYPE_CHECKING:
     from ..database import Database

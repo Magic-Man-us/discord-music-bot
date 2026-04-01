@@ -12,16 +12,16 @@ from typing import Any, Final, cast
 
 from yt_dlp import YoutubeDL
 
-from discord_music_player.application.interfaces.audio_resolver import AudioResolver
-from discord_music_player.config.settings import AudioSettings
-from discord_music_player.domain.music.entities import PlaylistEntry, Track
-from discord_music_player.domain.music.wrappers import TrackId
-from discord_music_player.domain.shared.types import (
+from ...application.interfaces.audio_resolver import AudioResolver
+from ...config.settings import AudioSettings
+from ...domain.music.entities import PlaylistEntry, Track
+from ...domain.music.wrappers import TrackId
+from ...domain.shared.types import (
     HttpUrlStr,
     NonEmptyStr,
     PositiveInt,
 )
-from discord_music_player.infrastructure.audio.models import (
+from .models import (
     CACHE_MAX_SIZE,
     CACHE_TTL,
     DEFAULT_SEARCH_LIMIT,

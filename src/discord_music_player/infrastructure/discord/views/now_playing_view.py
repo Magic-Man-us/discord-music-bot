@@ -8,18 +8,18 @@ from typing import TYPE_CHECKING, ClassVar
 
 import discord
 
-from discord_music_player.domain.recommendations.entities import RecommendationRequest
-from discord_music_player.domain.shared.types import DiscordSnowflake, HttpUrlStr, NonEmptyStr
-from discord_music_player.infrastructure.discord.guards.voice_guards import (
+from ....domain.recommendations.entities import RecommendationRequest
+from ....domain.shared.types import DiscordSnowflake, HttpUrlStr, NonEmptyStr
+from ..guards.voice_guards import (
     check_user_in_voice,
 )
-from discord_music_player.infrastructure.discord.views.base_view import (
+from .base_view import (
     BaseInteractiveView,
 )
-from discord_music_player.infrastructure.discord.views.download_view import (
+from .download_view import (
     add_track_link_buttons,
 )
-from discord_music_player.utils.reply import truncate
+from ....utils.reply import truncate
 
 if TYPE_CHECKING:
     from ....config.container import Container

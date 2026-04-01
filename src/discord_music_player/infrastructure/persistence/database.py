@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 import aiosqlite
 from pydantic import BaseModel, ConfigDict, Field
 
-from discord_music_player.domain.shared.constants import SQLPragmas
-from discord_music_player.domain.shared.types import (
+from ...domain.shared.constants import SQLPragmas
+from ...domain.shared.types import (
     BYTES_PER_MB,
     FileBytes,
     FileSizeMB,

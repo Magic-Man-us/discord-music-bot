@@ -5,8 +5,8 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
-from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
-from discord_music_player.infrastructure.discord.guards.voice_guards import (
+from .base_cog import BaseCog
+from ..guards.voice_guards import (
     can_force_skip,
     ensure_user_in_voice_and_warm,
     send_ephemeral,

@@ -1043,7 +1043,7 @@ class TestSystemCommands:
         assert "Shutting down" in call_args
 
         # Should call cleanup
-        mock_container.cleanup_job.shutdown.assert_called_once()
+        mock_container.cleanup_job.stop.assert_called_once()
 
         # Should close bot
         mock_bot.close.assert_called_once()

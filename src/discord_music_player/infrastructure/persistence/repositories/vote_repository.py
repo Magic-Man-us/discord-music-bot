@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from discord_music_player.domain.music.wrappers import TrackId
-from discord_music_player.domain.shared.datetime_utils import UtcDateTime
-from discord_music_player.domain.voting.entities import VoteSession
-from discord_music_player.domain.voting.enums import VoteType
-from discord_music_player.domain.voting.repository import VoteSessionRepository
+from ....domain.music.wrappers import TrackId
+from ....domain.shared.datetime_utils import UtcDateTime
+from ....domain.voting.entities import VoteSession
+from ....domain.voting.enums import VoteType
+from ....domain.voting.repository import VoteSessionRepository
 
 if TYPE_CHECKING:
     from ..database import Database

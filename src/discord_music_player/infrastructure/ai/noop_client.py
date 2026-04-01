@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import logging
 
-from discord_music_player.application.interfaces.ai_client import AIClient
-from discord_music_player.domain.recommendations.entities import (
+from ...application.interfaces.ai_client import AIClient
+from ...domain.recommendations.entities import (
     Recommendation,
     RecommendationRequest,
 )
-from discord_music_player.domain.shared.types import PositiveInt
-from discord_music_player.infrastructure.ai.models import AICacheStats
+from ...domain.shared.types import PositiveInt
+from .models import AICacheStats
 
 logger = logging.getLogger(__name__)
 

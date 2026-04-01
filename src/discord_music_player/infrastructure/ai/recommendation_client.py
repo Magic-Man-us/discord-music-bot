@@ -9,14 +9,14 @@ from typing import Final
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
-from discord_music_player.application.interfaces.ai_client import AIClient
-from discord_music_player.config.settings import AISettings
-from discord_music_player.domain.recommendations.entities import (
+from ...application.interfaces.ai_client import AIClient
+from ...config.settings import AISettings
+from ...domain.recommendations.entities import (
     Recommendation,
     RecommendationRequest,
 )
-from discord_music_player.domain.shared.types import NonEmptyStr, PositiveInt
-from discord_music_player.infrastructure.ai.models import (
+from ...domain.shared.types import NonEmptyStr, PositiveInt
+from .models import (
     AI_TIMEOUT,
     AICacheEntry,
     AICacheStats,

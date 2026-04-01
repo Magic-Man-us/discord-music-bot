@@ -11,10 +11,10 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.music.wrappers import TrackId
-from discord_music_player.domain.shared.datetime_utils import UtcDateTime
-from discord_music_player.domain.shared.types import (
+from ...domain.music.entities import Track
+from ...domain.music.wrappers import TrackId
+from ...domain.shared.datetime_utils import UtcDateTime
+from ...domain.shared.types import (
     DiscordSnowflake,
     DurationSeconds,
     HttpUrlStr,

@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from discord_music_player.domain.shared.types import DiscordSnowflake
-from discord_music_player.infrastructure.discord.guards.voice_guards import check_user_in_voice
-from discord_music_player.infrastructure.discord.views.base_view import BaseInteractiveView
+from ....domain.shared.types import DiscordSnowflake
+from ..guards.voice_guards import check_user_in_voice
+from .base_view import BaseInteractiveView
 
 if TYPE_CHECKING:
     from ....application.services.playback_service import PlaybackApplicationService

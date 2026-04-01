@@ -12,9 +12,9 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from discord_music_player.domain.music.wrappers import TrackId
-from discord_music_player.domain.shared.datetime_utils import utcnow
-from discord_music_player.domain.shared.types import (
+from ..music.wrappers import TrackId
+from .datetime_utils import utcnow
+from .types import (
     ChannelIdField,
     DiscordSnowflake,
     NonEmptyStr,

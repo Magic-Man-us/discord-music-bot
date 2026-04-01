@@ -18,8 +18,8 @@ matplotlib.use("Agg")
 
 import discord  # noqa: E402
 
-from discord_music_player.domain.shared.constants import AnalyticsConstants  # noqa: E402
-from discord_music_player.domain.shared.types import NonEmptyStr  # noqa: E402
+from ...domain.shared.constants import AnalyticsConstants  # noqa: E402
+from ...domain.shared.types import NonEmptyStr  # noqa: E402
 
 _BG = AnalyticsConstants.CHART_BG_COLOR
 _TEXT = AnalyticsConstants.CHART_TEXT_COLOR

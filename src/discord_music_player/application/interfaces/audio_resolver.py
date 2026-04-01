@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from discord_music_player.domain.shared.types import HttpUrlStr, NonEmptyStr, PositiveInt
+from ...domain.shared.types import HttpUrlStr, NonEmptyStr, PositiveInt
 
 if TYPE_CHECKING:
     from ...domain.music.entities import PlaylistEntry, Track

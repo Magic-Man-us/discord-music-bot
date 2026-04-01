@@ -8,10 +8,10 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from discord_music_player.domain.shared.enums import RadioAction
-from discord_music_player.domain.shared.events import RadioPoolExhausted, get_event_bus
-from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
-from discord_music_player.infrastructure.discord.guards.voice_guards import (
+from ....domain.shared.enums import RadioAction
+from ....domain.shared.events import RadioPoolExhausted, get_event_bus
+from .base_cog import BaseCog
+from ..guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     ensure_voice,
 )

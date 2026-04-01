@@ -10,7 +10,7 @@ from typing import Annotated, Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from discord_music_player.domain.shared.types import (
+from ...domain.shared.types import (
     HttpUrlStr,
     NonEmptyStr,
     NonNegativeFloat,

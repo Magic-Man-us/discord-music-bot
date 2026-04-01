@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
-from discord_music_player.domain.shared.constants import (
+from ..domain.shared.constants import (
     AudioConstants,
     UIConstants,
     YouTubeDomains,

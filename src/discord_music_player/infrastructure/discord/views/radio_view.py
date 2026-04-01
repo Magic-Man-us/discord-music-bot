@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from discord_music_player.domain.shared.types import DiscordSnowflake, TrackTitleStr
-from discord_music_player.infrastructure.discord.guards.voice_guards import check_user_in_voice
-from discord_music_player.infrastructure.discord.views.base_view import BaseInteractiveView
-from discord_music_player.utils.reply import truncate
+from ....domain.shared.types import DiscordSnowflake, TrackTitleStr
+from ..guards.voice_guards import check_user_in_voice
+from .base_view import BaseInteractiveView
+from ....utils.reply import truncate
 
 if TYPE_CHECKING:
     from ....config.container import Container

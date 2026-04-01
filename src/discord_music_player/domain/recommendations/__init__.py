@@ -4,13 +4,13 @@ Recommendations Bounded Context
 Domain logic for AI-powered track recommendations.
 """
 
-from discord_music_player.domain.recommendations.entities import (
+from .entities import (
     Recommendation,
     RecommendationRequest,
     RecommendationSet,
 )
-from discord_music_player.domain.recommendations.repository import RecommendationCacheRepository
-from discord_music_player.domain.recommendations.title_utils import (
+from .repository import RecommendationCacheRepository
+from .title_utils import (
     clean_title,
     extract_artist_from_title,
 )

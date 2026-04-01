@@ -12,11 +12,11 @@ import discord
 from discord.ext import commands, tasks
 from pydantic import BaseModel, ConfigDict
 
-from discord_music_player.domain.shared.constants import HealthConstants, UIConstants
-from discord_music_player.domain.shared.datetime_utils import UtcDateTime
-from discord_music_player.domain.shared.enums import BotStatus
-from discord_music_player.domain.shared.types import BYTES_PER_MB
-from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
+from ....domain.shared.constants import HealthConstants, UIConstants
+from ....domain.shared.datetime_utils import UtcDateTime
+from ....domain.shared.enums import BotStatus
+from ....domain.shared.types import BYTES_PER_MB
+from .base_cog import BaseCog
 
 if TYPE_CHECKING:
     from ....config.container import Container

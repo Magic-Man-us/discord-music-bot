@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from discord_music_player.domain.music.wrappers import TrackId
-from discord_music_player.domain.shared.types import DiscordSnowflake, NonNegativeInt, PositiveInt
-from discord_music_player.domain.voting.entities import VoteSession
-from discord_music_player.domain.voting.enums import VoteResult
+from ..music.wrappers import TrackId
+from ..shared.types import DiscordSnowflake, NonNegativeInt, PositiveInt
+from .entities import VoteSession
+from .enums import VoteResult
 
 if TYPE_CHECKING:
     from ..music.entities import Track

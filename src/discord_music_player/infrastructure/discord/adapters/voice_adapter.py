@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from discord_music_player.application.interfaces.voice_adapter import VoiceAdapter
-from discord_music_player.config.settings import AudioSettings
-from discord_music_player.domain.shared.constants import AudioConstants, TimeConstants
+from ....application.interfaces.voice_adapter import VoiceAdapter
+from ....config.settings import AudioSettings
+from ....domain.shared.constants import AudioConstants, TimeConstants
 
 if TYPE_CHECKING:
     from ....domain.music.entities import Track

@@ -8,21 +8,21 @@ from typing import TYPE_CHECKING
 import discord
 from discord import app_commands
 
-from discord_music_player.domain.shared.constants import AnalyticsConstants, UIConstants
-from discord_music_player.domain.shared.enums import (
+from ....domain.shared.constants import AnalyticsConstants, UIConstants
+from ....domain.shared.enums import (
     ActivityPeriod,
     LeaderboardCategory,
     LeaderboardTimeRange,
     Weekday,
 )
-from discord_music_player.domain.shared.types import (
+from ....domain.shared.types import (
     DiscordSnowflake,
     TrackForClassification,
     TrackGenreMap,
     UserIdField,
 )
-from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
-from discord_music_player.utils.reply import format_duration
+from .base_cog import BaseCog
+from ....utils.reply import format_duration
 
 if TYPE_CHECKING:
     from ...charts.chart_generator import ChartGenerator

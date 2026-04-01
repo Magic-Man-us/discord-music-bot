@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from discord_music_player.domain.recommendations.entities import CacheStats, RecommendationSet
+from .entities import CacheStats, RecommendationSet
 
 
 class RecommendationCacheRepository(ABC):

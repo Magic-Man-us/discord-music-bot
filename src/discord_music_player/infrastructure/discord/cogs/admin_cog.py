@@ -7,9 +7,9 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
-from discord_music_player.domain.shared.constants import DiscordEmbedLimits, SQLPragmas, UIConstants
-from discord_music_player.domain.shared.enums import SyncScope
-from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
+from ....domain.shared.constants import DiscordEmbedLimits, SQLPragmas, UIConstants
+from ....domain.shared.enums import SyncScope
+from .base_cog import BaseCog
 
 _FAILED_RELOAD_LOG = "Failed to reload %s"
 

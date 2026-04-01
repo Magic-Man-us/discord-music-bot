@@ -5,16 +5,16 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
-from discord_music_player.domain.shared.constants import AnalyticsConstants, UIConstants
-from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
-from discord_music_player.infrastructure.discord.guards.voice_guards import (
+from ....domain.shared.constants import AnalyticsConstants, UIConstants
+from .base_cog import BaseCog
+from ..guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     send_ephemeral,
 )
-from discord_music_player.infrastructure.discord.services.embed_builder import (
+from ..services.embed_builder import (
     build_now_playing_embed,
 )
-from discord_music_player.utils.reply import format_duration, paginate, truncate
+from ....utils.reply import format_duration, paginate, truncate
 
 
 class NowPlayingCog(BaseCog):

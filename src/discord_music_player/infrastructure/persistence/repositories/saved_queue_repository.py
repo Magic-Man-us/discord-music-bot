@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, ClassVar
 
 from pydantic import BaseModel, ConfigDict
 
-from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.shared.types import (
+from ....domain.music.entities import Track
+from ....domain.shared.types import (
     DiscordSnowflake,
     NonEmptyStr,
     NonNegativeInt,

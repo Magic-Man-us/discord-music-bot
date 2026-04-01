@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from discord_music_player.domain.shared.constants import UIConstants
-from discord_music_player.domain.shared.types import DiscordSnowflake
+from ....domain.shared.constants import UIConstants
+from ....domain.shared.types import DiscordSnowflake
 
 if TYPE_CHECKING:
     from ....application.interfaces.voice_adapter import VoiceAdapter

@@ -7,22 +7,22 @@ from typing import TYPE_CHECKING
 import discord
 from discord import app_commands
 
-from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.shared.constants import UIConstants
-from discord_music_player.domain.shared.types import DiscordSnowflake, HttpUrlStr
-from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
-from discord_music_player.infrastructure.discord.guards.voice_guards import (
+from ....domain.music.entities import Track
+from ....domain.shared.constants import UIConstants
+from ....domain.shared.types import DiscordSnowflake, HttpUrlStr
+from .base_cog import BaseCog
+from ..guards.voice_guards import (
     ensure_dj_role,
     ensure_user_in_voice_and_warm,
     get_member,
     is_solo_in_channel,
     send_ephemeral,
 )
-from discord_music_player.infrastructure.discord.services.embed_builder import (
+from ..services.embed_builder import (
     build_now_playing_embed,
     format_queued_line,
 )
-from discord_music_player.utils.reply import (
+from ....utils.reply import (
     extract_youtube_timestamp,
     format_duration,
     parse_timestamp,

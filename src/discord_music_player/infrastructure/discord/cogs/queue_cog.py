@@ -7,18 +7,18 @@ from typing import TYPE_CHECKING
 import discord
 from discord import app_commands
 
-from discord_music_player.domain.shared.constants import UIConstants
+from ....domain.shared.constants import UIConstants
 
 if TYPE_CHECKING:
     from discord_music_player.domain.music.entities import Track
-from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
-from discord_music_player.infrastructure.discord.guards.voice_guards import (
+from .base_cog import BaseCog
+from ..guards.voice_guards import (
     ensure_dj_role,
     ensure_user_in_voice_and_warm,
     ensure_voice,
 )
-from discord_music_player.infrastructure.discord.services.embed_builder import format_requester
-from discord_music_player.utils.reply import deduplicate_tracks, format_duration, paginate, truncate
+from ..services.embed_builder import format_requester
+from ....utils.reply import deduplicate_tracks, format_duration, paginate, truncate
 
 
 class QueueCog(BaseCog):

@@ -9,8 +9,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from discord_music_player.domain.shared.constants import DiscordEmbedLimits, UIConstants
-from discord_music_player.infrastructure.discord.cogs.base_cog import BaseCog
+from ....domain.shared.constants import DiscordEmbedLimits, UIConstants
+from .base_cog import BaseCog
 
 if TYPE_CHECKING:
     from ....config.container import Container

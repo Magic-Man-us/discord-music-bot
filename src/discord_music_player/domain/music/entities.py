@@ -7,15 +7,15 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from discord_music_player.domain.music.enums import LoopMode, PlaybackState
-from discord_music_player.domain.music.wrappers import QueuePosition, TrackId
-from discord_music_player.domain.shared.constants import LimitConstants
-from discord_music_player.domain.shared.datetime_utils import UtcDateTime, utcnow
-from discord_music_player.domain.shared.exceptions import (
+from .enums import LoopMode, PlaybackState
+from .wrappers import QueuePosition, TrackId
+from ..shared.constants import LimitConstants
+from ..shared.datetime_utils import UtcDateTime, utcnow
+from ..shared.exceptions import (
     BusinessRuleViolationError,
     InvalidOperationError,
 )
-from discord_music_player.domain.shared.types import (
+from ..shared.types import (
     DiscordSnowflake,
     DurationSeconds,
     HttpUrlStr,

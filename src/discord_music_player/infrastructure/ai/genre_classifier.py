@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
-from discord_music_player.domain.shared.types import TrackForClassification, TrackGenreMap
+from ...domain.shared.types import TrackForClassification, TrackGenreMap
 
 if TYPE_CHECKING:
     from discord_music_player.config.settings import AISettings

@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Final
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from discord_music_player.domain.shared.datetime_utils import utcnow
-from discord_music_player.domain.shared.mixins import ExpirableMixin
-from discord_music_player.domain.shared.types import (
+from ..shared.datetime_utils import utcnow
+from ..shared.mixins import ExpirableMixin
+from ..shared.types import (
     HttpUrlStr,
     NonEmptyStr,
     NonNegativeInt,

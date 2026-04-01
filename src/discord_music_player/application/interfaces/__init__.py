@@ -6,9 +6,9 @@ layer and infrastructure adapters. These are the "ports" in
 hexagonal architecture.
 """
 
-from discord_music_player.application.interfaces.ai_client import AIClient
-from discord_music_player.application.interfaces.audio_resolver import AudioResolver
-from discord_music_player.application.interfaces.voice_adapter import VoiceAdapter
+from .ai_client import AIClient
+from .audio_resolver import AudioResolver
+from .voice_adapter import VoiceAdapter
 
 __all__ = [
     "AudioResolver",

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from discord_music_player.domain.music.wrappers import TrackId
-from discord_music_player.domain.voting.entities import VoteSession
-from discord_music_player.domain.voting.enums import VoteType
+from ..music.wrappers import TrackId
+from .entities import VoteSession
+from .enums import VoteType
 
 
 class VoteSessionRepository(ABC):

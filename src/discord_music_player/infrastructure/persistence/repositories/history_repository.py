@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 
-from discord_music_player.domain.music.entities import Track
-from discord_music_player.domain.music.repository import TrackHistoryRepository
-from discord_music_player.domain.music.wrappers import TrackId
-from discord_music_player.domain.shared.datetime_utils import UtcDateTime
-from discord_music_player.domain.shared.enums import LeaderboardTimeRange
-from discord_music_player.domain.shared.types import NonEmptyStr, NonNegativeInt, UnitInterval
-from discord_music_player.infrastructure.persistence.models import TrackRow
+from ....domain.music.entities import Track
+from ....domain.music.repository import TrackHistoryRepository
+from ....domain.music.wrappers import TrackId
+from ....domain.shared.datetime_utils import UtcDateTime
+from ....domain.shared.enums import LeaderboardTimeRange
+from ....domain.shared.types import NonEmptyStr, NonNegativeInt, UnitInterval
+from ..models import TrackRow
 
 if TYPE_CHECKING:
     from ..database import Database

@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from discord_music_player.domain.shared.constants import UIConstants
-from discord_music_player.domain.shared.types import ChannelIdField, DiscordSnowflake
-from discord_music_player.utils.reply import truncate
+from ....domain.shared.constants import UIConstants
+from ....domain.shared.types import ChannelIdField, DiscordSnowflake
+from ....utils.reply import truncate
 
 from ..views.base_view import BaseInteractiveView
 from .embed_builder import build_now_playing_embed, format_finished_line

@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict
 
-from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
-from discord_music_player.domain.music.enums import LoopMode, PlaybackState
-from discord_music_player.domain.music.repository import SessionRepository
-from discord_music_player.domain.shared.datetime_utils import UtcDateTime
-from discord_music_player.domain.shared.types import UtcDatetimeField
-from discord_music_player.infrastructure.persistence.models import (
+from ....domain.music.entities import GuildPlaybackSession, Track
+from ....domain.music.enums import LoopMode, PlaybackState
+from ....domain.music.repository import SessionRepository
+from ....domain.shared.datetime_utils import UtcDateTime
+from ....domain.shared.types import UtcDatetimeField
+from ..models import (
     QUEUE_TRACKS_INSERT_SQL,
     QueueTrackRow,
     TrackRow,

@@ -11,8 +11,8 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from discord_music_player.domain.recommendations.entities import Recommendation
-from discord_music_player.domain.shared.types import (
+from ...domain.recommendations.entities import Recommendation
+from ...domain.shared.types import (
     HttpUrlStr,
     NonEmptyStr,
     NonNegativeFloat,

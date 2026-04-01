@@ -7,14 +7,14 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from discord_music_player.domain.shared.constants import (
+from ....domain.shared.constants import (
     DiscordEmbedLimits,
     PlaylistConstants,
 )
-from discord_music_player.infrastructure.discord.views.base_view import (
+from .base_view import (
     BaseInteractiveView,
 )
-from discord_music_player.utils.reply import format_duration, truncate
+from ....utils.reply import format_duration, truncate
 
 if TYPE_CHECKING:
     from ....config.container import Container

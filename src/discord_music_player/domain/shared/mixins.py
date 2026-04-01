@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from discord_music_player.domain.shared.datetime_utils import utcnow
+from .datetime_utils import utcnow
 
 
 class ExpirableMixin:

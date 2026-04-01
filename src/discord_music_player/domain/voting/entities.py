@@ -7,11 +7,11 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
-from discord_music_player.domain.music.wrappers import TrackId
-from discord_music_player.domain.shared.datetime_utils import utcnow
-from discord_music_player.domain.shared.mixins import ExpirableMixin
-from discord_music_player.domain.shared.types import DiscordSnowflake, PositiveInt
-from discord_music_player.domain.voting.enums import VoteType
+from ..music.wrappers import TrackId
+from ..shared.datetime_utils import utcnow
+from ..shared.mixins import ExpirableMixin
+from ..shared.types import DiscordSnowflake, PositiveInt
+from .enums import VoteType
 
 
 class Vote(BaseModel):

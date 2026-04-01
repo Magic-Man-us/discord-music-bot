@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from discord_music_player.domain.shared.constants import UIConstants
-from discord_music_player.utils.reply import format_duration, truncate
+from ....domain.shared.constants import UIConstants
+from ....utils.reply import format_duration, truncate
 
 if TYPE_CHECKING:
     from ....domain.music.entities import Track

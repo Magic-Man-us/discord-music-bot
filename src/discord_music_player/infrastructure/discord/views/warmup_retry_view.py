@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import discord
 
-from discord_music_player.infrastructure.discord.views.base_view import BaseInteractiveView
+from .base_view import BaseInteractiveView
 
 if TYPE_CHECKING:
     from ....domain.music.wrappers import StartSeconds

@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, computed_field
 
-from discord_music_player.domain.shared.datetime_utils import utcnow
-from discord_music_player.domain.shared.types import NonNegativeInt
+from ...domain.shared.datetime_utils import utcnow
+from ...domain.shared.types import NonNegativeInt
 
 if TYPE_CHECKING:
     from ...config.settings import CleanupSettings

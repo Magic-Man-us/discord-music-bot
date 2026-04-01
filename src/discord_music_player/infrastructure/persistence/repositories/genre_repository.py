@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from discord_music_player.domain.shared.datetime_utils import UtcDateTime
-from discord_music_player.domain.shared.types import TrackGenreMap
+from ....domain.shared.datetime_utils import UtcDateTime
+from ....domain.shared.types import TrackGenreMap
 
 if TYPE_CHECKING:
     from ..database import Database
