@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import AsyncGenerator, Iterable
 from contextlib import asynccontextmanager
 from enum import StrEnum
@@ -20,11 +19,12 @@ from ...domain.shared.types import (
     NonEmptyStr,
     NonNegativeInt,
 )
+from ...utils.logging import get_logger
 
 if TYPE_CHECKING:
     from ...config.settings import DatabaseSettings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ── Types ─────────────────────────────────────────────────────────────
 

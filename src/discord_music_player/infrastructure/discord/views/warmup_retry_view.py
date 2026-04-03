@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import TYPE_CHECKING, Protocol
 
 import discord
 
+from ....utils.logging import get_logger
 from .base_view import BaseInteractiveView
 
 if TYPE_CHECKING:
     from ....domain.music.wrappers import StartSeconds
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ExecutePlayCallback(Protocol):

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
@@ -13,12 +12,13 @@ import discord
 from ....application.interfaces.voice_adapter import VoiceAdapter
 from ....config.settings import AudioSettings
 from ....domain.shared.constants import AudioConstants, TimeConstants
+from ....utils.logging import get_logger
 
 if TYPE_CHECKING:
     from ....domain.music.entities import Track
     from ....domain.music.wrappers import StartSeconds
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 DEFAULT_VOLUME: float = 0.2
 

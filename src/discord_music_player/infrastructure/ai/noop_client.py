@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import logging
-
 from ...application.interfaces.ai_client import AIClient
 from ...domain.recommendations.entities import (
     Recommendation,
     RecommendationRequest,
 )
 from ...domain.shared.types import PositiveInt
+from ...utils.logging import get_logger
 from .models import AICacheStats
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _ZERO_STATS = AICacheStats(size=0, hits=0, misses=0, inflight=0)
 

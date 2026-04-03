@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import discord
 
 from ....domain.shared.constants import UIConstants
 from ....domain.shared.types import ChannelIdField, DiscordSnowflake
+from ....utils.logging import get_logger
 from ....utils.reply import truncate
-
 from ..views.base_view import BaseInteractiveView
 from .embed_builder import build_now_playing_embed, format_finished_line
 from .models import GuildMessageState, TrackedMessage
@@ -24,7 +23,7 @@ if TYPE_CHECKING:
     from ....config.container import Container
     from ....domain.music.entities import Track
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MessageStateManager:

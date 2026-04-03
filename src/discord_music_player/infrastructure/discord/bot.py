@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import signal
 from typing import TYPE_CHECKING, Any
 
 import discord
 from discord.ext import commands
+
+from ...utils.logging import get_logger
 
 if TYPE_CHECKING:
     from ...config.container import Container
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
     from ...domain.music.entities import GuildPlaybackSession
     from ...domain.music.repository import SessionRepository
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MusicBot(commands.Bot):

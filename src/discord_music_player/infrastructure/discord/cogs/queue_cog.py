@@ -10,7 +10,7 @@ from discord import app_commands
 from ....domain.shared.constants import UIConstants
 
 if TYPE_CHECKING:
-    from discord_music_player.domain.music.entities import Track
+    from ....domain.music.entities import Track
 from .base_cog import BaseCog
 from ..guards.voice_guards import (
     ensure_dj_role,

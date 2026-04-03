@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from ....domain.music.wrappers import TrackId
@@ -10,11 +9,12 @@ from ....domain.shared.datetime_utils import UtcDateTime
 from ....domain.voting.entities import VoteSession
 from ....domain.voting.enums import VoteType
 from ....domain.voting.repository import VoteSessionRepository
+from ....utils.logging import get_logger
 
 if TYPE_CHECKING:
     from ..database import Database
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SQLiteVoteSessionRepository(VoteSessionRepository):

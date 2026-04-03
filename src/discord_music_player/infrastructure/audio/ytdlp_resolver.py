@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import logging
 import re
 import threading
 import time
@@ -21,6 +20,7 @@ from ...domain.shared.types import (
     NonEmptyStr,
     PositiveInt,
 )
+from ...utils.logging import get_logger
 from .models import (
     CACHE_MAX_SIZE,
     CACHE_TTL,
@@ -39,7 +39,7 @@ from .models import (
     YtDlpTrackInfo,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # ── Module-level state and patterns ────────────────────────────────────

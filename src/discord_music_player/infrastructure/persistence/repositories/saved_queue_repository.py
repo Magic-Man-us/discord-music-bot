@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from enum import StrEnum
 from typing import TYPE_CHECKING, ClassVar
 
@@ -15,11 +14,12 @@ from ....domain.shared.types import (
     NonEmptyStr,
     NonNegativeInt,
 )
+from ....utils.logging import get_logger
 
 if TYPE_CHECKING:
     from ..database import Database
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _MAX_SAVED_QUEUES_PER_GUILD: int = 25
 

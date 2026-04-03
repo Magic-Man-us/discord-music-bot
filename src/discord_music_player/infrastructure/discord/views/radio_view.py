@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import discord
 
 from ....domain.shared.types import DiscordSnowflake, TrackTitleStr
+from ....utils.logging import get_logger
+from ....utils.reply import truncate
 from ..guards.voice_guards import check_user_in_voice
 from .base_view import BaseInteractiveView
-from ....utils.reply import truncate
 
 if TYPE_CHECKING:
     from ....config.container import Container
     from ....domain.music.entities import Track
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _MAX_REROLL_BUTTONS = 5
 _VIEW_TIMEOUT = 300.0

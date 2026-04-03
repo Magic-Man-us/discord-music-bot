@@ -12,7 +12,7 @@ from ..shared.enums import LeaderboardTimeRange
 from ..shared.types import DiscordSnowflake, NonEmptyStr, PositiveInt
 
 if TYPE_CHECKING:
-    from discord_music_player.infrastructure.persistence.repositories.history_repository import (
+    from ...infrastructure.persistence.repositories.history_repository import (
         GenreTrackInfo,
         UserStats,
     )

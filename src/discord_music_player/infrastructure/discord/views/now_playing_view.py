@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import TYPE_CHECKING, ClassVar
 
 import discord
 
 from ....domain.recommendations.entities import RecommendationRequest
 from ....domain.shared.types import DiscordSnowflake, HttpUrlStr, NonEmptyStr
+from ....utils.logging import get_logger
+from ....utils.reply import truncate
 from ..guards.voice_guards import (
     check_user_in_voice,
 )
@@ -19,13 +20,12 @@ from .base_view import (
 from .download_view import (
     add_track_link_buttons,
 )
-from ....utils.reply import truncate
 
 if TYPE_CHECKING:
     from ....config.container import Container
     from ....domain.music.entities import Track
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class NowPlayingView(BaseInteractiveView):

@@ -17,8 +17,7 @@ from ..guards.voice_guards import (
 )
 
 if TYPE_CHECKING:
-    from discord_music_player.application.services.radio_models import RadioToggleResult
-
+    from ....application.services.radio_models import RadioToggleResult
     from ....config.container import Container
 
 

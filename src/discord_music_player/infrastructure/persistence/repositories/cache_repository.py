@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from pydantic import TypeAdapter
@@ -14,11 +13,12 @@ from ....domain.recommendations.entities import (
 )
 from ....domain.recommendations.repository import RecommendationCacheRepository
 from ....domain.shared.datetime_utils import UtcDateTime
+from ....utils.logging import get_logger
 
 if TYPE_CHECKING:
     from ..database import Database
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _recommendation_list_ta = TypeAdapter(list[Recommendation])
 

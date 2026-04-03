@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import discord
@@ -11,16 +10,17 @@ from ....domain.shared.constants import (
     DiscordEmbedLimits,
     PlaylistConstants,
 )
+from ....utils.logging import get_logger
+from ....utils.reply import format_duration, truncate
 from .base_view import (
     BaseInteractiveView,
 )
-from ....utils.reply import format_duration, truncate
 
 if TYPE_CHECKING:
     from ....config.container import Container
     from ....domain.music.entities import PlaylistEntry
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def build_playlist_embed(entries: list[PlaylistEntry]) -> discord.Embed:

@@ -1,10 +1,15 @@
-"""Colored logging formatter for console output."""
+"""Logging utilities: colored formatter and module-level logger factory."""
 
 from __future__ import annotations
 
 import logging
 import os
 import sys
+
+
+def get_logger(name: str) -> logging.Logger:
+    """Return a logger for the given module ``__name__``."""
+    return logging.getLogger(name)
 
 
 class ColoredFormatter(logging.Formatter):

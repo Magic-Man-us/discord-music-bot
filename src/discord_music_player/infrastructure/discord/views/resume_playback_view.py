@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import discord
 
 from ....domain.shared.constants import UIConstants
 from ....domain.shared.types import DiscordSnowflake
+from ....utils.logging import get_logger
+from ....utils.reply import format_duration
 from ..guards.voice_guards import check_user_in_voice
 from .base_view import BaseInteractiveView
-from ....utils.reply import format_duration
 
 if TYPE_CHECKING:
     from ....application.services.playback_service import PlaybackApplicationService
     from ....domain.music.wrappers import StartSeconds
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _DELETE_AFTER = UIConstants.FINISHED_DELETE_AFTER
 

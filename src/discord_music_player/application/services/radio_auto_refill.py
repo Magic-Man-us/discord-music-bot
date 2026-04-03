@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from ...domain.shared.events import QueueExhausted, TrackStartedPlaying, get_event_bus
+from ...utils.logging import get_logger
 
 if TYPE_CHECKING:
     from .playback_service import PlaybackApplicationService
     from .radio_service import RadioApplicationService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RadioAutoRefill:

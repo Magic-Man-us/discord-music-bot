@@ -11,6 +11,8 @@ import os
 import sys
 from pathlib import Path
 
+from .utils.logging import get_logger
+
 _LOGGING_CONFIG_PATH = Path(__file__).resolve().parents[2] / "logging_config.json"
 _PID_FILE = Path(__file__).resolve().parents[2] / "bot.pid"
 
@@ -62,12 +64,12 @@ def _acquire_pid_lock(logger: logging.Logger) -> int | None:
 
 
 def main() -> int:
-    from discord_music_player.config.settings import get_settings
+    from .config.settings import get_settings
 
     settings = get_settings()
     setup_logging(settings.log_level)
 
-    logger = logging.getLogger(__name__)
+    logger = get_logger(__name__)
 
     lock = _acquire_pid_lock(logger)
     if lock is None:
@@ -81,8 +83,8 @@ def main() -> int:
 
         logger.info("Starting Discord Music Bot in %s mode", settings.environment)
 
-        from discord_music_player.config.container import create_container
-        from discord_music_player.infrastructure.discord.bot import create_bot
+        from .config.container import create_container
+        from .infrastructure.discord.bot import create_bot
 
         container = create_container(settings)
         bot = create_bot(container, settings)

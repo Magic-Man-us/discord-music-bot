@@ -11,7 +11,6 @@ Architecture:
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from ...domain.music.entities import GuildPlaybackSession, Track
@@ -25,6 +24,7 @@ from ...domain.shared.types import (
     DiscordSnowflake,
     NonEmptyStr,
 )
+from ...utils.logging import get_logger
 from .radio_models import RadioState, RadioToggleResult
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from ..interfaces.audio_resolver import AudioResolver
     from .queue_service import QueueApplicationService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _REROLL_CANDIDATES: int = 3
 _SMART_SEED_LIMIT: int = 5  # Number of recent tracks used for session-aware seeding

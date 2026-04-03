@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from ...domain.music.entities import Track
@@ -10,12 +9,13 @@ from ...domain.music.enums import LoopMode
 from ...domain.shared.datetime_utils import utcnow
 from ...domain.shared.exceptions import BusinessRuleViolationError
 from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, QueuePositionInt
+from ...utils.logging import get_logger
 from .queue_models import BatchEnqueueResult, EnqueueMeta, EnqueueResult, QueueSnapshot
 
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class QueueApplicationService:

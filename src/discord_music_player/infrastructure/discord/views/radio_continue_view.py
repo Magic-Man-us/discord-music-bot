@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import discord
 
 from ....domain.shared.types import DiscordSnowflake
+from ....utils.logging import get_logger
 from ..guards.voice_guards import check_user_in_voice
 from .base_view import BaseInteractiveView
 
 if TYPE_CHECKING:
     from ....config.container import Container
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _CONTINUE_TIMEOUT: float = 120.0
 _RADIO_STOPPED_TITLE: str = "Radio Stopped"

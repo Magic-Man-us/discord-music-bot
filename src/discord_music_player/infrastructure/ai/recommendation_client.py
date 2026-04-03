@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Final
+
+from ...utils.logging import get_logger
 
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
@@ -57,7 +58,7 @@ class AIRecommendationClient(AIClient):
     def __init__(self, settings: AISettings | None = None) -> None:
         self._settings = settings or AISettings()
         self._agent: Agent[None, AIRecommendationResponse] | None = None
-        self._logger = logging.getLogger(type(self).__module__)
+        self._logger = get_logger(type(self).__module__)
 
         self._cache: dict[NonEmptyStr, AICacheEntry] = {}
         self._cache_hits: int = 0

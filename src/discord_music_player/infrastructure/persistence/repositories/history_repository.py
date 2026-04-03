@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -14,12 +13,13 @@ from ....domain.music.wrappers import TrackId
 from ....domain.shared.datetime_utils import UtcDateTime
 from ....domain.shared.enums import LeaderboardTimeRange
 from ....domain.shared.types import NonEmptyStr, NonNegativeInt, UnitInterval
+from ....utils.logging import get_logger
 from ..models import TrackRow
 
 if TYPE_CHECKING:
     from ..database import Database
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # SQL result-set column aliases used across multiple analytics queries.

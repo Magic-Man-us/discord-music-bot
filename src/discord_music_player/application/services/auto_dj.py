@@ -8,12 +8,12 @@ Cancels the timer when a new track starts (TrackStartedPlaying).
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import TYPE_CHECKING
 
 from ...domain.shared.constants import TimeConstants
 from ...domain.shared.events import QueueExhausted, TrackStartedPlaying, get_event_bus
 from ...domain.shared.types import DiscordSnowflake
+from ...utils.logging import get_logger
 
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository, TrackHistoryRepository
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from .playback_service import PlaybackApplicationService
     from .radio_service import RadioApplicationService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AutoDJ:

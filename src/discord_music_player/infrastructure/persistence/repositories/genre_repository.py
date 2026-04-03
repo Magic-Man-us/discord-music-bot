@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from ....domain.shared.datetime_utils import UtcDateTime
 from ....domain.shared.types import TrackGenreMap
+from ....utils.logging import get_logger
 
 if TYPE_CHECKING:
     from ..database import Database
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SQLiteGenreCacheRepository:

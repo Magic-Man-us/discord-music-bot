@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections import defaultdict
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from ...domain.shared.events import VoiceMemberLeftVoiceChannel, get_event_bus
 from ...domain.shared.types import DiscordSnowflake
+from ...utils.logging import get_logger
 
 if TYPE_CHECKING:
     from ...application.interfaces.voice_adapter import VoiceAdapter
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository
     from .playback_service import PlaybackApplicationService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AutoSkipOnRequesterLeave:

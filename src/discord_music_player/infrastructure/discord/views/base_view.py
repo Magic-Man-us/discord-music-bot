@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import logging
-
 import discord
 
-logger = logging.getLogger(__name__)
+from ....utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class BaseInteractiveView(discord.ui.View):

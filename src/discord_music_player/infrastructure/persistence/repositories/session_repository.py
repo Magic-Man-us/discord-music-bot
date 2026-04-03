@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -13,6 +12,7 @@ from ....domain.music.enums import LoopMode, PlaybackState
 from ....domain.music.repository import SessionRepository
 from ....domain.shared.datetime_utils import UtcDateTime
 from ....domain.shared.types import UtcDatetimeField
+from ....utils.logging import get_logger
 from ..models import (
     QUEUE_TRACKS_INSERT_SQL,
     QueueTrackRow,
@@ -22,7 +22,7 @@ from ..models import (
 if TYPE_CHECKING:
     from ..database import Database
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class _SessionMetadata(BaseModel):

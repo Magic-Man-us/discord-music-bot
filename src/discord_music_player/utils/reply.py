@@ -15,7 +15,7 @@ from ..domain.shared.constants import (
 )
 
 if TYPE_CHECKING:
-    from discord_music_player.domain.music.entities import Track
+    from ..domain.music.entities import Track
 
 _MAX_TIMESTAMP_PARTS = 3
 

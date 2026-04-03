@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
@@ -11,6 +10,7 @@ from ...domain.music.enums import PlaybackState
 from ...domain.shared.datetime_utils import utcnow
 from ...domain.shared.events import QueueExhausted, TrackStartedPlaying, get_event_bus
 from ...domain.shared.types import DiscordSnowflake
+from ...utils.logging import get_logger
 
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository, TrackHistoryRepository
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from ..interfaces.audio_resolver import AudioResolver
     from ..interfaces.voice_adapter import VoiceAdapter
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PlaybackApplicationService:

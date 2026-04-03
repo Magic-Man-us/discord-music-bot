@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import discord
 from discord.ext import commands
+
+from ....utils.logging import get_logger
 
 if TYPE_CHECKING:
     from ....application.services.queue_models import BatchEnqueueResult
@@ -20,7 +21,7 @@ class BaseCog(commands.Cog):
     def __init__(self, bot: commands.Bot, container: Container) -> None:
         self.bot = bot
         self.container = container
-        self.logger = logging.getLogger(type(self).__module__)
+        self.logger = get_logger(type(self).__module__)
 
     async def enqueue_and_start(
         self,

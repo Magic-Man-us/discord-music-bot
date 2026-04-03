@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
+
+from ...utils.logging import get_logger
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent
@@ -12,7 +13,7 @@ from pydantic_ai.settings import ModelSettings
 from ...domain.shared.types import TrackForClassification, TrackGenreMap
 
 if TYPE_CHECKING:
-    from discord_music_player.config.settings import AISettings
+    from ...config.settings import AISettings
 
 _BATCH_SIZE = 20
 _UNKNOWN_GENRE = "Unknown"
@@ -32,7 +33,7 @@ class AIGenreClassifier:
     def __init__(self, settings: AISettings) -> None:
         self._settings = settings
         self._agent: Agent[None, GenreClassificationResponse] | None = None
-        self._logger = logging.getLogger(type(self).__module__)
+        self._logger = get_logger(type(self).__module__)
 
     def is_available(self) -> bool:
         try:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from datetime import datetime
@@ -12,6 +11,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ...utils.logging import get_logger
 from ..music.wrappers import TrackId
 from .datetime_utils import utcnow
 from .types import (
@@ -22,7 +22,7 @@ from .types import (
     UserIdField,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 T = TypeVar("T", bound="DomainEvent")
 EventHandler = Callable[[T], Awaitable[None]]
@@ -83,14 +83,14 @@ class BotJoinedVoiceChannel(DomainEvent):
 
 class VoiceMemberJoinedVoiceChannel(DomainEvent):
     guild_id: DiscordSnowflake
-    channel_id: ChannelIdField | None = None
-    user_id: UserIdField | None = None
+    channel_id: ChannelIdField
+    user_id: UserIdField
 
 
 class VoiceMemberLeftVoiceChannel(DomainEvent):
     guild_id: DiscordSnowflake
-    channel_id: ChannelIdField | None = None
-    user_id: UserIdField | None = None
+    channel_id: ChannelIdField
+    user_id: UserIdField
 
 
 # === Event Bus ===

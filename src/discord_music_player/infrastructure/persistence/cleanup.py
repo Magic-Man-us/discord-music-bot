@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import Awaitable
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -12,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, computed_field
 
 from ...domain.shared.datetime_utils import utcnow
 from ...domain.shared.types import NonNegativeInt
+from ...utils.logging import get_logger
 
 if TYPE_CHECKING:
     from ...config.settings import CleanupSettings
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ...domain.recommendations.repository import RecommendationCacheRepository
     from ...domain.voting.repository import VoteSessionRepository
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class CleanupJob:
