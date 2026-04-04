@@ -102,21 +102,28 @@ class QueueApplicationService:
         user_id: DiscordSnowflake,
         user_name: NonEmptyStr,
     ) -> BatchEnqueueResult:
-        """Enqueue multiple tracks, returning how many succeeded and whether playback should start."""
+        """Enqueue multiple tracks in a single session load/save cycle."""
+        if not tracks:
+            return BatchEnqueueResult(enqueued=0, should_start=False)
+
+        session = await self._session_repo.get_or_create(guild_id)
+        should_start = session.current_track is None
+
+        now = utcnow()
         count = 0
-        should_start = False
         for track in tracks:
-            result = await self.enqueue(
-                guild_id=guild_id,
-                track=track,
-                user_id=user_id,
-                user_name=user_name,
-            )
-            if result.success:
+            tagged = track.with_requester(user_id=user_id, user_name=user_name, requested_at=now)
+            try:
+                session.enqueue(tagged)
                 count += 1
-                if result.should_start:
-                    should_start = True
-        return BatchEnqueueResult(enqueued=count, should_start=should_start)
+            except BusinessRuleViolationError:
+                continue
+
+        if count > 0:
+            await self._session_repo.save(session)
+            logger.info("Batch-enqueued %d/%d tracks in guild %s", count, len(tracks), guild_id)
+
+        return BatchEnqueueResult(enqueued=count, should_start=should_start and count > 0)
 
     async def remove(self, guild_id: DiscordSnowflake, position: QueuePositionInt) -> Track | None:
         session = await self._session_repo.get(guild_id)
