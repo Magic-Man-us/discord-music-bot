@@ -205,8 +205,7 @@ class PlaybackApplicationService:
                 current_track=track,
                 state=PlaybackState.PLAYING,
             )
-            if track.is_direct_request:
-                await self._history_repo.record_play(guild_id=guild_id, track=track)
+            await self._history_repo.record_play(guild_id=guild_id, track=track)
             logger.info("Started playing: %s in guild %s", track.title, guild_id)
 
             await get_event_bus().publish(
@@ -231,7 +230,7 @@ class PlaybackApplicationService:
 
     async def stop_playback(self, guild_id: DiscordSnowflake) -> bool:
         session = await self._session_repo.get(guild_id)
-        if session is None:
+        if session is None or not session.state.is_active:
             return False
 
         self._ignore_next_voice_track_end.add(guild_id)

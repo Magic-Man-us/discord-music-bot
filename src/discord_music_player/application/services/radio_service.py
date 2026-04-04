@@ -11,6 +11,8 @@ Architecture:
 
 from __future__ import annotations
 
+import asyncio
+from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from ...domain.music.entities import GuildPlaybackSession, Track
@@ -64,6 +66,7 @@ class RadioApplicationService:
         self._history_repo = history_repository
         self._settings = settings
         self._states: dict[DiscordSnowflake, RadioState] = {}
+        self._toggle_locks: dict[DiscordSnowflake, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     # ── Public queries ────────────────────────────────────────────────
 
@@ -95,6 +98,23 @@ class RadioApplicationService:
         When enabling: fetches batch_size recommendations, resolves visible_count
         for immediate playback, and stores the remainder in the pool.
         """
+        async with self._toggle_locks[guild_id]:
+            return await self._toggle_radio_locked(
+                guild_id=guild_id,
+                user_id=user_id,
+                user_name=user_name,
+                channel_id=channel_id,
+                count=count,
+            )
+
+    async def _toggle_radio_locked(
+        self,
+        guild_id: DiscordSnowflake,
+        user_id: DiscordSnowflake = 0,
+        user_name: NonEmptyStr = "Radio",
+        channel_id: DiscordSnowflake | None = None,
+        count: int | None = None,
+    ) -> RadioToggleResult:
         if self.is_enabled(guild_id):
             self.disable_radio(guild_id)
             return RadioToggleResult(enabled=False, message="Radio disabled.")
