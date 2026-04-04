@@ -9,6 +9,7 @@ import pytest
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
 from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.shared.events import (
+    VoiceMemberJoinedVoiceChannel,
     VoiceMemberLeftVoiceChannel,
     get_event_bus,
     reset_event_bus,
@@ -308,3 +309,125 @@ async def test_no_requester_id_does_not_act() -> None:
 
     playback_service.pause_playback.assert_not_called()
     playback_service.skip_track.assert_not_called()
+
+
+# === Requester Rejoin Tests ===
+
+
+@pytest.mark.asyncio
+async def test_requester_rejoin_auto_resumes_playback() -> None:
+    """When the requester rejoins after leaving, playback should auto-resume."""
+    reset_event_bus()
+    bus = get_event_bus()
+
+    session_repo = AsyncMock()
+    playback_service = AsyncMock()
+    voice_adapter = AsyncMock()
+
+    session = _make_session_with_track()
+    session_repo.get.return_value = session
+    playback_service.pause_playback.return_value = True
+    voice_adapter.get_listeners.return_value = [100, 200]
+
+    rejoin_callback = AsyncMock()
+
+    subscriber = _make_subscriber(
+        session_repo=session_repo,
+        playback_service=playback_service,
+        voice_adapter=voice_adapter,
+    )
+    subscriber.set_on_requester_left_callback(AsyncMock())
+    subscriber.set_on_requester_rejoined_callback(rejoin_callback)
+    subscriber.start()
+
+    # Requester leaves
+    await bus.publish(VoiceMemberLeftVoiceChannel(guild_id=123, channel_id=999, user_id=42))
+    playback_service.pause_playback.assert_awaited_once_with(123)
+
+    # Requester rejoins
+    await bus.publish(VoiceMemberJoinedVoiceChannel(guild_id=123, channel_id=999, user_id=42))
+
+    playback_service.resume_playback.assert_awaited_once_with(123)
+    rejoin_callback.assert_awaited_once_with(123, 42)
+
+
+@pytest.mark.asyncio
+async def test_different_user_rejoin_does_not_resume() -> None:
+    """A different user joining should not trigger auto-resume."""
+    reset_event_bus()
+    bus = get_event_bus()
+
+    session_repo = AsyncMock()
+    playback_service = AsyncMock()
+    voice_adapter = AsyncMock()
+
+    session = _make_session_with_track()
+    session_repo.get.return_value = session
+    playback_service.pause_playback.return_value = True
+    voice_adapter.get_listeners.return_value = [100, 200]
+
+    subscriber = _make_subscriber(
+        session_repo=session_repo,
+        playback_service=playback_service,
+        voice_adapter=voice_adapter,
+    )
+    subscriber.set_on_requester_left_callback(AsyncMock())
+    subscriber.start()
+
+    # Requester leaves
+    await bus.publish(VoiceMemberLeftVoiceChannel(guild_id=123, channel_id=999, user_id=42))
+
+    # Different user joins
+    await bus.publish(VoiceMemberJoinedVoiceChannel(guild_id=123, channel_id=999, user_id=999))
+
+    playback_service.resume_playback.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_rejoin_without_prior_leave_is_noop() -> None:
+    """Joining without a pending requester-left state should do nothing."""
+    reset_event_bus()
+    bus = get_event_bus()
+
+    playback_service = AsyncMock()
+    subscriber = _make_subscriber(playback_service=playback_service)
+    subscriber.start()
+
+    await bus.publish(VoiceMemberJoinedVoiceChannel(guild_id=123, channel_id=999, user_id=42))
+
+    playback_service.resume_playback.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_clear_pending_prevents_rejoin_resume() -> None:
+    """After clear_pending, a rejoin should not trigger resume."""
+    reset_event_bus()
+    bus = get_event_bus()
+
+    session_repo = AsyncMock()
+    playback_service = AsyncMock()
+    voice_adapter = AsyncMock()
+
+    session = _make_session_with_track()
+    session_repo.get.return_value = session
+    playback_service.pause_playback.return_value = True
+    voice_adapter.get_listeners.return_value = [100, 200]
+
+    subscriber = _make_subscriber(
+        session_repo=session_repo,
+        playback_service=playback_service,
+        voice_adapter=voice_adapter,
+    )
+    subscriber.set_on_requester_left_callback(AsyncMock())
+    subscriber.start()
+
+    # Requester leaves
+    await bus.publish(VoiceMemberLeftVoiceChannel(guild_id=123, channel_id=999, user_id=42))
+
+    # View resolves (e.g. someone clicks "Yes, continue") — clears pending state
+    subscriber.clear_pending(123)
+
+    # Requester rejoins — should NOT resume again
+    await bus.publish(VoiceMemberJoinedVoiceChannel(guild_id=123, channel_id=999, user_id=42))
+
+    playback_service.resume_playback.assert_not_called()

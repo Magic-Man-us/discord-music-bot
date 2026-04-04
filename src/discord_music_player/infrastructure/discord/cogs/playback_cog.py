@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import discord
 from discord import app_commands
+from discord.ext import commands
 
 from ....domain.music.entities import Track
 from ....domain.shared.constants import UIConstants
@@ -30,16 +31,22 @@ from ....utils.reply import (
 )
 
 if TYPE_CHECKING:
+    from ....config.container import Container
     from ....domain.music.wrappers import StartSeconds
     from ....domain.shared.events import TrackStartedPlaying
+    from ..views.requester_left_view import RequesterLeftView
 
 
 class PlaybackCog(BaseCog):
+    def __init__(self, bot: commands.Bot, container: Container) -> None:
+        super().__init__(bot, container)
+        self._requester_left_views: dict[DiscordSnowflake, RequesterLeftView] = {}
+
     async def cog_load(self) -> None:
         self.container.playback_service.set_track_finished_callback(self._on_track_finished)
-        self.container.auto_skip_on_requester_leave.set_on_requester_left_callback(
-            self._on_requester_left
-        )
+        auto_skip = self.container.auto_skip_on_requester_leave
+        auto_skip.set_on_requester_left_callback(self._on_requester_left)
+        auto_skip.set_on_requester_rejoined_callback(self._on_requester_rejoined)
         from ....domain.shared.events import TrackStartedPlaying, get_event_bus
 
         self._event_bus = get_event_bus()
@@ -614,12 +621,21 @@ class PlaybackCog(BaseCog):
         view = RequesterLeftView(
             guild_id=guild_id,
             playback_service=self.container.playback_service,
+            auto_skip_service=self.container.auto_skip_on_requester_leave,
             track_title=track.title,
             requester_name=requester_name,
         )
         content = f"**{requester_name}** has left the voice channel. Do you want to continue playing **{truncate(track.title, UIConstants.TITLE_TRUNCATION)}**?"
         message = await channel.send(content, view=view)
         view.set_message(message)
+        self._requester_left_views[guild_id] = view
+
+    async def _on_requester_rejoined(
+        self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake
+    ) -> None:
+        view = self._requester_left_views.pop(guild_id, None)
+        if view is not None:
+            await view.dismiss()
 
     async def _on_track_finished(self, guild_id: DiscordSnowflake, track: Track) -> None:
         msm = self.container.message_state_manager

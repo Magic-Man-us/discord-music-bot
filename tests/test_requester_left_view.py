@@ -7,14 +7,18 @@ from unittest.mock import AsyncMock
 import pytest
 
 
-def _make_view(playback_service: AsyncMock):
+def _make_view(playback_service: AsyncMock, auto_skip_service: AsyncMock | None = None):
     from discord_music_player.infrastructure.discord.views.requester_left_view import (
         RequesterLeftView,
     )
 
+    if auto_skip_service is None:
+        auto_skip_service = AsyncMock()
+
     return RequesterLeftView(
         guild_id=123,
         playback_service=playback_service,
+        auto_skip_service=auto_skip_service,
         track_title="Test Song",
         requester_name="<@42>",
     )
@@ -115,3 +119,52 @@ async def test_view_timeout_is_30_seconds() -> None:
     playback_service = AsyncMock()
     view = _make_view(playback_service)
     assert view.timeout == 30.0
+
+
+@pytest.mark.asyncio
+async def test_yes_clears_pending_state() -> None:
+    playback_service = AsyncMock()
+    auto_skip = AsyncMock()
+    view = _make_view(playback_service, auto_skip)
+    interaction = AsyncMock()
+
+    await view.yes_button.callback(interaction)
+
+    auto_skip.clear_pending.assert_called_once_with(123)
+
+
+@pytest.mark.asyncio
+async def test_no_clears_pending_state() -> None:
+    playback_service = AsyncMock()
+    auto_skip = AsyncMock()
+    view = _make_view(playback_service, auto_skip)
+    interaction = AsyncMock()
+
+    await view.no_button.callback(interaction)
+
+    auto_skip.clear_pending.assert_called_once_with(123)
+
+
+@pytest.mark.asyncio
+async def test_timeout_clears_pending_state() -> None:
+    playback_service = AsyncMock()
+    auto_skip = AsyncMock()
+    view = _make_view(playback_service, auto_skip)
+
+    await view.on_timeout()
+
+    auto_skip.clear_pending.assert_called_once_with(123)
+
+
+@pytest.mark.asyncio
+async def test_dismiss_disables_buttons_and_edits_message() -> None:
+    playback_service = AsyncMock()
+    view = _make_view(playback_service)
+    message = AsyncMock()
+    view.set_message(message)
+
+    await view.dismiss()
+
+    message.edit.assert_awaited_once()
+    for item in view.children:
+        assert item.disabled is True

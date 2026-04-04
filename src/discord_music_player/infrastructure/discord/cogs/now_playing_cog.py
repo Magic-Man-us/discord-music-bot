@@ -6,7 +6,7 @@ import discord
 from discord import app_commands
 
 from ....domain.shared.constants import AnalyticsConstants, UIConstants
-from .base_cog import BaseCog
+from ....utils.reply import format_duration, paginate, truncate
 from ..guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     send_ephemeral,
@@ -14,7 +14,7 @@ from ..guards.voice_guards import (
 from ..services.embed_builder import (
     build_now_playing_embed,
 )
-from ....utils.reply import format_duration, paginate, truncate
+from .base_cog import BaseCog
 
 
 class NowPlayingCog(BaseCog):
