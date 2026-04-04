@@ -16,6 +16,7 @@ from ...domain.shared.types import DiscordSnowflake
 from ...utils.logging import get_logger
 
 if TYPE_CHECKING:
+    from ...domain.music.entities import Track
     from ...domain.music.repository import SessionRepository, TrackHistoryRepository
     from ..interfaces.ai_client import AIClient
     from .playback_service import PlaybackApplicationService
@@ -164,10 +165,12 @@ class AutoDJ:
             logger.exception("Auto-DJ failed for guild %s", guild_id)
         finally:
             if injected_seed:
-                await self._clear_injected_seed(guild_id)
+                await self._clear_injected_seed(guild_id, last_track)
 
-    async def _clear_injected_seed(self, guild_id: DiscordSnowflake) -> None:
+    async def _clear_injected_seed(self, guild_id: DiscordSnowflake, seed: Track) -> None:
+        """Remove the temporary seed track only if it's still the current track."""
         session = await self._session_repo.get(guild_id)
         if session is not None and session.current_track is not None:
-            session.set_current_track(None)
-            await self._session_repo.save(session)
+            if session.current_track.id == seed.id:
+                session.set_current_track(None)
+                await self._session_repo.save(session)

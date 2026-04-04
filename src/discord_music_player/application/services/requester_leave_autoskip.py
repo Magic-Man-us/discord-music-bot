@@ -77,6 +77,7 @@ class AutoSkipOnRequesterLeave:
         self._bus.unsubscribe(VoiceMemberJoinedVoiceChannel, self._on_member_joined)
         self._started = False
         self._pending_requester.clear()
+        self._guild_locks.clear()
 
     async def _on_member_left(self, event: VoiceMemberLeftVoiceChannel) -> None:
         lock = self._guild_locks[event.guild_id]
@@ -124,15 +125,14 @@ class AutoSkipOnRequesterLeave:
                     await result
 
     async def _on_member_joined(self, event: VoiceMemberJoinedVoiceChannel) -> None:
-        pending_user = self._pending_requester.pop(event.guild_id, None)
-        if pending_user is None or pending_user != event.user_id:
-            # Not the requester we're waiting for — put it back if it was a different user
-            if pending_user is not None:
-                self._pending_requester[event.guild_id] = pending_user
-            return
-
         lock = self._guild_locks[event.guild_id]
         async with lock:
+            pending_user = self._pending_requester.pop(event.guild_id, None)
+            if pending_user is None or pending_user != event.user_id:
+                if pending_user is not None:
+                    self._pending_requester[event.guild_id] = pending_user
+                return
+
             logger.info(
                 "Requester %s rejoined voice in guild %s — auto-resuming playback",
                 event.user_id,

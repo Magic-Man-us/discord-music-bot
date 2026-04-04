@@ -316,14 +316,16 @@ class PlaybackApplicationService:
             success = await self._voice_adapter.play(guild_id, track, start_seconds=start_seconds)
             if not success:
                 logger.error("Voice adapter failed to play after seek in guild %s", guild_id)
-                self._ignore_next_voice_track_end.discard(guild_id)
                 return False
             logger.info("Seeked to %ss in guild %s", start_seconds.value, guild_id)
             return True
         except Exception:
-            self._ignore_next_voice_track_end.discard(guild_id)
             logger.exception("Error starting playback after seek")
             return False
+        finally:
+            # The stop() callback was suppressed; clear the flag so the next
+            # natural track-end fires normally.
+            self._ignore_next_voice_track_end.discard(guild_id)
 
     async def skip_track(self, guild_id: DiscordSnowflake) -> Track | None:
         """Skip the current track and return it, or None if nothing was playing."""
