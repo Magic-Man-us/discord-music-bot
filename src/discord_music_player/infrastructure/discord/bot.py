@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING, Any
 import discord
 from discord.ext import commands
 
+from ...domain.music.enums import PlaybackState
+from ...domain.music.wrappers import StartSeconds
 from ...utils.logging import get_logger
+from ...utils.reply import format_duration
+from .views.resume_playback_view import ResumePlaybackView
 
 if TYPE_CHECKING:
     from ...config.container import Container
@@ -40,11 +44,12 @@ class MusicBot(commands.Bot):
             **kwargs,
         )
 
-        self.container = container
-        self.settings = settings
-        self._shutdown_event = asyncio.Event()
+        self.container: Container = container
+        self.settings: Settings = settings
+        self._shutdown_event: asyncio.Event = asyncio.Event()
+        self._sessions_resumed: bool = False
+        # on_ready fires on every reconnect; gate session resume to first ready only
         container.set_bot(self)
-        self._sessions_resumed = False
 
     async def setup_hook(self) -> None:
         logger.info("Setting up bot...")
@@ -74,18 +79,17 @@ class MusicBot(commands.Bot):
 
         logger.info("Bot setup complete")
 
+    # ------------------------------------------------------------------
+    # Session recovery
+    # ------------------------------------------------------------------
+
     async def _resume_sessions(self) -> None:
         """Resume playback sessions that were active before bot restart."""
         try:
-            from ...domain.music.enums import PlaybackState
-
             session_repo = self.container.session_repository
             sessions = await session_repo.get_all_active()
 
-            logger.info(
-                "Session recovery: found %d active session(s)",
-                len(sessions),
-            )
+            logger.info("Session recovery: found %d active session(s)", len(sessions))
 
             resumed_count = 0
             reset_count = 0
@@ -99,7 +103,7 @@ class MusicBot(commands.Bot):
                     session.current_track.title if session.current_track else None,
                     len(session.queue),
                 )
-                # Skip sessions that are already idle with no tracks
+
                 if session.state == PlaybackState.IDLE and not session.has_tracks:
                     logger.info(
                         "Skipping idle session with no tracks for guild %s", session.guild_id
@@ -113,7 +117,6 @@ class MusicBot(commands.Bot):
                     reset_count += 1
                     continue
 
-                # Try to resume this session
                 if await self._try_resume_session(session, guild):
                     resumed_count += 1
                 else:
@@ -133,119 +136,92 @@ class MusicBot(commands.Bot):
     ) -> bool:
         """Attempt to resume playback for a single session. Returns True if successful."""
         try:
-            # Clean up any stale now-playing messages from before the restart
             await self.container.message_state_manager.reset(session.guild_id)
 
-            # Skip if no tracks to play
             if not session.has_tracks:
                 logger.debug("Session %s has no tracks, skipping resume", session.guild_id)
                 return False
 
-            # Find a voice channel with members
-            voice_channel = await self._find_resumable_voice_channel(guild)
+            voice_channel = self._find_resumable_voice_channel(guild)
             if voice_channel is None:
                 logger.debug("No suitable voice channel found for guild %s", session.guild_id)
                 return False
 
-            # Find a text channel to post the resume prompt
-            text_channel = await self._find_text_channel(guild, session)
+            text_channel = self._find_text_channel(guild)
             if text_channel is None:
                 logger.debug(
                     "No text channel found for guild %s, skipping resume", session.guild_id
                 )
                 return False
 
-            # Connect to voice first
-            voice_adapter = self.container.voice_adapter
-            success = await voice_adapter.ensure_connected(session.guild_id, voice_channel.id)
+            success = await self.container.voice_adapter.ensure_connected(
+                session.guild_id, voice_channel.id
+            )
             if not success:
                 logger.debug("Failed to connect to voice in guild %s", session.guild_id)
                 return False
 
-            # Capture elapsed time BEFORE resetting state (uses playback_started_at)
-            from ...domain.music.wrappers import StartSeconds
-            from ...utils.reply import format_duration
-
-            elapsed = session.elapsed_seconds
-            resume_start = StartSeconds.from_optional(elapsed or None)
-
-            # Reset session state to idle so start_playback will actually
-            # begin audio when the user hits Resume.  Also clear stale stream
-            # URLs (YouTube tokens expire) so they get re-resolved.
-            from ...domain.music.enums import PlaybackState
-
-            session.state = PlaybackState.IDLE
-            session.playback_started_at = None
-            if session.current_track is not None:
-                session.current_track = session.current_track.model_copy(
-                    update={"stream_url": None},
-                )
-            for i, track in enumerate(session.queue):
-                session.queue[i] = track.model_copy(update={"stream_url": None})
-            await self.container.session_repository.save(session)
-
-            # Determine what track to show in the prompt
-            track_title = "Unknown"
-            if session.current_track is not None:
-                track_title = session.current_track.title
-            elif session.queue:
-                track_title = session.queue[0].title
-            timestamp_label = ""
-            if resume_start is not None:
-                timestamp_label = f" at {format_duration(resume_start.value)}"
-
-            # Send resume prompt to channel
-            from .views.resume_playback_view import ResumePlaybackView
-
-            playback_service = self.container.playback_service
-            view = ResumePlaybackView(
-                guild_id=session.guild_id,
-                channel_id=text_channel.id,
-                playback_service=playback_service,
-                track_title=track_title,
-                resume_start_seconds=resume_start,
-            )
-
-            message = await text_channel.send(
-                f"I was playing **{track_title}**{timestamp_label} before restarting. Resume playback?",
-                view=view,
-            )
-            view.set_message(message)
-
-            logger.info(
-                "Sent resume prompt for guild %s: %s",
-                session.guild_id,
-                track_title,
-            )
+            await self._send_resume_prompt(session, text_channel)
             return True
 
         except Exception as e:
             logger.warning("Failed to resume session for guild %s: %s", session.guild_id, e)
             return False
 
-    async def _find_text_channel(
-        self, guild: discord.Guild, session: GuildPlaybackSession
-    ) -> discord.TextChannel | None:
+    async def _send_resume_prompt(
+        self,
+        session: GuildPlaybackSession,
+        text_channel: discord.TextChannel,
+    ) -> None:
+        """Prepare session state and send the resume prompt to the channel."""
+        elapsed = session.prepare_for_resume()
+        await self.container.session_repository.save(session)
+
+        resume_start = StartSeconds.from_optional(elapsed)
+
+        track_title = "Unknown"
+        if session.current_track is not None:
+            track_title = session.current_track.title
+        elif session.queue:
+            track_title = session.queue[0].title
+
+        timestamp_label = ""
+        if resume_start is not None:
+            timestamp_label = f" at {format_duration(resume_start.value)}"
+
+        view = ResumePlaybackView(
+            guild_id=session.guild_id,
+            channel_id=text_channel.id,
+            playback_service=self.container.playback_service,
+            track_title=track_title,
+            resume_start_seconds=resume_start,
+        )
+
+        message = await text_channel.send(
+            f"I was playing **{track_title}**{timestamp_label} before restarting. Resume playback?",
+            view=view,
+        )
+        view.set_message(message)
+
+        logger.info("Sent resume prompt for guild %s: %s", session.guild_id, track_title)
+
+    @staticmethod
+    def _find_text_channel(guild: discord.Guild) -> discord.TextChannel | None:
         """Find a suitable text channel to post the resume prompt."""
-        # Try system channel first
         if guild.system_channel and isinstance(guild.system_channel, discord.TextChannel):
             return guild.system_channel
 
-        # Try first text channel bot can send to
         for channel in guild.text_channels:
             if channel.permissions_for(guild.me).send_messages:
                 return channel
 
         return None
 
-    async def _find_resumable_voice_channel(
-        self, guild: discord.Guild
-    ) -> discord.VoiceChannel | None:
+    @staticmethod
+    def _find_resumable_voice_channel(guild: discord.Guild) -> discord.VoiceChannel | None:
         """Find a voice channel with at least one non-bot member."""
         for channel in guild.voice_channels:
-            # Count non-bot members
-            member_count = sum(1 for m in channel.members if not m.bot)
-            if member_count > 0:
+            if any(not m.bot for m in channel.members):
                 return channel
         return None
 
@@ -253,11 +229,13 @@ class MusicBot(commands.Bot):
         self, session: GuildPlaybackSession, session_repo: SessionRepository
     ) -> None:
         """Reset a session to IDLE state."""
-        from ...domain.music.enums import PlaybackState
-
         session.state = PlaybackState.IDLE
         session.current_track = None
         await session_repo.save(session)
+
+    # ------------------------------------------------------------------
+    # Cog loading
+    # ------------------------------------------------------------------
 
     async def _load_cogs(self) -> None:
         _COG_PKG = "discord_music_player.infrastructure.discord.cogs"
@@ -294,6 +272,10 @@ class MusicBot(commands.Bot):
 
         logger.info("Cogs loaded: %s success, %s failed", loaded, failed)
 
+    # ------------------------------------------------------------------
+    # Error handling
+    # ------------------------------------------------------------------
+
     async def _on_app_command_error(
         self, interaction: discord.Interaction, error: Exception
     ) -> None:
@@ -318,6 +300,10 @@ class MusicBot(commands.Bot):
         except discord.HTTPException:
             logger.warning("Failed to send error message to user")
 
+    # ------------------------------------------------------------------
+    # Command sync
+    # ------------------------------------------------------------------
+
     async def _sync_commands(self) -> None:
         test_guilds = self.settings.discord.test_guild_ids
 
@@ -336,6 +322,10 @@ class MusicBot(commands.Bot):
                 logger.info("Synced %s commands globally", len(synced))
             except Exception as e:
                 logger.warning("Failed to sync commands globally: %s", e)
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
 
     async def on_ready(self) -> None:
         logger.info(
@@ -389,8 +379,13 @@ class MusicBot(commands.Bot):
         async def runner() -> None:
             async with self:
                 loop = asyncio.get_running_loop()
+                closing = False
 
                 async def _graceful_close() -> None:
+                    nonlocal closing
+                    if closing:
+                        return
+                    closing = True
                     try:
                         await asyncio.wait_for(self.close(), timeout=shutdown_timeout)
                     except TimeoutError:

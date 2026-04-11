@@ -779,3 +779,617 @@ class TestCreateBot:
 
         assert bot.container is mock_container
         assert bot.settings is mock_settings
+
+
+# =============================================================================
+# Session Recovery Tests
+# =============================================================================
+
+
+def _make_session(
+    guild_id: int = 123456,
+    state: str = "playing",
+    with_track: bool = True,
+    queue_count: int = 0,
+) -> "GuildPlaybackSession":
+    """Helper to build a GuildPlaybackSession for testing."""
+    from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
+    from discord_music_player.domain.music.enums import PlaybackState
+    from discord_music_player.domain.music.wrappers import TrackId
+
+    session = GuildPlaybackSession(guild_id=guild_id)
+    session.state = PlaybackState(state)
+
+    if with_track:
+        session.current_track = Track(
+            id=TrackId(value="test_id"),
+            title="Test Track",
+            webpage_url="https://youtube.com/watch?v=test_id",
+        )
+
+    for i in range(queue_count):
+        session.queue.append(
+            Track(
+                id=TrackId(value=f"q{i}"),
+                title=f"Queue Track {i}",
+                webpage_url=f"https://youtube.com/watch?v=q{i}",
+            )
+        )
+
+    return session
+
+
+def _make_guild_mock(
+    guild_id: int = 123456,
+    voice_channels: list[MagicMock] | None = None,
+    text_channels: list[MagicMock] | None = None,
+    system_channel: MagicMock | None = None,
+) -> MagicMock:
+    """Helper to build a mock discord.Guild."""
+    guild = MagicMock(spec=discord.Guild)
+    guild.id = guild_id
+    guild.voice_channels = voice_channels or []
+    guild.text_channels = text_channels or []
+    guild.system_channel = system_channel
+    guild.me = MagicMock()
+    return guild
+
+
+def _make_voice_channel(members_bot_flags: list[bool] | None = None) -> MagicMock:
+    """Create a mock voice channel. members_bot_flags is a list of is_bot values."""
+    vc = MagicMock(spec=discord.VoiceChannel)
+    vc.id = 999
+    if members_bot_flags is None:
+        members_bot_flags = []
+    members = []
+    for is_bot in members_bot_flags:
+        m = MagicMock()
+        m.bot = is_bot
+        members.append(m)
+    vc.members = members
+    return vc
+
+
+def _make_text_channel(can_send: bool = True) -> MagicMock:
+    """Create a mock text channel."""
+    tc = MagicMock(spec=discord.TextChannel)
+    tc.id = 888
+    tc.send = AsyncMock()
+    perms = MagicMock()
+    perms.send_messages = can_send
+    tc.permissions_for = MagicMock(return_value=perms)
+    return tc
+
+
+class TestFindTextChannel:
+    """Tests for MusicBot._find_text_channel static method."""
+
+    def test_returns_system_channel_if_present(self, mock_container, mock_settings):
+        """Should return guild system_channel when it exists and is a TextChannel."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        sys_channel = _make_text_channel()
+        guild = _make_guild_mock(system_channel=sys_channel)
+        # system_channel needs to pass isinstance check
+        type(guild).system_channel = PropertyMock(return_value=sys_channel)
+
+        result = MusicBot._find_text_channel(guild)
+        assert result is sys_channel
+
+    def test_falls_back_to_first_sendable_channel(self, mock_container, mock_settings):
+        """Should return first sendable text channel when no system_channel."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        guild = _make_guild_mock(system_channel=None)
+        no_send = _make_text_channel(can_send=False)
+        can_send = _make_text_channel(can_send=True)
+        guild.text_channels = [no_send, can_send]
+
+        result = MusicBot._find_text_channel(guild)
+        assert result is can_send
+
+    def test_returns_none_when_no_channels(self, mock_container, mock_settings):
+        """Should return None when no suitable text channel found."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        guild = _make_guild_mock(system_channel=None)
+        guild.text_channels = []
+
+        result = MusicBot._find_text_channel(guild)
+        assert result is None
+
+    def test_returns_none_when_no_sendable_channels(self, mock_container, mock_settings):
+        """Should return None when all channels lack send permissions."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        guild = _make_guild_mock(system_channel=None)
+        no_send = _make_text_channel(can_send=False)
+        guild.text_channels = [no_send]
+
+        result = MusicBot._find_text_channel(guild)
+        assert result is None
+
+
+class TestFindResumableVoiceChannel:
+    """Tests for MusicBot._find_resumable_voice_channel static method."""
+
+    def test_finds_channel_with_non_bot_member(self, mock_container, mock_settings):
+        """Should return first voice channel with a human member."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        vc_bots_only = _make_voice_channel([True, True])
+        vc_with_human = _make_voice_channel([True, False])
+        guild = _make_guild_mock(voice_channels=[vc_bots_only, vc_with_human])
+
+        result = MusicBot._find_resumable_voice_channel(guild)
+        assert result is vc_with_human
+
+    def test_returns_none_when_all_bots(self, mock_container, mock_settings):
+        """Should return None when all voice channel members are bots."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        vc = _make_voice_channel([True, True])
+        guild = _make_guild_mock(voice_channels=[vc])
+
+        result = MusicBot._find_resumable_voice_channel(guild)
+        assert result is None
+
+    def test_returns_none_when_no_voice_channels(self, mock_container, mock_settings):
+        """Should return None when guild has no voice channels."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        guild = _make_guild_mock(voice_channels=[])
+
+        result = MusicBot._find_resumable_voice_channel(guild)
+        assert result is None
+
+    def test_returns_none_when_channels_empty(self, mock_container, mock_settings):
+        """Should return None when voice channels have no members."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        vc = _make_voice_channel([])
+        guild = _make_guild_mock(voice_channels=[vc])
+
+        result = MusicBot._find_resumable_voice_channel(guild)
+        assert result is None
+
+
+class TestResetSession:
+    """Tests for MusicBot._reset_session method."""
+
+    @pytest.mark.asyncio
+    async def test_resets_state_to_idle(self, mock_container, mock_settings):
+        """Should set session state to IDLE and clear current track."""
+        from discord_music_player.domain.music.enums import PlaybackState
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        session = _make_session(state="playing", with_track=True)
+        repo = AsyncMock()
+
+        await bot._reset_session(session, repo)
+
+        assert session.state == PlaybackState.IDLE
+        assert session.current_track is None
+        repo.save.assert_called_once_with(session)
+
+    @pytest.mark.asyncio
+    async def test_saves_session_via_repository(self, mock_container, mock_settings):
+        """Should persist the reset session."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        session = _make_session(state="paused", with_track=False)
+        repo = AsyncMock()
+
+        await bot._reset_session(session, repo)
+
+        repo.save.assert_called_once_with(session)
+
+
+class TestTryResumeSession:
+    """Tests for MusicBot._try_resume_session method."""
+
+    @pytest.mark.asyncio
+    async def test_resets_message_state(self, mock_container, mock_settings):
+        """Should call message_state_manager.reset for the guild."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        mock_container.message_state_manager = MagicMock()
+        mock_container.message_state_manager.reset = AsyncMock()
+
+        session = _make_session(with_track=False)
+        guild = _make_guild_mock()
+
+        await bot._try_resume_session(session, guild)
+
+        mock_container.message_state_manager.reset.assert_called_once_with(session.guild_id)
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_no_tracks(self, mock_container, mock_settings):
+        """Should return False when session has no tracks."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        mock_container.message_state_manager = MagicMock()
+        mock_container.message_state_manager.reset = AsyncMock()
+
+        session = _make_session(with_track=False, queue_count=0)
+        guild = _make_guild_mock()
+
+        result = await bot._try_resume_session(session, guild)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_no_voice_channel(self, mock_container, mock_settings):
+        """Should return False when no voice channel has human members."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        mock_container.message_state_manager = MagicMock()
+        mock_container.message_state_manager.reset = AsyncMock()
+
+        session = _make_session(with_track=True)
+        guild = _make_guild_mock(voice_channels=[])
+
+        result = await bot._try_resume_session(session, guild)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_no_text_channel(self, mock_container, mock_settings):
+        """Should return False when no suitable text channel found."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        mock_container.message_state_manager = MagicMock()
+        mock_container.message_state_manager.reset = AsyncMock()
+
+        session = _make_session(with_track=True)
+        vc = _make_voice_channel([False])
+        guild = _make_guild_mock(voice_channels=[vc], text_channels=[], system_channel=None)
+
+        result = await bot._try_resume_session(session, guild)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_voice_connect_fails(self, mock_container, mock_settings):
+        """Should return False when voice adapter fails to connect."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        mock_container.message_state_manager = MagicMock()
+        mock_container.message_state_manager.reset = AsyncMock()
+        mock_container.voice_adapter = MagicMock()
+        mock_container.voice_adapter.ensure_connected = AsyncMock(return_value=False)
+
+        session = _make_session(with_track=True)
+        vc = _make_voice_channel([False])
+        tc = _make_text_channel()
+        guild = _make_guild_mock(
+            voice_channels=[vc], text_channels=[tc], system_channel=tc,
+        )
+
+        result = await bot._try_resume_session(session, guild)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_returns_true_on_successful_resume(self, mock_container, mock_settings):
+        """Should return True when all steps succeed."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        mock_container.message_state_manager = MagicMock()
+        mock_container.message_state_manager.reset = AsyncMock()
+        mock_container.voice_adapter = MagicMock()
+        mock_container.voice_adapter.ensure_connected = AsyncMock(return_value=True)
+        mock_container.playback_service = MagicMock()
+
+        session = _make_session(with_track=True)
+        vc = _make_voice_channel([False])
+        tc = _make_text_channel()
+        tc.send = AsyncMock(return_value=MagicMock())
+        guild = _make_guild_mock(
+            voice_channels=[vc], text_channels=[tc], system_channel=tc,
+        )
+
+        with patch(
+            "discord_music_player.infrastructure.discord.bot.ResumePlaybackView"
+        ) as mock_view_cls:
+            mock_view = MagicMock()
+            mock_view_cls.return_value = mock_view
+            result = await bot._try_resume_session(session, guild)
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_returns_false_on_exception(self, mock_container, mock_settings):
+        """Should return False and not raise when an exception occurs."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        mock_container.message_state_manager = MagicMock()
+        mock_container.message_state_manager.reset = AsyncMock(
+            side_effect=Exception("boom")
+        )
+
+        session = _make_session(with_track=True)
+        guild = _make_guild_mock()
+
+        result = await bot._try_resume_session(session, guild)
+        assert result is False
+
+
+def _make_mock_session(
+    guild_id: int = 123456,
+    current_track_title: str | None = "Test Track",
+    queue_titles: list[str] | None = None,
+    prepare_for_resume_return: int = 0,
+) -> MagicMock:
+    """Build a MagicMock session for _send_resume_prompt tests (avoids Pydantic __setattr__)."""
+    session = MagicMock()
+    session.guild_id = guild_id
+    session.prepare_for_resume = MagicMock(return_value=prepare_for_resume_return)
+
+    if current_track_title is not None:
+        track = MagicMock()
+        track.title = current_track_title
+        session.current_track = track
+    else:
+        session.current_track = None
+
+    if queue_titles:
+        session.queue = [MagicMock(title=t) for t in queue_titles]
+    else:
+        session.queue = []
+
+    return session
+
+
+class TestSendResumePrompt:
+    """Tests for MusicBot._send_resume_prompt method."""
+
+    @pytest.mark.asyncio
+    async def test_calls_prepare_for_resume_and_saves(self, mock_container, mock_settings):
+        """Should call prepare_for_resume on session and save it."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        mock_container.playback_service = MagicMock()
+
+        session = _make_mock_session()
+        tc = _make_text_channel()
+        tc.send = AsyncMock(return_value=MagicMock())
+
+        with patch(
+            "discord_music_player.infrastructure.discord.bot.ResumePlaybackView"
+        ):
+            await bot._send_resume_prompt(session, tc)
+
+        session.prepare_for_resume.assert_called_once()
+        mock_container.session_repository.save.assert_called_once_with(session)
+
+    @pytest.mark.asyncio
+    async def test_creates_resume_view_with_correct_args(self, mock_container, mock_settings):
+        """Should create ResumePlaybackView with guild_id, channel_id, and track title."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        mock_container.playback_service = MagicMock()
+
+        session = _make_mock_session()
+        tc = _make_text_channel()
+        tc.send = AsyncMock(return_value=MagicMock())
+
+        with patch(
+            "discord_music_player.infrastructure.discord.bot.ResumePlaybackView"
+        ) as mock_view_cls:
+            mock_view_cls.return_value = MagicMock()
+            await bot._send_resume_prompt(session, tc)
+
+        mock_view_cls.assert_called_once()
+        call_kwargs = mock_view_cls.call_args.kwargs
+        assert call_kwargs["guild_id"] == session.guild_id
+        assert call_kwargs["channel_id"] == tc.id
+        assert call_kwargs["track_title"] == "Test Track"
+        assert call_kwargs["playback_service"] is mock_container.playback_service
+
+    @pytest.mark.asyncio
+    async def test_sends_message_with_track_title(self, mock_container, mock_settings):
+        """Should send a message containing the track title."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        mock_container.playback_service = MagicMock()
+
+        session = _make_mock_session()
+        tc = _make_text_channel()
+        mock_message = MagicMock()
+        tc.send = AsyncMock(return_value=mock_message)
+
+        with patch(
+            "discord_music_player.infrastructure.discord.bot.ResumePlaybackView"
+        ) as mock_view_cls:
+            mock_view = MagicMock()
+            mock_view_cls.return_value = mock_view
+            await bot._send_resume_prompt(session, tc)
+
+        tc.send.assert_called_once()
+        sent_text = tc.send.call_args.args[0]
+        assert "Test Track" in sent_text
+        mock_view.set_message.assert_called_once_with(mock_message)
+
+    @pytest.mark.asyncio
+    async def test_includes_timestamp_when_elapsed(self, mock_container, mock_settings):
+        """Should include timestamp label when elapsed seconds > 0."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        mock_container.playback_service = MagicMock()
+
+        session = _make_mock_session(prepare_for_resume_return=125)
+        tc = _make_text_channel()
+        tc.send = AsyncMock(return_value=MagicMock())
+
+        with patch(
+            "discord_music_player.infrastructure.discord.bot.ResumePlaybackView"
+        ) as mock_view_cls:
+            mock_view_cls.return_value = MagicMock()
+            await bot._send_resume_prompt(session, tc)
+
+        sent_text = tc.send.call_args.args[0]
+        assert "2:05" in sent_text
+
+    @pytest.mark.asyncio
+    async def test_uses_queue_title_when_no_current_track(self, mock_container, mock_settings):
+        """Should fall back to first queue track title when current_track is None."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        mock_container.playback_service = MagicMock()
+
+        session = _make_mock_session(
+            current_track_title=None,
+            queue_titles=["Queue Track 0", "Queue Track 1"],
+        )
+        tc = _make_text_channel()
+        tc.send = AsyncMock(return_value=MagicMock())
+
+        with patch(
+            "discord_music_player.infrastructure.discord.bot.ResumePlaybackView"
+        ) as mock_view_cls:
+            mock_view_cls.return_value = MagicMock()
+            await bot._send_resume_prompt(session, tc)
+
+        sent_text = tc.send.call_args.args[0]
+        assert "Queue Track 0" in sent_text
+
+    @pytest.mark.asyncio
+    async def test_uses_unknown_when_no_tracks_at_all(self, mock_container, mock_settings):
+        """Should use 'Unknown' when neither current_track nor queue has tracks."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        mock_container.playback_service = MagicMock()
+
+        session = _make_mock_session(current_track_title=None, queue_titles=None)
+        tc = _make_text_channel()
+        tc.send = AsyncMock(return_value=MagicMock())
+
+        with patch(
+            "discord_music_player.infrastructure.discord.bot.ResumePlaybackView"
+        ) as mock_view_cls:
+            mock_view_cls.return_value = MagicMock()
+            await bot._send_resume_prompt(session, tc)
+
+        sent_text = tc.send.call_args.args[0]
+        assert "Unknown" in sent_text
+
+
+class TestResumeSessionsIntegration:
+    """Integration-level tests for _resume_sessions orchestration."""
+
+    @pytest.mark.asyncio
+    async def test_resumes_session_when_guild_found_and_resumable(
+        self, mock_container, mock_settings
+    ):
+        """Should call _try_resume_session when guild is found."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        session = _make_session(state="playing", with_track=True)
+        mock_container.session_repository.get_all_active.return_value = [session]
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+
+        guild = _make_guild_mock(guild_id=session.guild_id)
+
+        with patch.object(bot, "get_guild", return_value=guild):
+            with patch.object(
+                bot, "_try_resume_session", new_callable=AsyncMock, return_value=True
+            ) as mock_try:
+                await bot._resume_sessions()
+
+        mock_try.assert_called_once_with(session, guild)
+
+    @pytest.mark.asyncio
+    async def test_resets_when_try_resume_fails(self, mock_container, mock_settings):
+        """Should reset session when _try_resume_session returns False."""
+        from discord_music_player.domain.music.enums import PlaybackState
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        session = _make_session(state="playing", with_track=True)
+        mock_container.session_repository.get_all_active.return_value = [session]
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+
+        guild = _make_guild_mock(guild_id=session.guild_id)
+
+        with patch.object(bot, "get_guild", return_value=guild):
+            with patch.object(
+                bot, "_try_resume_session", new_callable=AsyncMock, return_value=False
+            ):
+                await bot._resume_sessions()
+
+        assert session.state == PlaybackState.IDLE
+        assert session.current_track is None
+        mock_container.session_repository.save.assert_called_once_with(session)
+
+    @pytest.mark.asyncio
+    async def test_skips_idle_empty_sessions(self, mock_container, mock_settings):
+        """Should skip sessions that are IDLE with no tracks."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        session = _make_session(state="idle", with_track=False, queue_count=0)
+        mock_container.session_repository.get_all_active.return_value = [session]
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+
+        with patch.object(bot, "get_guild") as mock_get_guild:
+            await bot._resume_sessions()
+
+        mock_get_guild.assert_not_called()
+        mock_container.session_repository.save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_does_not_skip_idle_session_with_queue(self, mock_container, mock_settings):
+        """Should NOT skip idle sessions that still have tracks in queue."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        session = _make_session(state="idle", with_track=False, queue_count=3)
+        mock_container.session_repository.get_all_active.return_value = [session]
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        guild = _make_guild_mock(guild_id=session.guild_id)
+
+        with patch.object(bot, "get_guild", return_value=guild):
+            with patch.object(
+                bot, "_try_resume_session", new_callable=AsyncMock, return_value=True
+            ) as mock_try:
+                await bot._resume_sessions()
+
+        mock_try.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handles_multiple_sessions(self, mock_container, mock_settings):
+        """Should process multiple sessions independently."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        session1 = _make_session(guild_id=111, state="playing", with_track=True)
+        session2 = _make_session(guild_id=222, state="playing", with_track=True)
+        mock_container.session_repository.get_all_active.return_value = [session1, session2]
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+
+        guild1 = _make_guild_mock(guild_id=111)
+        guild2 = _make_guild_mock(guild_id=222)
+
+        def get_guild_side_effect(gid: int) -> MagicMock | None:
+            return {111: guild1, 222: guild2}.get(gid)
+
+        with patch.object(bot, "get_guild", side_effect=get_guild_side_effect):
+            with patch.object(
+                bot, "_try_resume_session", new_callable=AsyncMock, return_value=True
+            ) as mock_try:
+                await bot._resume_sessions()
+
+        assert mock_try.call_count == 2

@@ -307,3 +307,24 @@ class GuildPlaybackSession(BaseModel):
         self.queue.insert(to_pos, track)
         self.touch()
         return True
+
+    def prepare_for_resume(self) -> int:
+        """Prepare session for resume after bot restart.
+
+        Resets state to IDLE, clears stale stream URLs (tokens expire),
+        and captures elapsed seconds before clearing playback timestamp.
+
+        Returns the elapsed seconds at the time of preparation.
+        """
+        elapsed = self.elapsed_seconds
+        self.state = PlaybackState.IDLE
+        self.playback_started_at = None
+        if self.current_track is not None:
+            self.current_track = self.current_track.model_copy(
+                update={"stream_url": None},
+            )
+        self.queue = [
+            track.model_copy(update={"stream_url": None}) for track in self.queue
+        ]
+        self.touch()
+        return elapsed

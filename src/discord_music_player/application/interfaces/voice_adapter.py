@@ -86,7 +86,7 @@ class VoiceAdapter(ABC):
     @abstractmethod
     def set_on_track_end_callback(
         self,
-        callback: Callable[[DiscordSnowflake], Awaitable[None]],
+        callback: Callable[[DiscordSnowflake], Awaitable[None]] | None,
     ) -> None:
         """Set callback for when a track ends."""
         ...
