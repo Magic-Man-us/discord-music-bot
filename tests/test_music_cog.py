@@ -1256,9 +1256,11 @@ class TestMessageStateManagement:
         """Should promote queued message to now playing."""
         msm.track_queued(guild_id=111, track=sample_track, channel_id=222, message_id=444)
 
-        mock_message = AsyncMock()
+        mock_message = AsyncMock(spec=discord.Message)
+        mock_partial = AsyncMock()
+        mock_partial.edit.return_value = mock_message
         mock_channel = AsyncMock(spec=discord.TextChannel)
-        mock_channel.fetch_message.return_value = mock_message
+        mock_channel.get_partial_message.return_value = mock_partial
         mock_bot.get_channel.return_value = mock_channel
 
         await msm.promote_next_track(111, sample_track)

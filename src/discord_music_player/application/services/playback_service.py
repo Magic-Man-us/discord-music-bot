@@ -382,6 +382,17 @@ class PlaybackApplicationService:
             skipped=False,
         )
 
+        # Update the now-playing embed BEFORE starting the next track.
+        # start_playback publishes TrackStartedPlaying which triggers the
+        # auto-poster; the auto-poster skips when it sees an existing
+        # now_playing message. If we promoted after start_playback, a failed
+        # promote would leave a stale embed with no second chance to update.
+        if self._on_track_finished_callback:
+            try:
+                await self._on_track_finished_callback(guild_id, track)
+            except Exception:
+                logger.exception("Error in track finished callback")
+
         if next_track:
             await self.start_playback(guild_id)
         else:
@@ -393,12 +404,6 @@ class PlaybackApplicationService:
                     last_track_title=track.title,
                 )
             )
-
-        if self._on_track_finished_callback:
-            try:
-                await self._on_track_finished_callback(guild_id, track)
-            except Exception:
-                logger.exception("Error in track finished callback")
 
     def _tracks_match(self, left: Track, right: Track) -> bool:
         """Check whether two tracks refer to the same queued entry."""

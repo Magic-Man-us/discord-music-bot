@@ -87,12 +87,17 @@ class MessageStateManager:
         logger.debug("Cleaned up message state for guild %s", guild_id)
 
     async def _try_delete_message(self, tracked: TrackedMessage) -> None:
-        message = await self._fetch_message(tracked)
-        if message is not None:
-            try:
-                await message.delete()
-            except discord.HTTPException:
-                logger.debug("Failed to delete message %s", tracked.message_id)
+        channel = self._bot.get_channel(tracked.channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            return
+
+        try:
+            partial = channel.get_partial_message(tracked.message_id)
+            # delay=0 wraps the HTTP call in asyncio.create_task, avoiding
+            # event-loop starvation that causes audio buffer underruns.
+            await partial.delete(delay=0)
+        except discord.HTTPException:
+            logger.debug("Failed to delete message %s", tracked.message_id)
 
     def clear_all(self) -> None:
         self._state_by_guild.clear()
@@ -100,12 +105,13 @@ class MessageStateManager:
     # ── Message editing ─────────────────────────────────────────────
 
     async def edit_message_to_one_liner(self, tracked: TrackedMessage, *, content: str) -> None:
-        message = await self._fetch_message(tracked)
-        if message is None:
+        channel = self._bot.get_channel(tracked.channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
             return
 
         try:
-            await message.edit(content=content, embed=None, view=None)
+            partial = channel.get_partial_message(tracked.message_id)
+            await partial.edit(content=content, embed=None, view=None)
         except discord.HTTPException:
             logger.debug(
                 "Failed editing message %s in channel %s",
@@ -120,12 +126,13 @@ class MessageStateManager:
         embed: discord.Embed,
         view: discord.ui.View | None,
     ) -> discord.Message | None:
-        message = await self._fetch_message(tracked)
-        if message is None:
+        channel = self._bot.get_channel(tracked.channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
             return None
 
         try:
-            await message.edit(content=None, embed=embed, view=view)
+            partial = channel.get_partial_message(tracked.message_id)
+            message = await partial.edit(content=None, embed=embed, view=view)
             return message
         except discord.HTTPException:
             logger.debug(
@@ -242,6 +249,9 @@ class MessageStateManager:
                 view.set_message(message)
                 # now_playing stays pointed at the same TrackedMessage
                 return
+            # Edit failed (message deleted, permissions lost, etc.) — clear so
+            # the auto-poster can send a fresh embed on TrackStartedPlaying.
+            state.now_playing = None
 
         # Fallback: promote the queued message for this track
         queued_msg = state.pop_matching_queued(next_track)
