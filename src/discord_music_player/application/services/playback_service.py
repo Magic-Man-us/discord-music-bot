@@ -75,7 +75,7 @@ class PlaybackApplicationService:
             await self.handle_track_finished(guild_id, current_track)
 
     def set_track_finished_callback(
-        self, callback: Callable[[DiscordSnowflake, Track], Awaitable[None]]
+        self, callback: Callable[[DiscordSnowflake, Track], Awaitable[None]] | None
     ) -> None:
         self._on_track_finished_callback = callback
 
@@ -340,15 +340,16 @@ class PlaybackApplicationService:
         except Exception:
             self._ignore_next_voice_track_end.discard(guild_id)
             logger.exception("Error stopping voice during skip")
-            session.state = PlaybackState.IDLE
+            if not session.is_idle:
+                session.transition_to(PlaybackState.IDLE)
             next_track = session.advance_to_next_track()
             await self._session_repo.save(session)
             if next_track:
                 await self.start_playback(guild_id)
             return skipped_track
 
-        # Clear PLAYING state so start_playback doesn't bail on is_playing check
-        session.state = PlaybackState.IDLE
+        if not session.is_idle:
+            session.transition_to(PlaybackState.IDLE)
         next_track = session.advance_to_next_track()
         await self._session_repo.save(session)
 
@@ -371,8 +372,8 @@ class PlaybackApplicationService:
         if session is None:
             return
 
-        # Clear PLAYING so start_playback won't bail on is_playing check
-        session.state = PlaybackState.IDLE
+        if not session.is_idle:
+            session.transition_to(PlaybackState.IDLE)
         next_track = session.advance_to_next_track()
         await self._session_repo.save(session)
 
@@ -443,7 +444,7 @@ class PlaybackApplicationService:
                     guild_id,
                 )
 
-        session.current_track = current_track
+        session.set_current_track(current_track)
         if state is not None and state != session.state:
             if session.state.can_transition_to(state):
                 session.transition_to(state)

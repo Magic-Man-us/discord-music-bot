@@ -49,6 +49,11 @@ class EventCog(BaseCog):
         self._event_bus.unsubscribe(QueueExhausted, self._on_queue_exhausted)
         self._event_bus.unsubscribe(TrackStartedPlaying, self._on_track_started)
 
+        for guild_id in list(self._idle_timers):
+            self._cancel_idle_timer(guild_id)
+        for guild_id in list(self._empty_channel_timers):
+            self._cancel_empty_channel_timer(guild_id)
+
     @staticmethod
     def _env_flag(key: str) -> bool:  # ConfigKeys constant
         return os.getenv(key, "").strip().lower() in {"1", "true", "yes", "on"}

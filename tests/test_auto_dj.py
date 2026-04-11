@@ -238,7 +238,7 @@ class TestOnTrackStarted:
         task = auto_dj._timers[GUILD_ID]
 
         # Track starts → should cancel
-        event_started = TrackStartedPlaying(guild_id=GUILD_ID)
+        event_started = TrackStartedPlaying(guild_id=GUILD_ID, track_id=TrackId(value="test"))
         await auto_dj._on_track_started(event_started)
 
         assert GUILD_ID not in auto_dj._timers
@@ -248,7 +248,7 @@ class TestOnTrackStarted:
 
     @pytest.mark.asyncio
     async def test_noop_when_no_timer_exists(self, auto_dj: AutoDJ) -> None:
-        event = TrackStartedPlaying(guild_id=GUILD_ID)
+        event = TrackStartedPlaying(guild_id=GUILD_ID, track_id=TrackId(value="test"))
         await auto_dj._on_track_started(event)  # should not raise
 
 
@@ -479,7 +479,7 @@ class TestMultiGuild:
         assert guild_b in auto_dj._timers
 
         # Cancel only guild_a
-        await auto_dj._on_track_started(TrackStartedPlaying(guild_id=guild_a))
+        await auto_dj._on_track_started(TrackStartedPlaying(guild_id=guild_a, track_id=TrackId(value="test")))
         assert guild_a not in auto_dj._timers
         assert guild_b in auto_dj._timers
 

@@ -53,6 +53,10 @@ class PlaybackCog(BaseCog):
         self._event_bus.subscribe(TrackStartedPlaying, self._on_track_started_auto_post)
 
     async def cog_unload(self) -> None:
+        self.container.playback_service.set_track_finished_callback(None)
+        auto_skip = self.container.auto_skip_on_requester_leave
+        auto_skip.set_on_requester_left_callback(None)
+        auto_skip.set_on_requester_rejoined_callback(None)
         self.container.message_state_manager.clear_all()
         if hasattr(self, "_event_bus"):
             from ....domain.shared.events import TrackStartedPlaying

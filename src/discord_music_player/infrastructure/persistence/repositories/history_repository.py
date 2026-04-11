@@ -5,14 +5,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict
-
 from ....domain.music.entities import Track
-from ....domain.music.repository import TrackHistoryRepository
+from ....domain.music.repository import GenreTrackInfo, TrackHistoryRepository, UserStats
 from ....domain.music.wrappers import TrackId
 from ....domain.shared.datetime_utils import UtcDateTime
 from ....domain.shared.enums import LeaderboardTimeRange
-from ....domain.shared.types import NonEmptyStr, NonNegativeInt, UnitInterval
 from ....utils.logging import get_logger
 from ..models import TrackRow
 
@@ -27,27 +24,6 @@ _COUNT: str = "count"
 _TOTAL: str = "total"
 _TITLE: str = "title"
 _TOTAL_TRACKS: str = "total_tracks"
-
-
-class UserStats(BaseModel):
-    """Per-user listening statistics for a guild."""
-
-    model_config = ConfigDict(frozen=True)
-
-    total_tracks: NonNegativeInt = 0
-    unique_tracks: NonNegativeInt = 0
-    total_listen_time: NonNegativeInt = 0
-    skip_rate: UnitInterval = 0.0
-
-
-class GenreTrackInfo(BaseModel):
-    """Minimal track metadata used for genre classification."""
-
-    model_config = ConfigDict(frozen=True)
-
-    track_id: NonEmptyStr
-    title: NonEmptyStr
-    artist: NonEmptyStr | None = None
 
 
 class SQLiteHistoryRepository(TrackHistoryRepository):

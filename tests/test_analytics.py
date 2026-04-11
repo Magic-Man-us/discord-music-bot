@@ -9,7 +9,7 @@ from discord.ext import commands
 
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.wrappers import TrackId
-from discord_music_player.domain.shared.types import TrackForClassification
+from discord_music_player.domain.music.repository import TrackForClassification
 from discord_music_player.infrastructure.discord.cogs.analytics_cog import AnalyticsCog
 from discord_music_player.infrastructure.persistence.repositories.history_repository import (
     GenreTrackInfo,

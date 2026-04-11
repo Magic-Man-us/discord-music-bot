@@ -160,19 +160,3 @@ UserIdField = DiscordSnowflake
 
 ChannelIdField = DiscordSnowflake
 """Alias — channel ID used as a plain Pydantic field."""
-
-
-# ── Genre classification types ─────────────────────────────────────
-
-
-class TrackForClassification(BaseModel):
-    """A track to be classified by the genre classifier."""
-
-    model_config = ConfigDict(frozen=True)
-
-    track_id: NonEmptyStr
-    description: str | None = None
-
-
-TrackGenreMap = dict[NonEmptyStr, NonEmptyStr]
-"""Mapping of track_id → genre name, as returned by the AI classifier and stored in the DB."""

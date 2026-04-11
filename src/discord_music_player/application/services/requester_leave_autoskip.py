@@ -50,12 +50,12 @@ class AutoSkipOnRequesterLeave:
         ) = None
 
     def set_on_requester_left_callback(
-        self, callback: Callable[[DiscordSnowflake, DiscordSnowflake, Track], Any]
+        self, callback: Callable[[DiscordSnowflake, DiscordSnowflake, Track], Any] | None
     ) -> None:
         self._on_requester_left_callback = callback
 
     def set_on_requester_rejoined_callback(
-        self, callback: Callable[[DiscordSnowflake, DiscordSnowflake], Any]
+        self, callback: Callable[[DiscordSnowflake, DiscordSnowflake], Any] | None
     ) -> None:
         self._on_requester_rejoined_callback = callback
 

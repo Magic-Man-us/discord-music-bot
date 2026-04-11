@@ -366,13 +366,18 @@ class Container:
             self._auto_skip_on_requester_leave,
             self._radio_auto_refill,
             self._auto_dj,
-            self._cleanup_job,
         ):
             if subscriber is not None:
                 try:
                     subscriber.stop()
                 except Exception:
                     pass
+
+        if self._cleanup_job is not None:
+            try:
+                await self._cleanup_job.stop()
+            except Exception:
+                pass
 
         if self._database is not None:
             await self._database.close()

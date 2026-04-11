@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
-from ...domain.shared.types import TrackForClassification, TrackGenreMap
+from ...domain.music.repository import TrackForClassification, TrackGenreMap
 
 if TYPE_CHECKING:
     from ...config.settings import AISettings

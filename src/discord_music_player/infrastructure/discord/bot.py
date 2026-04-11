@@ -229,8 +229,9 @@ class MusicBot(commands.Bot):
         self, session: GuildPlaybackSession, session_repo: SessionRepository
     ) -> None:
         """Reset a session to IDLE state."""
-        session.state = PlaybackState.IDLE
-        session.current_track = None
+        if not session.is_idle:
+            session.transition_to(PlaybackState.IDLE)
+        session.set_current_track(None)
         await session_repo.save(session)
 
     # ------------------------------------------------------------------

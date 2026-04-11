@@ -42,7 +42,7 @@ class DomainEvent(BaseModel):
 
 class TrackStartedPlaying(DomainEvent):
     guild_id: DiscordSnowflake
-    track_id: TrackId | None = None
+    track_id: TrackId
     track_title: NonEmptyStr | None = None
     track_url: NonEmptyStr | None = None
     duration_seconds: NonNegativeInt | None = None
@@ -50,7 +50,7 @@ class TrackStartedPlaying(DomainEvent):
 
 class TrackFinishedPlaying(DomainEvent):
     guild_id: DiscordSnowflake
-    track_id: TrackId | None = None
+    track_id: TrackId
     track_title: NonEmptyStr | None = None
     was_skipped: bool = False
 

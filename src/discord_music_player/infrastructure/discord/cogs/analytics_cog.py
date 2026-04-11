@@ -15,10 +15,9 @@ from ....domain.shared.enums import (
     LeaderboardTimeRange,
     Weekday,
 )
+from ....domain.music.repository import TrackForClassification, TrackGenreMap
 from ....domain.shared.types import (
     DiscordSnowflake,
-    TrackForClassification,
-    TrackGenreMap,
     UserIdField,
 )
 from .base_cog import BaseCog
@@ -26,7 +25,7 @@ from ....utils.reply import format_duration
 
 if TYPE_CHECKING:
     from ...charts.chart_generator import ChartGenerator
-    from ...persistence.repositories.history_repository import GenreTrackInfo
+    from ....domain.music.repository import GenreTrackInfo
 
 _LEADERBOARD_CHART_FILENAME: str = "leaderboard.png"
 

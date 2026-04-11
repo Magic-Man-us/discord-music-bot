@@ -4,18 +4,47 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, ConfigDict
 
 from .entities import GuildPlaybackSession, Track
 from .wrappers import TrackId
 from ..shared.enums import LeaderboardTimeRange
-from ..shared.types import DiscordSnowflake, NonEmptyStr, PositiveInt
+from ..shared.types import DiscordSnowflake, NonEmptyStr, NonNegativeInt, PositiveInt, UnitInterval
 
-if TYPE_CHECKING:
-    from ...infrastructure.persistence.repositories.history_repository import (
-        GenreTrackInfo,
-        UserStats,
-    )
+
+class UserStats(BaseModel):
+    """Per-user listening statistics for a guild."""
+
+    model_config = ConfigDict(frozen=True)
+
+    total_tracks: NonNegativeInt = 0
+    unique_tracks: NonNegativeInt = 0
+    total_listen_time: NonNegativeInt = 0
+    skip_rate: UnitInterval = 0.0
+
+
+class GenreTrackInfo(BaseModel):
+    """Minimal track metadata used for genre classification."""
+
+    model_config = ConfigDict(frozen=True)
+
+    track_id: NonEmptyStr
+    title: NonEmptyStr
+    artist: NonEmptyStr | None = None
+
+
+class TrackForClassification(BaseModel):
+    """A track to be classified by the genre classifier."""
+
+    model_config = ConfigDict(frozen=True)
+
+    track_id: NonEmptyStr
+    description: str | None = None
+
+
+TrackGenreMap = dict[NonEmptyStr, NonEmptyStr]
+"""Mapping of track_id → genre name, as returned by the AI classifier and stored in the DB."""
 
 
 class SessionRepository(ABC):
