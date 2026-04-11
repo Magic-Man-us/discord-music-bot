@@ -25,3 +25,4 @@ tools/
 .coverage
 .wily/
 bot.pid
+pyrightconfig.json
