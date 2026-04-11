@@ -29,11 +29,11 @@ class RequesterLeftView(BaseInteractiveView):
         requester_name: str,
     ) -> None:
         super().__init__(timeout=30.0)
-        self._guild_id = guild_id
-        self._playback_service = playback_service
-        self._auto_skip_service = auto_skip_service
-        self._track_title = track_title
-        self._requester_name = requester_name
+        self._guild_id: DiscordSnowflake = guild_id
+        self._playback_service: PlaybackApplicationService = playback_service
+        self._auto_skip_service: AutoSkipOnRequesterLeave = auto_skip_service
+        self._track_title: str = track_title
+        self._requester_name: str = requester_name
 
     def _resolve(self) -> bool:
         """Mark view as finished and clear the pending requester-left state."""
@@ -71,7 +71,7 @@ class RequesterLeftView(BaseInteractiveView):
 
     async def dismiss(self, message: str = "Requester rejoined — playback resumed.") -> None:
         """Externally dismiss this view (e.g. when the requester rejoins)."""
-        if not self._finish_view():
+        if not self._resolve():
             return
         if self._message is not None:
             try:

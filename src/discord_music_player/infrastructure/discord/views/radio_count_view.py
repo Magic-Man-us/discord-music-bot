@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 import discord
@@ -13,12 +14,20 @@ from .base_view import BaseInteractiveView
 if TYPE_CHECKING:
     from ....config.container import Container
 
-_COUNTS = [3, 5, 10]
-_TIMEOUT = 30.0
+# callback: (interaction, count, query) -> None
+StartRadioCallback = Callable[[discord.Interaction, int, str | None], Awaitable[None]]
+
+_COUNTS: list[int] = [3, 5, 10]
+_TIMEOUT: float = 30.0
 
 
 class RadioCountView(BaseInteractiveView):
-    """Asks the user how many songs to queue before starting radio."""
+    """Asks the user how many songs to queue before starting radio.
+
+    When constructed with a ``start_radio`` callback, uses that directly.
+    Otherwise falls back to looking up the RadioCog at runtime (for callers
+    that don't have access to the cog, e.g. NowPlayingView).
+    """
 
     def __init__(
         self,
@@ -26,11 +35,13 @@ class RadioCountView(BaseInteractiveView):
         guild_id: DiscordSnowflake,
         container: Container,
         query: str | None = None,
+        start_radio: StartRadioCallback | None = None,
     ) -> None:
         super().__init__(timeout=_TIMEOUT)
-        self._guild_id = guild_id
-        self._container = container
-        self._query = query
+        self._guild_id: DiscordSnowflake = guild_id
+        self._container: Container = container
+        self._query: str | None = query
+        self._start_radio: StartRadioCallback | None = start_radio
 
         select = discord.ui.Select(
             placeholder="How many songs?",
@@ -55,14 +66,18 @@ class RadioCountView(BaseInteractiveView):
 
         await interaction.response.defer()
 
-        from ..cogs.radio_cog import RadioCog
+        if self._start_radio is not None:
+            await self._start_radio(interaction, count, self._query)
+        else:
+            # Fallback: resolve the cog at runtime to avoid circular imports
+            from ..cogs.radio_cog import RadioCog
 
-        cog = interaction.client.get_cog("RadioCog")
-        if not isinstance(cog, RadioCog):
-            await interaction.followup.send("Radio is not available.", ephemeral=True)
-            return
+            cog = interaction.client.get_cog("RadioCog")
+            if not isinstance(cog, RadioCog):
+                await interaction.followup.send("Radio is not available.", ephemeral=True)
+                return
+            await cog.start_radio(interaction, count=count, query=self._query)
 
-        await cog.start_radio(interaction, count=count, query=self._query)
         await self._delete_message()
 
     async def on_timeout(self) -> None:

@@ -14,12 +14,14 @@ from ....utils.reply import truncate
 from ..guards.voice_guards import (
     check_user_in_voice,
 )
+from ..services.embed_builder import build_now_playing_embed
 from .base_view import (
     BaseInteractiveView,
 )
 from .download_view import (
     add_track_link_buttons,
 )
+from .radio_count_view import RadioCountView
 
 if TYPE_CHECKING:
     from ....config.container import Container
@@ -44,10 +46,10 @@ class NowPlayingView(BaseInteractiveView):
         timeout: float = 300.0,
     ) -> None:
         super().__init__(timeout=timeout)
-        self.webpage_url = webpage_url
-        self.title = title
-        self.guild_id = guild_id
-        self._container = container
+        self.webpage_url: HttpUrlStr = webpage_url
+        self.title: NonEmptyStr = title
+        self.guild_id: DiscordSnowflake = guild_id
+        self._container: Container = container
 
         add_track_link_buttons(self, webpage_url)
 
@@ -85,7 +87,7 @@ class NowPlayingView(BaseInteractiveView):
         await interaction.response.defer(ephemeral=True)
 
         async with lock:
-            edited = False
+            succeeded = False
             try:
                 button.disabled = True
                 button.label = "Finding..."
@@ -147,11 +149,9 @@ class NowPlayingView(BaseInteractiveView):
                 button.disabled = False
                 button.label = "+1 Similar"
                 if self._message:
-                    from ..services.embed_builder import build_now_playing_embed
-
                     embed = build_now_playing_embed(current, next_track=resolved_track)
                     await self._try_edit_message(embed=embed)
-                edited = True
+                succeeded = True
 
             except Exception:
                 logger.exception("Error in similar button handler")
@@ -160,7 +160,7 @@ class NowPlayingView(BaseInteractiveView):
                     ephemeral=True,
                 )
             finally:
-                if not edited:
+                if not succeeded:
                     button.disabled = False
                     button.label = "+1 Similar"
                     await self._try_edit_message()
@@ -179,8 +179,6 @@ class NowPlayingView(BaseInteractiveView):
                 ephemeral=True,
             )
             return
-
-        from ..views.radio_count_view import RadioCountView
 
         view = RadioCountView(
             guild_id=self.guild_id,

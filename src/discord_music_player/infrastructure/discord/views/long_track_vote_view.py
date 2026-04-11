@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from ....domain.shared.types import DiscordSnowflake
+from ....domain.voting.services import VotingDomainService
 from ....utils.logging import get_logger
 from ....utils.reply import format_duration, truncate
 from ..guards.voice_guards import check_user_in_voice
@@ -32,11 +33,11 @@ class LongTrackVoteView(BaseInteractiveView):
         container: Container,
     ) -> None:
         super().__init__(timeout=30.0)
-        self._guild_id = guild_id
-        self._track = track
-        self._requester_id = requester_id
-        self._requester_name = requester_name
-        self._container = container
+        self._guild_id: DiscordSnowflake = guild_id
+        self._track: Track = track
+        self._requester_id: DiscordSnowflake = requester_id
+        self._requester_name: str = requester_name
+        self._container: Container = container
         self._votes_accept: set[int] = set()
         self._votes_reject: set[int] = set()
 
@@ -49,7 +50,6 @@ class LongTrackVoteView(BaseInteractiveView):
     ) -> None:
         user_id = interaction.user.id
 
-        # Remove from reject if they voted reject before
         self._votes_reject.discard(user_id)
         self._votes_accept.add(user_id)
 
@@ -62,7 +62,6 @@ class LongTrackVoteView(BaseInteractiveView):
     ) -> None:
         user_id = interaction.user.id
 
-        # Remove from accept if they voted accept before
         self._votes_accept.discard(user_id)
         self._votes_reject.add(user_id)
 
@@ -71,27 +70,20 @@ class LongTrackVoteView(BaseInteractiveView):
 
     async def _check_vote_result(self) -> None:
         """Check if vote threshold is met."""
-        # Get listener count from voice channel
         voice_adapter = self._container.voice_adapter
         listeners = await voice_adapter.get_listeners(self._guild_id)
         listener_count = len(listeners)
 
-        # Calculate threshold (50% of listeners, min 1)
-        from ....domain.voting.services import VotingDomainService
-
         threshold = VotingDomainService.calculate_threshold(listener_count)
 
-        # Invalidate votes from users who left the voice channel
         listener_ids = set(listeners)
         active_accepts = self._votes_accept & listener_ids
         active_rejects = self._votes_reject & listener_ids
         accept_count = len(active_accepts)
         reject_count = len(active_rejects)
 
-        # Check if accept threshold met
         if accept_count >= threshold:
             await self._accept_track()
-        # Check if majority rejected (simplified - if more reject than could possibly accept)
         elif reject_count > listener_count - threshold:
             await self._reject_track()
 
@@ -100,7 +92,6 @@ class LongTrackVoteView(BaseInteractiveView):
         if not self._finish_view():
             return
 
-        # Enqueue the track
         queue_service = self._container.queue_service
         playback_service = self._container.playback_service
 

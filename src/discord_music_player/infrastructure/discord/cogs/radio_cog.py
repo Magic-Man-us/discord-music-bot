@@ -125,10 +125,16 @@ class RadioCog(BaseCog):
         assert interaction.guild is not None
         from ..views.radio_count_view import RadioCountView
 
+        async def _start_radio_cb(
+            inter: discord.Interaction, count: int, q: str | None
+        ) -> None:
+            await self.start_radio(inter, count=count, query=q)
+
         view = RadioCountView(
             guild_id=interaction.guild.id,
             container=self.container,
             query=query,
+            start_radio=_start_radio_cb,
         )
         msg = await interaction.response.send_message(
             "How many songs should radio queue?",

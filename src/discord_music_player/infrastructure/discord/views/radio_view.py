@@ -56,13 +56,13 @@ class RadioView(BaseInteractiveView):
         queue_start_position: int = 0,
     ) -> None:
         super().__init__(timeout=_VIEW_TIMEOUT)
-        self._guild_id = guild_id
-        self._container = container
+        self._guild_id: DiscordSnowflake = guild_id
+        self._container: Container = container
         self._tracks: list[Track] = list(tracks)
-        self._seed_title = seed_title
-        self._reroll_in_progress = False
+        self._seed_title: TrackTitleStr | None = seed_title
+        self._reroll_in_progress: bool = False
 
-        for i, _track in enumerate(tracks[:_MAX_REROLL_BUTTONS]):
+        for i in range(min(len(tracks), _MAX_REROLL_BUTTONS)):
             self._add_reroll_button(index=i, queue_position=queue_start_position + i)
 
     def _add_reroll_button(self, *, index: int, queue_position: int) -> None:
@@ -145,8 +145,8 @@ class RadioView(BaseInteractiveView):
             )
             return
 
-        self._disable_buttons()
-        self.stop()
+        if not self._finish_view():
+            return
 
         embed = build_up_next_embed(self._tracks, self._seed_title)
         embed.set_footer(text="Selection accepted")

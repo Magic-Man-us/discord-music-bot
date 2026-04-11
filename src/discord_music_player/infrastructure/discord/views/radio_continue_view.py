@@ -10,6 +10,7 @@ from ....domain.shared.types import DiscordSnowflake
 from ....utils.logging import get_logger
 from ..guards.voice_guards import check_user_in_voice
 from .base_view import BaseInteractiveView
+from .radio_view import RadioView, build_up_next_embed
 
 if TYPE_CHECKING:
     from ....config.container import Container
@@ -39,8 +40,8 @@ class RadioContinueView(BaseInteractiveView):
         container: Container,
     ) -> None:
         super().__init__(timeout=_CONTINUE_TIMEOUT)
-        self._guild_id = guild_id
-        self._container = container
+        self._guild_id: DiscordSnowflake = guild_id
+        self._container: Container = container
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return await check_user_in_voice(interaction, self._guild_id)
@@ -68,8 +69,6 @@ class RadioContinueView(BaseInteractiveView):
             )
             await interaction.edit_original_response(embed=embed, view=self)
             return
-
-        from ..views.radio_view import RadioView, build_up_next_embed
 
         queue_info = await self._container.queue_service.get_queue(self._guild_id)
         queue_start = max(0, queue_info.total_tracks - len(result.generated_tracks))

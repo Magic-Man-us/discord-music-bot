@@ -36,10 +36,9 @@ def build_playlist_embed(entries: list[PlaylistEntry]) -> discord.Embed:
         duration = format_duration(entry.duration_seconds) if entry.duration_seconds else "?"
         lines.append(f"`{idx}.` {truncate(entry.title, 55)} [{duration}]")
 
-    # Split into fields if too long for one field
     chunk: list[str] = []
-    chunk_len = 0
-    field_num = 1
+    chunk_len: int = 0
+    field_num: int = 1
     for line in lines:
         if chunk_len + len(line) + 1 > DiscordEmbedLimits.EMBED_FIELD_CHUNK_SAFE:
             embed.add_field(
@@ -91,11 +90,10 @@ class PlaylistView(BaseInteractiveView):
         container: Container,
     ) -> None:
         super().__init__(timeout=PlaylistConstants.VIEW_TIMEOUT)
-        self._entries = entries[: PlaylistConstants.MAX_PLAYLIST_TRACKS]
-        self._container = container
-        self._requester_id = interaction.user.id
+        self._entries: list[PlaylistEntry] = entries[: PlaylistConstants.MAX_PLAYLIST_TRACKS]
+        self._container: Container = container
+        self._requester_id: int = interaction.user.id
 
-        # Only add select if entries fit (max 25 options)
         if len(self._entries) <= PlaylistConstants.MAX_SELECT_OPTIONS:
             options = _build_select_options(self._entries)
             select = discord.ui.Select(
@@ -148,7 +146,6 @@ class PlaylistView(BaseInteractiveView):
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
         """Handle track selection from the dropdown."""
-        # The select is dynamically added, so we find it by type
         for item in self.children:
             if isinstance(item, discord.ui.Select):
                 selected_indices = [int(v) for v in item.values]
@@ -197,8 +194,8 @@ class PlaylistView(BaseInteractiveView):
         resolver = self._container.audio_resolver
         queue_service = self._container.queue_service
 
-        added = 0
-        should_start = False
+        added: int = 0
+        should_start: bool = False
         for entry in entries:
             try:
                 track = await resolver.resolve(entry.url)

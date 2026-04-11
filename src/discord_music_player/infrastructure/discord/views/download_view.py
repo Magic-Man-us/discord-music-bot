@@ -44,6 +44,6 @@ class DownloadView(BaseInteractiveView):
     ) -> None:
         super().__init__(timeout=timeout)
 
-        self.webpage_url = webpage_url
-        self.title = title
+        self.webpage_url: HttpUrlStr = webpage_url
+        self.title: NonEmptyStr = title
         add_track_link_buttons(self, webpage_url)
