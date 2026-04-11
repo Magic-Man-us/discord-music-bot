@@ -75,12 +75,6 @@ class RadioPoolExhausted(DomainEvent):
 # === Voice Events ===
 
 
-class BotJoinedVoiceChannel(DomainEvent):
-    guild_id: DiscordSnowflake
-    channel_id: ChannelIdField | None = None
-    channel_name: NonEmptyStr | None = None
-
-
 class VoiceMemberJoinedVoiceChannel(DomainEvent):
     guild_id: DiscordSnowflake
     channel_id: ChannelIdField

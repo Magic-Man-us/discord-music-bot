@@ -6,7 +6,6 @@ Tests edge cases and uncovered code paths in events module.
 
 from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.shared.events import (
-    BotJoinedVoiceChannel,
     DomainEvent,
     EventBus,
     TrackFinishedPlaying,
@@ -221,10 +220,10 @@ class TestGlobalEventBus:
         """Should clear handlers and reset instance."""
         bus = get_event_bus()
 
-        async def handler(event: BotJoinedVoiceChannel):
+        async def handler(event: TrackStartedPlaying) -> None:
             pass
 
-        bus.subscribe(BotJoinedVoiceChannel, handler)
+        bus.subscribe(TrackStartedPlaying, handler)
 
         # Reset
         reset_event_bus()
