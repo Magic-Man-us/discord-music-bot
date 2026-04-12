@@ -14,7 +14,7 @@ dependencies = [
     "davey>=0.1.4",
     "yt-dlp",
     "bgutil-ytdlp-pot-provider",
-    "pydantic>=2.0.0",
+    "pydantic>=2.12.5",
     "pydantic-settings>=2.0.0",
     "pynacl",
     "pydantic-ai",
