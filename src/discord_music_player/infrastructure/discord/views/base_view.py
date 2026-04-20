@@ -45,3 +45,9 @@ class BaseInteractiveView(discord.ui.View):
             await self._message.delete(delay=delay)
         except discord.HTTPException:
             logger.debug("Failed to delete view message %s", self._message.id)
+
+    async def on_timeout(self) -> None:
+        if not self._finish_view():
+            return
+        self._disable_all_items()
+        await self._delete_message(delay=10.0)

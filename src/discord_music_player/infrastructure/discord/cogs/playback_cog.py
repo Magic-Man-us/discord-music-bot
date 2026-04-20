@@ -241,16 +241,16 @@ class PlaybackCog(BaseCog):
         interaction: discord.Interaction,
         url: str,
     ) -> bool:
-        """Expand an Apple Music playlist/album URL into N YouTube searches
-        and batch-enqueue them. Returns True when the URL was handled as a
-        multi-track resource; False when the caller should keep processing
-        it as a single-track URL (song or album?i=track)."""
-        from ....domain.shared.constants import PlaylistConstants
+        """Expand an Apple Music playlist/album URL and ask the user how many
+        tracks to queue. Returns True when handled as a multi-track resource;
+        False when the caller should keep processing the URL as a single
+        track (song or album?i=track)."""
         from ....infrastructure.audio.apple_music import (
             AppleMusicError,
             AppleResourceType,
             parse_apple_music_url,
         )
+        from ..views.apple_music_count_view import ExternalPlaylistCountView
 
         assert interaction.guild is not None
 
@@ -259,7 +259,7 @@ class PlaybackCog(BaseCog):
             return False
 
         try:
-            all_queries = await self.container.apple_music_client.get_track_queries(url)
+            queries = await self.container.apple_music_client.get_track_queries(url)
         except AppleMusicError as exc:
             self.logger.warning("Apple Music lookup failed for %s: %s", url, exc)
             await send_ephemeral(
@@ -269,46 +269,49 @@ class PlaybackCog(BaseCog):
             )
             return True
 
-        if not all_queries:
+        if not queries:
             await send_ephemeral(interaction, "That Apple Music playlist is empty.")
             return True
 
-        # Cap the initial import so a 500-track playlist doesn't spawn 500
-        # sequential yt-dlp searches. Matches the YouTube playlist UI cap.
-        queries = all_queries[: PlaylistConstants.MAX_PLAYLIST_TRACKS]
-        truncated = len(all_queries) - len(queries)
-
+        source_label = f"Apple Music {resource.resource_type.value[:-1]}"
         self.logger.info(
-            "Apple Music %s: resolving %d/%d tracks for guild %s",
+            "Apple Music %s: %d tracks available for guild %s",
             resource.resource_type.value,
             len(queries),
-            len(all_queries),
             interaction.guild.id,
         )
-        header = (
-            f"Found **{len(all_queries)}** tracks in that Apple Music "
-            f"{resource.resource_type.value[:-1]}"
-        )
-        if truncated > 0:
-            header += f" — queuing the first **{len(queries)}**."
-        else:
-            header += "."
-        await interaction.followup.send(f"{header} Resolving on YouTube…", ephemeral=True)
 
-        tracks = await self.container.audio_resolver.resolve_many(queries)
-        if not tracks:
+        # Single-track resource (very small album) — skip the picker.
+        if len(queries) == 1:
+            tracks = await self.container.audio_resolver.resolve_many(queries)
+            if not tracks:
+                await interaction.followup.send(
+                    "Couldn't find that track on YouTube.", ephemeral=True
+                )
+                return True
+            result = await self.enqueue_and_start(interaction, tracks)
             await interaction.followup.send(
-                "Couldn't find any of those tracks on YouTube.",
+                f"Queued **{result.enqueued}/1** track from {source_label}.",
                 ephemeral=True,
             )
             return True
 
-        result = await self.enqueue_and_start(interaction, tracks)
-        suffix = f" ({truncated} more skipped)" if truncated > 0 else ""
-        await interaction.followup.send(
-            f"Queued **{result.enqueued}/{len(queries)}** tracks from Apple Music{suffix}.",
-            ephemeral=True,
+        view = ExternalPlaylistCountView(
+            queries=queries,
+            interaction=interaction,
+            container=self.container,
+            source_label=source_label,
         )
+        msg = await interaction.followup.send(
+            content=(
+                f"Found **{len(queries)}** tracks in that {source_label}. "
+                f"How many do you want to queue?"
+            ),
+            view=view,
+            ephemeral=True,
+            wait=True,
+        )
+        view.set_message(msg)
         return True
 
     async def _play_track(
