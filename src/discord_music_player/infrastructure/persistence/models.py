@@ -126,7 +126,7 @@ class QueueTrackRow(BaseModel):
         """
         return cls.model_validate(
             {
-                **track.model_dump(exclude={"is_from_recommendation"}),
+                **track.model_dump(exclude={"is_from_recommendation", "is_direct_request"}),
                 "track_id": track.id,
                 "guild_id": guild_id,
                 "position": position,

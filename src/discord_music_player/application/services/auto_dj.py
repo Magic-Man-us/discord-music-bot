@@ -129,9 +129,11 @@ class AutoDJ:
             logger.debug("Auto-DJ: no history to seed from in guild %s", guild_id)
             return
 
-        # Use the last track's requester info, or defaults
+        # Use the last track's requester info, or None for Auto-DJ
+        # (DiscordSnowflake has gt=0, so 0 is not a valid sentinel —
+        # propagate None all the way to Track.requested_by_id instead).
         last_track = recent[0]
-        user_id = last_track.requested_by_id or 0
+        user_id = last_track.requested_by_id
         user_name = last_track.requested_by_name or "Auto-DJ"
 
         logger.info(

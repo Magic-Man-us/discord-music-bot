@@ -27,8 +27,8 @@ class RadioState(BaseModel):
     channel_id: DiscordSnowflake | None = None
 
     @property
-    def effective_user_id(self) -> DiscordSnowflake:
-        return self.user_id or 0
+    def effective_user_id(self) -> DiscordSnowflake | None:
+        return self.user_id
 
     @property
     def effective_user_name(self) -> str:

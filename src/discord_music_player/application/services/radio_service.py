@@ -88,7 +88,7 @@ class RadioApplicationService:
     async def toggle_radio(
         self,
         guild_id: DiscordSnowflake,
-        user_id: DiscordSnowflake,
+        user_id: DiscordSnowflake | None,
         user_name: NonEmptyStr,
         channel_id: DiscordSnowflake | None = None,
         count: int | None = None,
@@ -110,7 +110,7 @@ class RadioApplicationService:
     async def _toggle_radio_locked(
         self,
         guild_id: DiscordSnowflake,
-        user_id: DiscordSnowflake = 0,
+        user_id: DiscordSnowflake | None,
         user_name: NonEmptyStr = "Radio",
         channel_id: DiscordSnowflake | None = None,
         count: int | None = None,
@@ -441,7 +441,7 @@ class RadioApplicationService:
         rec: Recommendation,
         *,
         guild_id: DiscordSnowflake,
-        user_id: DiscordSnowflake,
+        user_id: DiscordSnowflake | None,
         user_name: NonEmptyStr,
     ) -> Track | None:
         """Resolve a single recommendation and enqueue it. Returns the Track or None."""
@@ -612,7 +612,7 @@ class RadioApplicationService:
         recommendations: list[Recommendation],
         *,
         guild_id: DiscordSnowflake,
-        user_id: DiscordSnowflake,
+        user_id: DiscordSnowflake | None,
         user_name: NonEmptyStr,
     ) -> list[Track]:
         """Resolve all recommendations and enqueue every success."""

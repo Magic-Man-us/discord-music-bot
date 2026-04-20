@@ -14,7 +14,15 @@ _SPOTIFY_TRACK_PATTERN = re.compile(
 _SPOTIFY_ALBUM_PATTERN = re.compile(
     r"https?://open\.spotify\.com/(?:intl-[a-z]+/)?album/([a-zA-Z0-9]+)"
 )
-_APPLE_MUSIC_PATTERN = re.compile(r"https?://music\.apple\.com/.+/album/.+")
+_SPOTIFY_PLAYLIST_PATTERN = re.compile(
+    r"https?://open\.spotify\.com/(?:intl-[a-z]+/)?playlist/([a-zA-Z0-9]+)"
+)
+_APPLE_MUSIC_PATTERN = re.compile(
+    r"https?://music\.apple\.com/[^/]+/(?:album|song|playlist)/"
+)
+_APPLE_MUSIC_PLAYLIST_PATTERN = re.compile(
+    r"https?://music\.apple\.com/[^/]+/playlist/"
+)
 
 
 def is_spotify_url(query: str) -> bool:
@@ -26,13 +34,32 @@ def is_spotify_url(query: str) -> bool:
 
 
 def is_apple_music_url(query: str) -> bool:
-    """Return True if the query is an Apple Music URL."""
+    """Return True if the query is an Apple Music song, album, or playlist URL."""
     return _APPLE_MUSIC_PATTERN.search(query) is not None
 
 
 def is_external_music_url(query: str) -> bool:
     """Return True if the query is a Spotify or Apple Music URL."""
     return is_spotify_url(query) or is_apple_music_url(query)
+
+
+def is_apple_music_playlist_url(query: str) -> bool:
+    """Return True if the query is an Apple Music playlist URL."""
+    return _APPLE_MUSIC_PLAYLIST_PATTERN.search(query) is not None
+
+
+def is_apple_music_album_url(query: str) -> bool:
+    """Return True if the query is an Apple Music album URL (no ``?i=`` track)."""
+    if "music.apple.com" not in query:
+        return False
+    if "/album/" not in query:
+        return False
+    return "?i=" not in query and "&i=" not in query
+
+
+def is_spotify_playlist_url(query: str) -> bool:
+    """Return True if the query is a Spotify playlist URL."""
+    return _SPOTIFY_PLAYLIST_PATTERN.search(query) is not None
 
 
 _OG_TITLE_PATTERN = re.compile(
@@ -45,6 +72,11 @@ _HTML_TITLE_PATTERN = re.compile(
 )
 # Spotify titles usually look like: "Song Name - song and target by Artist Name | Spotify"
 _SPOTIFY_TITLE_CLEANUP = re.compile(r"\s*\|\s*Spotify\s*$", re.IGNORECASE)
+# Apple Music <title>: "Song Title - Song by Artist - Apple Music" or
+# "Album Title by Artist - Apple Music" (leading U+200E is common).
+_APPLE_MUSIC_TITLE_CLEANUP = re.compile(
+    r"\s*[-\u2013\u2014]\s*Apple\s+Music\s*$", re.IGNORECASE
+)
 _SPOTIFY_TITLE_SEPARATOR = re.compile(
     r"\s*-\s*(?:song\s+(?:and\s+\w+\s+)?by|[^-]+\s+by)\s+", re.IGNORECASE
 )
@@ -107,7 +139,10 @@ def _clean_extracted_title(raw_title: str) -> str:
     import html as html_module
 
     title = html_module.unescape(raw_title).strip()
+    # Strip the leading U+200E (Apple Music prefixes titles with it).
+    title = title.lstrip("\u200e").strip()
     title = _SPOTIFY_TITLE_CLEANUP.sub("", title)
+    title = _APPLE_MUSIC_TITLE_CLEANUP.sub("", title)
 
     # Spotify format: "Song Name - song and lyrics by Artist | Spotify"
     # After cleanup: "Song Name - song and lyrics by Artist"

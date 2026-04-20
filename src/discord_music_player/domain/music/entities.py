@@ -102,7 +102,7 @@ class Track(BaseModel):
 
     def with_requester(
         self,
-        user_id: DiscordSnowflake,
+        user_id: DiscordSnowflake | None,
         user_name: NonEmptyStr,
         requested_at: datetime | None = None,
     ) -> Track:

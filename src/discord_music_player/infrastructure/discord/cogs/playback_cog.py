@@ -192,8 +192,27 @@ class PlaybackCog(BaseCog):
                 await send_ephemeral(interaction, "I couldn't join your voice channel.")
                 return
 
-        # Detect Spotify/Apple Music URLs and convert to search queries
-        from ....utils.url_extractor import is_external_music_url
+        # Apple Music playlist / album → expand to N YouTube searches and
+        # batch-enqueue. Spotify playlists stay unsupported for now.
+        from ....utils.url_extractor import (
+            is_apple_music_url,
+            is_external_music_url,
+            is_spotify_playlist_url,
+        )
+
+        if is_spotify_playlist_url(query):
+            await send_ephemeral(
+                interaction,
+                "Spotify playlists aren't supported (no public scraping API). "
+                "Paste individual track URLs or use a YouTube playlist link.",
+            )
+            return
+
+        if is_apple_music_url(query):
+            handled = await self._handle_apple_music_url(interaction, query)
+            if handled:
+                return
+            # Not handled (e.g. song URL) → fall through to single-track search.
 
         if is_external_music_url(query):
             from ....utils.url_extractor import extract_search_query_from_url
@@ -216,6 +235,81 @@ class PlaybackCog(BaseCog):
             return
 
         await self._play_track(interaction, query, start_seconds=start_seconds)
+
+    async def _handle_apple_music_url(
+        self,
+        interaction: discord.Interaction,
+        url: str,
+    ) -> bool:
+        """Expand an Apple Music playlist/album URL into N YouTube searches
+        and batch-enqueue them. Returns True when the URL was handled as a
+        multi-track resource; False when the caller should keep processing
+        it as a single-track URL (song or album?i=track)."""
+        from ....domain.shared.constants import PlaylistConstants
+        from ....infrastructure.audio.apple_music import (
+            AppleMusicError,
+            AppleResourceType,
+            parse_apple_music_url,
+        )
+
+        assert interaction.guild is not None
+
+        resource = parse_apple_music_url(url)
+        if resource is None or resource.resource_type is AppleResourceType.SONG:
+            return False
+
+        try:
+            all_queries = await self.container.apple_music_client.get_track_queries(url)
+        except AppleMusicError as exc:
+            self.logger.warning("Apple Music lookup failed for %s: %s", url, exc)
+            await send_ephemeral(
+                interaction,
+                "Couldn't fetch that Apple Music playlist. "
+                "Try again in a moment or paste individual song URLs.",
+            )
+            return True
+
+        if not all_queries:
+            await send_ephemeral(interaction, "That Apple Music playlist is empty.")
+            return True
+
+        # Cap the initial import so a 500-track playlist doesn't spawn 500
+        # sequential yt-dlp searches. Matches the YouTube playlist UI cap.
+        queries = all_queries[: PlaylistConstants.MAX_PLAYLIST_TRACKS]
+        truncated = len(all_queries) - len(queries)
+
+        self.logger.info(
+            "Apple Music %s: resolving %d/%d tracks for guild %s",
+            resource.resource_type.value,
+            len(queries),
+            len(all_queries),
+            interaction.guild.id,
+        )
+        header = (
+            f"Found **{len(all_queries)}** tracks in that Apple Music "
+            f"{resource.resource_type.value[:-1]}"
+        )
+        if truncated > 0:
+            header += f" — queuing the first **{len(queries)}**."
+        else:
+            header += "."
+        await interaction.followup.send(f"{header} Resolving on YouTube…", ephemeral=True)
+
+        tracks = await self.container.audio_resolver.resolve_many(queries)
+        if not tracks:
+            await interaction.followup.send(
+                "Couldn't find any of those tracks on YouTube.",
+                ephemeral=True,
+            )
+            return True
+
+        result = await self.enqueue_and_start(interaction, tracks)
+        suffix = f" ({truncated} more skipped)" if truncated > 0 else ""
+        await interaction.followup.send(
+            f"Queued **{result.enqueued}/{len(queries)}** tracks from Apple Music{suffix}.",
+            ephemeral=True,
+        )
+        return True
 
     async def _play_track(
         self,

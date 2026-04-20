@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from ..application.interfaces.ai_client import AIClient
     from ..application.interfaces.audio_resolver import AudioResolver
     from ..application.interfaces.voice_adapter import VoiceAdapter
+    from ..infrastructure.audio.apple_music import AppleMusicClient
     from ..application.services.auto_dj import AutoDJ
     from ..application.services.playback_service import PlaybackApplicationService
     from ..application.services.queue_service import QueueApplicationService
@@ -55,6 +56,7 @@ class Container:
         self._genre_classifier: AIGenreClassifier | None = None
         self._chart_generator: ChartGenerator | None = None
         self._audio_resolver: AudioResolver | None = None
+        self._apple_music_client: AppleMusicClient | None = None
         self._voice_adapter: VoiceAdapter | None = None
         self._ai_client: AIClient | None = None
         self._shuffle_ai_client: AIClient | None = None
@@ -179,6 +181,14 @@ class Container:
 
             self._audio_resolver = YtDlpResolver(self.settings.audio)
         return self._audio_resolver
+
+    @property
+    def apple_music_client(self) -> AppleMusicClient:
+        if self._apple_music_client is None:
+            from ..infrastructure.audio.apple_music import AppleMusicClient
+
+            self._apple_music_client = AppleMusicClient()
+        return self._apple_music_client
 
     @property
     def voice_adapter(self) -> VoiceAdapter:

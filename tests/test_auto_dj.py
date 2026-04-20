@@ -311,7 +311,9 @@ class TestDelayedActivate:
         await auto_dj._delayed_activate(GUILD_ID, delay=0)
 
         call_kwargs = radio_service.toggle_radio.call_args.kwargs
-        assert call_kwargs["user_id"] == 0
+        # DiscordSnowflake requires gt=0, so 0 is not a valid sentinel —
+        # Auto-DJ propagates None when no requester is available.
+        assert call_kwargs["user_id"] is None
         assert call_kwargs["user_name"] == "Auto-DJ"
 
 

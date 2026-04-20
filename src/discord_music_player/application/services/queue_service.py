@@ -30,7 +30,7 @@ class QueueApplicationService:
         self,
         guild_id: DiscordSnowflake,
         track: Track,
-        user_id: DiscordSnowflake,
+        user_id: DiscordSnowflake | None,
         user_name: NonEmptyStr,
     ) -> EnqueueResult:
         session = await self._session_repo.get_or_create(guild_id)
@@ -69,7 +69,7 @@ class QueueApplicationService:
         self,
         guild_id: DiscordSnowflake,
         track: Track,
-        user_id: DiscordSnowflake,
+        user_id: DiscordSnowflake | None,
         user_name: NonEmptyStr,
     ) -> EnqueueResult:
         session = await self._session_repo.get_or_create(guild_id)
@@ -99,7 +99,7 @@ class QueueApplicationService:
         self,
         guild_id: DiscordSnowflake,
         tracks: list[Track],
-        user_id: DiscordSnowflake,
+        user_id: DiscordSnowflake | None,
         user_name: NonEmptyStr,
     ) -> BatchEnqueueResult:
         """Enqueue multiple tracks in a single session load/save cycle."""
