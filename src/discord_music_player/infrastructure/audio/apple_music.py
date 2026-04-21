@@ -35,6 +35,9 @@ class AppleResourceType(StrEnum):
 _AMP_API_BASE = "https://amp-api.music.apple.com/v1/catalog"
 _APPLE_MUSIC_BASE = "https://music.apple.com"
 _TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7
+# Coalesce stampeding force-refreshes: if a peer task just scraped the
+# token (within this grace window), reuse theirs instead of re-scraping.
+_TOKEN_REFRESH_GRACE_SECONDS = 10
 
 _USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -227,11 +230,15 @@ class AppleMusicClient:
     async def _get_token(self, *, force_refresh: bool) -> str:
         async with self._lock:
             now = time.monotonic()
-            if (
-                not force_refresh
-                and self._token is not None
-                and now - self._token_fetched_at < _TOKEN_TTL_SECONDS
-            ):
+            age = now - self._token_fetched_at if self._token is not None else float("inf")
+
+            # Normal cache hit.
+            if not force_refresh and self._token is not None and age < _TOKEN_TTL_SECONDS:
+                return self._token
+
+            # Coalesce concurrent 401-retries: if a peer task already refreshed
+            # within the grace window, reuse their token instead of re-scraping.
+            if force_refresh and self._token is not None and age < _TOKEN_REFRESH_GRACE_SECONDS:
                 return self._token
 
             token = await asyncio.to_thread(self._scrape_token)
@@ -243,7 +250,7 @@ class AppleMusicClient:
     @staticmethod
     def _scrape_token() -> str:
         try:
-            html = _read(_APPLE_MUSIC_BASE + "/us/browse", limit=500_000)
+            html = _read(_APPLE_MUSIC_BASE + "/us/browse")
         except Exception as exc:
             raise AppleMusicError(f"Failed to fetch Apple Music page: {exc}") from exc
 
@@ -253,7 +260,7 @@ class AppleMusicClient:
 
         js_url = f"{_APPLE_MUSIC_BASE}/assets/{js_match.group(1)}"
         try:
-            js = _read(js_url, limit=5_000_000)
+            js = _read(js_url)
         except Exception as exc:
             raise AppleMusicError(f"Failed to fetch Apple Music JS bundle: {exc}") from exc
 
@@ -289,7 +296,13 @@ class _UnauthorizedError(Exception):
     pass
 
 
-def _read(url: str, *, limit: int) -> str:
+def _read(url: str) -> str:
+    """Fetch the full response body as UTF-8. Bounded by the 15 s urlopen timeout.
+
+    No byte cap: the JS bundle (~3 MB) and page HTML grow over time, and
+    truncating mid-JWT would silently match an older token baked elsewhere
+    in the file.
+    """
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     with urllib.request.urlopen(req, timeout=15) as resp:
-        return resp.read(limit).decode("utf-8", errors="replace")
+        return resp.read().decode("utf-8", errors="replace")

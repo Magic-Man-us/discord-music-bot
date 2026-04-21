@@ -3,47 +3,41 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Protocol
+from collections.abc import Awaitable, Callable
+from typing import Protocol
 
 import discord
+from pydantic import BaseModel, ConfigDict
 
 from ....utils.logging import get_logger
 from .base_view import BaseInteractiveView
 
-if TYPE_CHECKING:
-    from ....domain.music.wrappers import StartSeconds
-    from ....domain.shared.types import PlaylistImportCount, PlaylistStartIndex
-
 logger = get_logger(__name__)
 
 
-class ExecutePlayCallback(Protocol):
-    async def __call__(
-        self,
-        interaction: discord.Interaction,
-        query: str,
-        *,
-        start_seconds: StartSeconds | None = ...,
-        count: PlaylistImportCount | None = ...,
-        start: PlaylistStartIndex | None = ...,
-        shuffle: bool = ...,
-    ) -> None: ...
+class ReplayCallback(Protocol):
+    async def __call__(self, interaction: discord.Interaction) -> None: ...
+
+
+ReplayFn = Callable[[discord.Interaction], Awaitable[None]]
+
+
+class WarmupRetryState(BaseModel):
+    """``replay`` is a pre-baked coroutine that carries every /play param the
+    user originally supplied (query, count, start, shuffle, seek). The view
+    just invokes it on retry — no per-param plumbing needed."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    remaining_seconds: int
+    query: str
+    replay: ReplayFn
 
 
 class WarmupRetryView(BaseInteractiveView):
-    """Shows a disabled Retry button that enables after the warmup period expires."""
-
-    def __init__(
-        self,
-        *,
-        remaining_seconds: int,
-        query: str,
-        execute_play: ExecutePlayCallback,
-    ) -> None:
-        super().__init__(timeout=remaining_seconds + 120)
-        self._remaining_seconds = remaining_seconds
-        self._query = query
-        self._execute_play = execute_play
+    def __init__(self, state: WarmupRetryState) -> None:
+        super().__init__(timeout=state.remaining_seconds + 120)
+        self._state = state
         self._enable_task: asyncio.Task[None] | None = None
 
     def set_message(self, message: discord.Message) -> None:
@@ -52,7 +46,7 @@ class WarmupRetryView(BaseInteractiveView):
 
     async def _enable_after_warmup(self) -> None:
         try:
-            await asyncio.sleep(self._remaining_seconds)
+            await asyncio.sleep(self._state.remaining_seconds)
         except asyncio.CancelledError:
             return
 
@@ -79,7 +73,7 @@ class WarmupRetryView(BaseInteractiveView):
                 await self._message.edit(view=self)
             except discord.HTTPException:
                 pass
-        await self._execute_play(interaction, self._query)
+        await self._state.replay(interaction)
 
     async def on_timeout(self) -> None:
         if self._enable_task is not None and not self._enable_task.done():

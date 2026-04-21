@@ -37,6 +37,10 @@ class BaseCog(commands.Cog):
             user_name=interaction.user.display_name,
         )
         if result.should_start:
+            # Reserve before kicking off playback so the auto-post handler
+            # (TrackStartedPlaying subscriber) doesn't race in and send a
+            # duplicate now-playing embed. Mirrors ``PlaybackCog._play_track``.
+            self.container.message_state_manager.reserve_now_playing(interaction.guild.id)
             await self.container.playback_service.start_playback(interaction.guild.id)
         return result
 

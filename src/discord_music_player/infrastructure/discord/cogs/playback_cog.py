@@ -228,12 +228,24 @@ class PlaybackCog(BaseCog):
                 user_id=member.id,
             )
             if remaining > 0:
-                from ..views.warmup_retry_view import WarmupRetryView
+                from ..views.warmup_retry_view import WarmupRetryState, WarmupRetryView
+
+                async def _replay(retry_interaction: discord.Interaction) -> None:
+                    await self._execute_play(
+                        retry_interaction,
+                        query,
+                        start_seconds=start_seconds,
+                        count=count,
+                        start=start,
+                        shuffle=shuffle,
+                    )
 
                 view = WarmupRetryView(
-                    remaining_seconds=remaining,
-                    query=query,
-                    execute_play=self._execute_play,
+                    WarmupRetryState(
+                        remaining_seconds=remaining,
+                        query=query,
+                        replay=_replay,
+                    )
                 )
                 msg = await interaction.followup.send(
                     f"You must be in the voice channel for {remaining}s before you can use commands.",

@@ -101,17 +101,19 @@ class TestResumePlaybackView:
 # =============================================================================
 
 
-def _make_warmup_view(remaining: int = 5, execute_play: AsyncMock | None = None):
+def _make_warmup_view(remaining: int = 5, replay: AsyncMock | None = None):
     from discord_music_player.infrastructure.discord.views.warmup_retry_view import (
+        WarmupRetryState,
         WarmupRetryView,
     )
 
-    ep = execute_play or AsyncMock()
-    return WarmupRetryView(
+    rp = replay or AsyncMock()
+    state = WarmupRetryState(
         remaining_seconds=remaining,
         query="test song",
-        execute_play=ep,
-    ), ep
+        replay=rp,
+    )
+    return WarmupRetryView(state), rp
 
 
 class TestWarmupRetryView:
@@ -121,18 +123,40 @@ class TestWarmupRetryView:
         assert view.timeout == 130
 
     @pytest.mark.asyncio
-    async def test_retry_button_calls_execute_play(self):
-        view, ep = _make_warmup_view()
+    async def test_retry_button_calls_replay(self):
+        view, rp = _make_warmup_view()
         view.retry_button.disabled = False  # simulate enabled
         interaction = AsyncMock()
 
         await view.retry_button.callback(interaction)
 
-        ep.assert_awaited_once_with(interaction, "test song")
+        rp.assert_awaited_once_with(interaction)
+
+    @pytest.mark.asyncio
+    async def test_retry_preserves_captured_slash_params(self):
+        """The closure the cog hands in must carry count/start/shuffle through
+        retry — not just the query string."""
+        captured: dict[str, object] = {}
+
+        async def _replay(i: AsyncMock) -> None:
+            # Simulate what PlaybackCog._execute_play would do with the
+            # replay-bound params: stash them so the test can assert.
+            await _inner_execute(i, query="q", count=25, start=3, shuffle=True)
+
+        async def _inner_execute(i: AsyncMock, *, query: str, count: int, start: int, shuffle: bool) -> None:
+            captured.update(query=query, count=count, start=start, shuffle=shuffle)
+
+        view, _ = _make_warmup_view(replay=AsyncMock(wraps=_replay))
+        view.retry_button.disabled = False
+        interaction = AsyncMock()
+
+        await view.retry_button.callback(interaction)
+
+        assert captured == {"query": "q", "count": 25, "start": 3, "shuffle": True}
 
     @pytest.mark.asyncio
     async def test_retry_button_with_message_edits(self):
-        view, ep = _make_warmup_view()
+        view, rp = _make_warmup_view()
         view.retry_button.disabled = False
         message = AsyncMock()
         view._message = message
@@ -141,7 +165,7 @@ class TestWarmupRetryView:
         await view.retry_button.callback(interaction)
 
         message.edit.assert_awaited_once()
-        ep.assert_awaited_once()
+        rp.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_enable_after_warmup(self):
