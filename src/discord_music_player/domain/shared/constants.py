@@ -201,7 +201,7 @@ class PlaylistConstants:
 
     MAX_SELECT_OPTIONS = 25  # Discord select menu limit
     MAX_PLAYLIST_TRACKS = 50  # Hard cap on tracks imported from a single playlist
-    EXTERNAL_PLAYLIST_DEFAULT_COUNT = 5  # Tracks queued when no count is given
+    EXTERNAL_PLAYLIST_DEFAULT_COUNT = 10  # Tracks queued when no count is given
     VIEW_TIMEOUT = 120.0  # 2 minutes
 
 

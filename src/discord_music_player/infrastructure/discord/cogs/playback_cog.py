@@ -8,9 +8,14 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from ....domain.music.entities import Track
+from ....domain.music.entities import PlaylistEntry, Track
 from ....domain.shared.constants import PlaylistConstants, UIConstants
-from ....domain.shared.types import DiscordSnowflake, HttpUrlStr
+from ....domain.shared.types import (
+    DiscordSnowflake,
+    HttpUrlStr,
+    PlaylistImportCount,
+    PlaylistStartIndex,
+)
 from .base_cog import BaseCog
 from ..guards.voice_guards import (
     ensure_dj_role,
@@ -34,7 +39,30 @@ if TYPE_CHECKING:
     from ....config.container import Container
     from ....domain.music.wrappers import StartSeconds
     from ....domain.shared.events import TrackStartedPlaying
+    from ....utils.playlist_select import PlaylistSlice
     from ..views.requester_left_view import RequesterLeftView
+
+
+def _format_slice_status(
+    source_label: str,
+    info: PlaylistSlice,
+    count_override: PlaylistImportCount | None,
+) -> str:
+    """Render the "Queueing … from <source>" status message for an import."""
+    parts = [f"Queueing **{info.kept}** of **{info.total}** tracks from {source_label}"]
+    if info.start > 1:
+        parts.append(f"starting at #{info.start}")
+    if info.shuffled:
+        parts.append("(shuffled)")
+    status = ", ".join(parts)
+    if count_override is None and info.truncated > 0:
+        status += (
+            f". Default — pass `count:` up to "
+            f"{PlaylistConstants.MAX_PLAYLIST_TRACKS} to queue more."
+        )
+    else:
+        status += "."
+    return status + " Resolving on YouTube…"
 
 
 class PlaybackCog(BaseCog):
@@ -73,8 +101,14 @@ class PlaybackCog(BaseCog):
     @app_commands.guild_only()
     @app_commands.describe(
         query="YouTube URL or search query",
-        timestamp='Start position (e.g. "1:30" or "90")',
-        count="How many tracks to import from an Apple Music playlist/album (default 5, max 50)",
+        timestamp='Start position within a single track (e.g. "1:30" or "90")',
+        count=(
+            "How many tracks to import from a playlist "
+            f"(default {PlaylistConstants.EXTERNAL_PLAYLIST_DEFAULT_COUNT}, "
+            f"max {PlaylistConstants.MAX_PLAYLIST_TRACKS})"
+        ),
+        start="1-based position in the playlist to start importing from",
+        shuffle="Randomise the selected tracks before queuing",
     )
     async def play(
         self,
@@ -82,6 +116,8 @@ class PlaybackCog(BaseCog):
         query: str,
         timestamp: str | None = None,
         count: app_commands.Range[int, 1, PlaylistConstants.MAX_PLAYLIST_TRACKS] | None = None,
+        start: app_commands.Range[int, 1, 1000] | None = None,
+        shuffle: bool = False,
     ) -> None:
         from ....domain.music.wrappers import StartSeconds
 
@@ -100,7 +136,14 @@ class PlaybackCog(BaseCog):
         seek = StartSeconds.from_optional(raw_seconds)
 
         await interaction.response.defer()
-        await self._execute_play(interaction, query, start_seconds=seek, count=count)
+        await self._execute_play(
+            interaction,
+            query,
+            start_seconds=seek,
+            count=count,
+            start=start,
+            shuffle=shuffle,
+        )
 
     async def _ensure_voice_ready(
         self,
@@ -147,11 +190,17 @@ class PlaybackCog(BaseCog):
         query: str,
         *,
         start_seconds: StartSeconds | None = None,
-        count: int | None = None,
+        count: PlaylistImportCount | None = None,
+        start: PlaylistStartIndex | None = None,
+        shuffle: bool = False,
     ) -> None:
         """Full play flow: voice checks, warmup with retry view, connect, play.
 
         Expects the interaction to already be deferred.
+
+        ``count``, ``start``, and ``shuffle`` only apply when ``query`` is a
+        playlist URL (Apple Music or YouTube). They are ignored for single
+        tracks and search queries.
         """
         member = await get_member(interaction)
         if member is None:
@@ -213,7 +262,11 @@ class PlaybackCog(BaseCog):
 
         if is_apple_music_url(query):
             handled = await self._handle_apple_music_url(
-                interaction, query, count_override=count
+                interaction,
+                query,
+                count_override=count,
+                start=start,
+                shuffle=shuffle,
             )
             if handled:
                 return
@@ -236,7 +289,9 @@ class PlaybackCog(BaseCog):
         # Detect playlist URLs and show selection UI
         resolver = self.container.audio_resolver
         if resolver.is_url(query) and resolver.is_playlist(query):
-            await self._handle_playlist(interaction, query)
+            await self._handle_playlist(
+                interaction, query, count=count, start=start, shuffle=shuffle
+            )
             return
 
         await self._play_track(interaction, query, start_seconds=start_seconds)
@@ -246,18 +301,21 @@ class PlaybackCog(BaseCog):
         interaction: discord.Interaction,
         url: str,
         *,
-        count_override: int | None,
+        count_override: PlaylistImportCount | None,
+        start: PlaylistStartIndex | None,
+        shuffle: bool,
     ) -> bool:
-        """Expand an Apple Music playlist/album URL, enqueue up to
-        ``count_override`` tracks (default: EXTERNAL_PLAYLIST_DEFAULT_COUNT,
-        max: MAX_PLAYLIST_TRACKS). Returns True when handled as a multi-track
-        resource; False when the caller should keep processing the URL as a
-        single track (song or album?i=track)."""
+        """Expand an Apple Music playlist/album URL and enqueue a slice.
+
+        Returns True when handled as a multi-track resource; False when the
+        caller should keep processing the URL as a single track (song or
+        album?i=track)."""
         from ....infrastructure.audio.apple_music import (
             AppleMusicError,
             AppleResourceType,
             parse_apple_music_url,
         )
+        from ....utils.playlist_select import select_playlist_items
 
         assert interaction.guild is not None
 
@@ -280,25 +338,34 @@ class PlaybackCog(BaseCog):
             await send_ephemeral(interaction, "That Apple Music playlist is empty.")
             return True
 
-        requested = count_override or PlaylistConstants.EXTERNAL_PLAYLIST_DEFAULT_COUNT
-        cap = min(requested, PlaylistConstants.MAX_PLAYLIST_TRACKS, len(all_queries))
-        queries = all_queries[:cap]
-        truncated = len(all_queries) - len(queries)
+        queries, slice_info = select_playlist_items(
+            all_queries,
+            start=start,
+            count=count_override,
+            shuffle=shuffle,
+        )
+
+        if not queries:
+            await send_ephemeral(
+                interaction,
+                f"`start={slice_info.start}` is past the end of the playlist "
+                f"({slice_info.total} tracks).",
+            )
+            return True
 
         source_label = f"Apple Music {resource.resource_type.value[:-1]}"
         self.logger.info(
-            "Apple Music %s: enqueuing %d/%d tracks for guild %s",
+            "Apple Music %s: enqueuing %d/%d tracks (start=%d shuffle=%s) for guild %s",
             resource.resource_type.value,
             len(queries),
-            len(all_queries),
+            slice_info.total,
+            slice_info.start,
+            slice_info.shuffled,
             interaction.guild.id,
         )
 
-        header = f"Queueing **{len(queries)}** of **{len(all_queries)}** tracks"
-        if truncated > 0 and count_override is None:
-            header += f" (default — pass `count:` to queue up to {PlaylistConstants.MAX_PLAYLIST_TRACKS})"
         await interaction.followup.send(
-            f"{header} from {source_label}. Resolving on YouTube…",
+            _format_slice_status(source_label, slice_info, count_override),
             ephemeral=True,
         )
 
@@ -589,13 +656,37 @@ class PlaybackCog(BaseCog):
     # Playlist
     # ─────────────────────────────────────────────────────────────────
 
-    async def _handle_playlist(self, interaction: discord.Interaction, url: HttpUrlStr) -> None:
-        """Extract playlist entries and show selection UI."""
+    async def _handle_playlist(
+        self,
+        interaction: discord.Interaction,
+        url: HttpUrlStr,
+        *,
+        count: PlaylistImportCount | None = None,
+        start: PlaylistStartIndex | None = None,
+        shuffle: bool = False,
+    ) -> None:
+        """Extract playlist entries.
+
+        When any of ``count``, ``start``, or ``shuffle`` is supplied the
+        selection UI is skipped and the slice is auto-enqueued; otherwise
+        the existing ``PlaylistView`` is shown.
+        """
         resolver = self.container.audio_resolver
         entries = await resolver.preview_playlist(url)
 
         if not entries:
             await interaction.followup.send("That playlist appears to be empty.", ephemeral=True)
+            return
+
+        auto_enqueue = count is not None or start is not None or shuffle
+        if auto_enqueue:
+            await self._auto_enqueue_youtube_playlist(
+                interaction,
+                entries=entries,
+                count=count,
+                start=start,
+                shuffle=shuffle,
+            )
             return
 
         from ..views.playlist_view import PlaylistView, build_playlist_embed
@@ -608,6 +699,57 @@ class PlaybackCog(BaseCog):
         )
         msg = await interaction.followup.send(embed=embed, view=view, wait=True)
         view.set_message(msg)
+
+    async def _auto_enqueue_youtube_playlist(
+        self,
+        interaction: discord.Interaction,
+        *,
+        entries: list[PlaylistEntry],
+        count: PlaylistImportCount | None,
+        start: PlaylistStartIndex | None,
+        shuffle: bool,
+    ) -> None:
+        from ....utils.playlist_select import select_playlist_items
+
+        assert interaction.guild is not None
+
+        selected, slice_info = select_playlist_items(
+            entries, start=start, count=count, shuffle=shuffle
+        )
+        if not selected:
+            await send_ephemeral(
+                interaction,
+                f"`start={slice_info.start}` is past the end of the playlist "
+                f"({slice_info.total} tracks).",
+            )
+            return
+
+        self.logger.info(
+            "YouTube playlist: enqueuing %d/%d tracks (start=%d shuffle=%s) for guild %s",
+            len(selected),
+            slice_info.total,
+            slice_info.start,
+            slice_info.shuffled,
+            interaction.guild.id,
+        )
+        await interaction.followup.send(
+            _format_slice_status("YouTube playlist", slice_info, count),
+            ephemeral=True,
+        )
+
+        urls = [entry.url for entry in selected]
+        tracks = await self.container.audio_resolver.resolve_many(urls)
+        if not tracks:
+            await interaction.followup.send(
+                "Couldn't resolve any of those tracks.", ephemeral=True
+            )
+            return
+
+        result = await self.enqueue_and_start(interaction, tracks)
+        await interaction.followup.send(
+            f"Queued **{result.enqueued}/{len(selected)}** tracks.",
+            ephemeral=True,
+        )
 
     # ─────────────────────────────────────────────────────────────────
     # Callbacks

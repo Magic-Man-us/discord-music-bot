@@ -105,6 +105,12 @@ DurationSeconds = Annotated[int, Field(ge=0, le=86_400)]
 QueuePositionInt = Annotated[int, Field(ge=0)]
 """Zero-based queue position."""
 
+PlaylistImportCount = Annotated[int, Field(ge=1, le=50)]
+"""Number of tracks to import from an external playlist: 1 … MAX_PLAYLIST_TRACKS (50)."""
+
+PlaylistStartIndex = Annotated[int, Field(ge=1, le=1000)]
+"""1-based start offset into a playlist: 1 … 1 000."""
+
 
 # ── Settings-specific constraints ──────────────────────────────────
 

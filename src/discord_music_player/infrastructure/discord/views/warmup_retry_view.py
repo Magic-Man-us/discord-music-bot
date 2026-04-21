@@ -12,6 +12,7 @@ from .base_view import BaseInteractiveView
 
 if TYPE_CHECKING:
     from ....domain.music.wrappers import StartSeconds
+    from ....domain.shared.types import PlaylistImportCount, PlaylistStartIndex
 
 logger = get_logger(__name__)
 
@@ -23,7 +24,9 @@ class ExecutePlayCallback(Protocol):
         query: str,
         *,
         start_seconds: StartSeconds | None = ...,
-        count: int | None = ...,
+        count: PlaylistImportCount | None = ...,
+        start: PlaylistStartIndex | None = ...,
+        shuffle: bool = ...,
     ) -> None: ...
 
 
