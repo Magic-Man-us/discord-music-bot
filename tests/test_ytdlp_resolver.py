@@ -537,12 +537,17 @@ class TestPlaylistExtraction:
     @pytest.mark.asyncio
     async def test_extract_playlist_success(self, resolver, mock_info):
         """Should extract playlist entries."""
-        playlist_entries = [
-            YtDlpTrackInfo(url="https://youtube.com/watch?v=abc1"),
-            YtDlpTrackInfo(webpage_url="https://youtube.com/watch?v=abc2"),
-        ]
+        from discord_music_player.infrastructure.audio.models import YtDlpExtractResult
 
-        with patch.object(resolver, "_extract_playlist_sync", return_value=playlist_entries):
+        extract_result = YtDlpExtractResult.model_construct(
+            entries=[
+                YtDlpTrackInfo(url="https://youtube.com/watch?v=abc1"),
+                YtDlpTrackInfo(webpage_url="https://youtube.com/watch?v=abc2"),
+            ],
+            title="My Playlist",
+        )
+
+        with patch.object(resolver, "_extract_playlist_sync", return_value=extract_result):
             with patch.object(
                 resolver,
                 "resolve",
@@ -570,7 +575,11 @@ class TestPlaylistExtraction:
     @pytest.mark.asyncio
     async def test_extract_playlist_empty(self, resolver):
         """Should return empty list for empty playlist."""
-        with patch.object(resolver, "_extract_playlist_sync", return_value=[]):
+        from discord_music_player.infrastructure.audio.models import YtDlpExtractResult
+
+        with patch.object(
+            resolver, "_extract_playlist_sync", return_value=YtDlpExtractResult(entries=[])
+        ):
             tracks = await resolver.extract_playlist("https://youtube.com/playlist?list=PLxyz")
 
         assert tracks == []
@@ -586,13 +595,13 @@ class TestPlaylistExtraction:
         assert tracks == []
 
     def test_extract_playlist_sync_success(self, resolver):
-        """Should extract playlist entries successfully."""
+        """Should extract playlist entries + title into a YtDlpExtractResult."""
         url = "https://youtube.com/playlist?list=PLxyz"
         mock_entries = [
             {"webpage_url": "https://youtube.com/watch?v=abc1", "title": "Song 1"},
             {"webpage_url": "https://youtube.com/watch?v=abc2", "title": "Song 2"},
         ]
-        mock_data = {"entries": mock_entries}
+        mock_data = {"entries": mock_entries, "title": "My Playlist"}
 
         with patch(
             "discord_music_player.infrastructure.audio.ytdlp_resolver.YoutubeDL"
@@ -600,12 +609,13 @@ class TestPlaylistExtraction:
             mock_ydl.return_value.__enter__.return_value.extract_info.return_value = mock_data
             result = resolver._extract_playlist_sync(url)
 
-        assert len(result) == 2
-        assert result[0].title == "Song 1"
-        assert result[1].title == "Song 2"
+        assert len(result.entries) == 2
+        assert result.entries[0].title == "Song 1"
+        assert result.entries[1].title == "Song 2"
+        assert result.title == "My Playlist"
 
     def test_extract_playlist_sync_invalid_data_type(self, resolver):
-        """Should return empty list when data is not a dict."""
+        """Should return empty result when data is not a dict."""
         url = "https://youtube.com/playlist?list=PLxyz"
 
         with patch(
@@ -615,22 +625,21 @@ class TestPlaylistExtraction:
             mock_ydl.return_value.__enter__.return_value.extract_info.return_value = ["not", "dict"]
             result = resolver._extract_playlist_sync(url)
 
-        assert result == []
+        assert result.entries == []
 
     def test_extract_playlist_sync_entries_not_list(self, resolver):
-        """Should return empty list when entries is not a list."""
+        """Should return empty result when entries is not a list."""
         url = "https://youtube.com/playlist?list=PLxyz"
 
         with patch(
             "discord_music_player.infrastructure.audio.ytdlp_resolver.YoutubeDL"
         ) as mock_ydl:
-            # Return dict with entries as non-list
             mock_ydl.return_value.__enter__.return_value.extract_info.return_value = {
                 "entries": "not a list"
             }
             result = resolver._extract_playlist_sync(url)
 
-        assert result == []
+        assert result.entries == []
 
     def test_extract_playlist_sync_filters_none_entries(self, resolver):
         """Should filter out None entries."""
@@ -648,12 +657,12 @@ class TestPlaylistExtraction:
             mock_ydl.return_value.__enter__.return_value.extract_info.return_value = mock_data
             result = resolver._extract_playlist_sync(url)
 
-        assert len(result) == 2
-        assert result[0].title == "Song 1"
-        assert result[1].title == "Song 3"
+        assert len(result.entries) == 2
+        assert result.entries[0].title == "Song 1"
+        assert result.entries[1].title == "Song 3"
 
     def test_extract_playlist_sync_exception(self, resolver):
-        """Should return empty list when YoutubeDL raises exception."""
+        """Should return empty result when YoutubeDL raises exception."""
         url = "https://youtube.com/playlist?list=PLxyz"
 
         with patch(
@@ -664,7 +673,7 @@ class TestPlaylistExtraction:
             )
             result = resolver._extract_playlist_sync(url)
 
-        assert result == []
+        assert result.entries == []
 
 
 # =============================================================================

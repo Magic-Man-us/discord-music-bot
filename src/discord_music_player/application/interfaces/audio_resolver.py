@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from ...domain.shared.types import HttpUrlStr, NonEmptyStr, PositiveInt
 
 if TYPE_CHECKING:
-    from ...domain.music.entities import PlaylistEntry, Track
+    from ...domain.music.entities import PlaylistPreview, Track
 
 
 class AudioResolver(ABC):
@@ -35,8 +35,8 @@ class AudioResolver(ABC):
         ...
 
     @abstractmethod
-    async def preview_playlist(self, url: HttpUrlStr) -> list[PlaylistEntry]:
-        """Extract lightweight metadata for playlist items without resolving streams."""
+    async def preview_playlist(self, url: HttpUrlStr) -> PlaylistPreview:
+        """Extract playlist title + lightweight track metadata, no stream resolution."""
         ...
 
     @abstractmethod

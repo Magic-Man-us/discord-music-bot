@@ -1,8 +1,13 @@
-"""View for previewing and selecting tracks from a YouTube playlist."""
+"""View for previewing and selecting tracks from a YouTube playlist.
+
+All enqueue paths (Add All, Shuffle All, per-track Select) delegate to a
+single ``on_finalize`` callback so the downstream batch-resolve, summary,
+and save-prompt flow is shared with the slash-param auto-enqueue path.
+"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import discord
 
@@ -11,16 +16,26 @@ from ....domain.shared.constants import (
     PlaylistConstants,
 )
 from ....utils.logging import get_logger
+from ....utils.playlist_select import select_playlist_items
 from ....utils.reply import format_duration, truncate
-from .base_view import (
-    BaseInteractiveView,
-)
+from .base_view import BaseInteractiveView
 
 if TYPE_CHECKING:
     from ....config.container import Container
     from ....domain.music.entities import PlaylistEntry
 
 logger = get_logger(__name__)
+
+
+class FinalizeCallback(Protocol):
+    async def __call__(
+        self,
+        interaction: discord.Interaction,
+        *,
+        resolver_queries: list[str],
+        source_label: str,
+        suggested_name: str,
+    ) -> None: ...
 
 
 def build_playlist_embed(entries: list[PlaylistEntry]) -> discord.Embed:
@@ -79,6 +94,14 @@ def _build_select_options(entries: list[PlaylistEntry]) -> list[discord.SelectOp
     ]
 
 
+def _suggest_name(playlist_title: str | None) -> str:
+    if playlist_title:
+        cleaned = playlist_title.strip().lower()
+        if cleaned:
+            return cleaned
+    return "youtube-playlist"
+
+
 class PlaylistView(BaseInteractiveView):
     """Shows playlist preview with Add All, individual select, and Cancel."""
 
@@ -86,13 +109,17 @@ class PlaylistView(BaseInteractiveView):
         self,
         *,
         entries: list[PlaylistEntry],
+        playlist_title: str | None,
         interaction: discord.Interaction,
         container: Container,
+        on_finalize: FinalizeCallback,
     ) -> None:
         super().__init__(timeout=PlaylistConstants.VIEW_TIMEOUT)
         self._entries: list[PlaylistEntry] = entries[: PlaylistConstants.MAX_PLAYLIST_TRACKS]
+        self._playlist_title: str | None = playlist_title
         self._container: Container = container
         self._requester_id: int = interaction.user.id
+        self._on_finalize: FinalizeCallback = on_finalize
 
         if len(self._entries) <= PlaylistConstants.MAX_SELECT_OPTIONS:
             options = _build_select_options(self._entries)
@@ -118,18 +145,23 @@ class PlaylistView(BaseInteractiveView):
     async def add_all_button(
         self, interaction: discord.Interaction, _button: discord.ui.Button[PlaylistView]
     ) -> None:
-        all_indices = list(range(len(self._entries)))
-        await self._enqueue_tracks(interaction, all_indices)
+        selected, _ = select_playlist_items(
+            self._entries,
+            count=PlaylistConstants.MAX_PLAYLIST_TRACKS,
+            shuffle=False,
+        )
+        await self._enqueue_selection(interaction, selected)
 
     @discord.ui.button(label="Shuffle All", style=discord.ButtonStyle.primary, row=1)
     async def shuffle_all_button(
         self, interaction: discord.Interaction, _button: discord.ui.Button[PlaylistView]
     ) -> None:
-        import random
-
-        all_indices = list(range(len(self._entries)))
-        random.shuffle(all_indices)
-        await self._enqueue_tracks(interaction, all_indices)
+        selected, _ = select_playlist_items(
+            self._entries,
+            count=PlaylistConstants.MAX_PLAYLIST_TRACKS,
+            shuffle=True,
+        )
+        await self._enqueue_selection(interaction, selected)
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, row=1)
     async def cancel_button(
@@ -149,10 +181,17 @@ class PlaylistView(BaseInteractiveView):
         for item in self.children:
             if isinstance(item, discord.ui.Select):
                 selected_indices = [int(v) for v in item.values]
-                await self._enqueue_tracks(interaction, selected_indices)
+                selected = [
+                    self._entries[i] for i in selected_indices if i < len(self._entries)
+                ]
+                await self._enqueue_selection(interaction, selected)
                 return
 
-    async def _enqueue_tracks(self, interaction: discord.Interaction, indices: list[int]) -> None:
+    async def _enqueue_selection(
+        self,
+        interaction: discord.Interaction,
+        entries: list[PlaylistEntry],
+    ) -> None:
         if not self._finish_view():
             await interaction.response.send_message(
                 "Already processing, please wait.", ephemeral=True
@@ -160,80 +199,18 @@ class PlaylistView(BaseInteractiveView):
             return
 
         self._disable_all_items()
-
-        selected = [self._entries[i] for i in indices if i < len(self._entries)]
         await interaction.response.edit_message(
-            content=f"Adding **{len(selected)}** track(s) to the queue...",
+            content=f"Resolving **{len(entries)}** track(s)…",
             embed=None,
             view=self,
         )
 
-        guild = interaction.guild
-        if guild is None:
+        if interaction.guild is None or not entries:
             return
 
-        user = interaction.user
-        added, should_start = await self._resolve_and_enqueue(guild, user, selected)
-
-        if should_start:
-            await self._ensure_voice_and_play(guild, user)
-
-        summary = f"Added **{added}** of **{len(selected)}** tracks to the queue."
-        try:
-            await interaction.edit_original_response(content=summary, embed=None, view=None)
-        except discord.HTTPException:
-            pass
-
-    async def _resolve_and_enqueue(
-        self,
-        guild: discord.Guild,
-        user: discord.User | discord.Member,
-        entries: list[PlaylistEntry],
-    ) -> tuple[int, bool]:
-        """Resolve and enqueue entries. Returns ``(added_count, should_start_playback)``."""
-        resolver = self._container.audio_resolver
-        queue_service = self._container.queue_service
-
-        added: int = 0
-        should_start: bool = False
-        for entry in entries:
-            try:
-                track = await resolver.resolve(entry.url)
-                if track is None:
-                    continue
-
-                result = await queue_service.enqueue(
-                    guild_id=guild.id,
-                    track=track,
-                    user_id=user.id,
-                    user_name=user.display_name,
-                )
-                if result.success:
-                    added += 1
-                    if result.should_start:
-                        should_start = True
-            except Exception:
-                logger.warning("Failed to enqueue playlist track: %s", entry.title)
-        return added, should_start
-
-    async def _ensure_voice_and_play(
-        self,
-        guild: discord.Guild,
-        user: discord.User | discord.Member,
-    ) -> None:
-        """Connect to voice (if needed) and start playback."""
-        voice_adapter = self._container.voice_adapter
-        member = guild.get_member(user.id)
-
-        if not isinstance(member, discord.Member) or not member.voice or not member.voice.channel:
-            return
-
-        if not voice_adapter.is_connected(guild.id):
-            connected = await voice_adapter.ensure_connected(guild.id, member.voice.channel.id)
-            if not connected:
-                logger.warning(
-                    "Failed to connect to voice for playlist playback in guild %s", guild.id
-                )
-                return
-
-        await self._container.playback_service.start_playback(guild.id)
+        await self._on_finalize(
+            interaction,
+            resolver_queries=[entry.url for entry in entries],
+            source_label="YouTube playlist",
+            suggested_name=_suggest_name(self._playlist_title),
+        )

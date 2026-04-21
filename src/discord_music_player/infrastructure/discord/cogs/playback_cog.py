@@ -8,7 +8,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from ....domain.music.entities import PlaylistEntry, Track
+from ....domain.music.entities import PlaylistEntry, PlaylistPreview, Track
 from ....domain.shared.constants import PlaylistConstants, UIConstants
 from ....domain.shared.types import (
     DiscordSnowflake,
@@ -41,6 +41,15 @@ if TYPE_CHECKING:
     from ....domain.shared.events import TrackStartedPlaying
     from ....utils.playlist_select import PlaylistSlice
     from ..views.requester_left_view import RequesterLeftView
+
+
+def _suggest_save_name(raw: str | None, source_label: str) -> str:
+    """Pre-filled Modal name. Falls back to source label when remote title is missing."""
+    if raw:
+        cleaned = raw.strip().lower()
+        if cleaned:
+            return cleaned
+    return source_label.lower().replace(" ", "-")
 
 
 def _format_slice_status(
@@ -324,7 +333,7 @@ class PlaybackCog(BaseCog):
             return False
 
         try:
-            all_queries = await self.container.apple_music_client.get_track_queries(url)
+            playlist = await self.container.apple_music_client.get_playlist(url)
         except AppleMusicError as exc:
             self.logger.warning("Apple Music lookup failed for %s: %s", url, exc)
             await send_ephemeral(
@@ -334,12 +343,12 @@ class PlaybackCog(BaseCog):
             )
             return True
 
-        if not all_queries:
+        if not playlist.queries:
             await send_ephemeral(interaction, "That Apple Music playlist is empty.")
             return True
 
         queries, slice_info = select_playlist_items(
-            all_queries,
+            playlist.queries,
             start=start,
             count=count_override,
             shuffle=shuffle,
@@ -369,20 +378,67 @@ class PlaybackCog(BaseCog):
             ephemeral=True,
         )
 
-        tracks = await self.container.audio_resolver.resolve_many(queries)
+        await self._finalize_playlist_import(
+            interaction,
+            resolver_queries=queries,
+            source_label=source_label,
+            suggested_name=_suggest_save_name(playlist.name, source_label),
+        )
+        return True
+
+    async def _finalize_playlist_import(
+        self,
+        interaction: discord.Interaction,
+        *,
+        resolver_queries: list[str],
+        source_label: str,
+        suggested_name: str,
+    ) -> None:
+        """Resolve → batch-enqueue → confirmation → save-prompt.
+
+        Single completion point for every playlist-style import so the save
+        prompt fires consistently across Apple Music, YouTube auto-enqueue,
+        and ``PlaylistView``.
+        """
+        from ..views.save_playlist_prompt_view import SavePlaylistPromptView
+
+        assert interaction.guild is not None
+
+        tracks = await self.container.audio_resolver.resolve_many(resolver_queries)
         if not tracks:
             await interaction.followup.send(
-                "Couldn't find any of those tracks on YouTube.",
+                "Couldn't resolve any of those tracks on YouTube.",
                 ephemeral=True,
             )
-            return True
+            return
 
         result = await self.enqueue_and_start(interaction, tracks)
         await interaction.followup.send(
-            f"Queued **{result.enqueued}/{len(queries)}** tracks from {source_label}.",
+            f"Queued **{result.enqueued}/{len(resolver_queries)}** tracks from {source_label}.",
             ephemeral=True,
         )
-        return True
+
+        # enqueue_batch preserves order and only rejects at the tail when the
+        # queue-size cap is hit, so the first ``result.enqueued`` tracks
+        # match what landed in the queue.
+        enqueued_tracks = tracks[: result.enqueued]
+        if not enqueued_tracks:
+            return
+
+        prompt = SavePlaylistPromptView(
+            container=self.container,
+            tracks=enqueued_tracks,
+            suggested_name=suggested_name,
+            requester_id=interaction.user.id,
+        )
+        msg = await interaction.followup.send(
+            f"I noticed this was a playlist. Save it as a named playlist "
+            f"for later? I'll pre-fill the name with **{suggested_name}**.",
+            view=prompt,
+            ephemeral=True,
+            wait=True,
+        )
+        prompt.set_message(msg)
 
     async def _play_track(
         self,
@@ -665,16 +721,16 @@ class PlaybackCog(BaseCog):
         start: PlaylistStartIndex | None = None,
         shuffle: bool = False,
     ) -> None:
-        """Extract playlist entries.
+        """Extract playlist preview.
 
         When any of ``count``, ``start``, or ``shuffle`` is supplied the
         selection UI is skipped and the slice is auto-enqueued; otherwise
         the existing ``PlaylistView`` is shown.
         """
         resolver = self.container.audio_resolver
-        entries = await resolver.preview_playlist(url)
+        preview = await resolver.preview_playlist(url)
 
-        if not entries:
+        if not preview.entries:
             await interaction.followup.send("That playlist appears to be empty.", ephemeral=True)
             return
 
@@ -682,7 +738,7 @@ class PlaybackCog(BaseCog):
         if auto_enqueue:
             await self._auto_enqueue_youtube_playlist(
                 interaction,
-                entries=entries,
+                preview=preview,
                 count=count,
                 start=start,
                 shuffle=shuffle,
@@ -691,11 +747,13 @@ class PlaybackCog(BaseCog):
 
         from ..views.playlist_view import PlaylistView, build_playlist_embed
 
-        embed = build_playlist_embed(entries)
+        embed = build_playlist_embed(preview.entries)
         view = PlaylistView(
-            entries=entries,
+            entries=preview.entries,
+            playlist_title=preview.title,
             interaction=interaction,
             container=self.container,
+            on_finalize=self._finalize_playlist_import,
         )
         msg = await interaction.followup.send(embed=embed, view=view, wait=True)
         view.set_message(msg)
@@ -704,7 +762,7 @@ class PlaybackCog(BaseCog):
         self,
         interaction: discord.Interaction,
         *,
-        entries: list[PlaylistEntry],
+        preview: PlaylistPreview,
         count: PlaylistImportCount | None,
         start: PlaylistStartIndex | None,
         shuffle: bool,
@@ -714,7 +772,7 @@ class PlaybackCog(BaseCog):
         assert interaction.guild is not None
 
         selected, slice_info = select_playlist_items(
-            entries, start=start, count=count, shuffle=shuffle
+            preview.entries, start=start, count=count, shuffle=shuffle
         )
         if not selected:
             await send_ephemeral(
@@ -737,18 +795,11 @@ class PlaybackCog(BaseCog):
             ephemeral=True,
         )
 
-        urls = [entry.url for entry in selected]
-        tracks = await self.container.audio_resolver.resolve_many(urls)
-        if not tracks:
-            await interaction.followup.send(
-                "Couldn't resolve any of those tracks.", ephemeral=True
-            )
-            return
-
-        result = await self.enqueue_and_start(interaction, tracks)
-        await interaction.followup.send(
-            f"Queued **{result.enqueued}/{len(selected)}** tracks.",
-            ephemeral=True,
+        await self._finalize_playlist_import(
+            interaction,
+            resolver_queries=[entry.url for entry in selected],
+            source_label="YouTube playlist",
+            suggested_name=_suggest_save_name(preview.title, "YouTube playlist"),
         )
 
     # ─────────────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ from yt_dlp import YoutubeDL
 
 from ...application.interfaces.audio_resolver import AudioResolver
 from ...config.settings import AudioSettings
-from ...domain.music.entities import PlaylistEntry, Track
+from ...domain.music.entities import PlaylistEntry, PlaylistPreview, Track
 from ...domain.music.wrappers import TrackId
 from ...domain.shared.types import (
     HttpUrlStr,
@@ -230,14 +230,14 @@ class YtDlpResolver(AudioResolver):
             logger.exception("Failed to search for %r", query)
             return []
 
-    def _extract_playlist_sync(self, url: HttpUrlStr) -> list[YtDlpTrackInfo]:
+    def _extract_playlist_sync(self, url: HttpUrlStr) -> YtDlpExtractResult:
         try:
             with YoutubeDL(params=cast(Any, self._get_playlist_opts().model_dump())) as ydl:
                 data = ydl.extract_info(url, download=False)
-                return self._parse_extract_result(data).entries
+                return self._parse_extract_result(data)
         except Exception:
             logger.exception("Failed to extract playlist from %s", url)
-            return []
+            return YtDlpExtractResult(entries=[], title=None)
 
     async def resolve(self, query: NonEmptyStr) -> Track | None:
         try:
@@ -310,11 +310,11 @@ class YtDlpResolver(AudioResolver):
     async def extract_playlist(self, url: HttpUrlStr) -> list[Track]:
         try:
             async with asyncio.timeout(EXTRACT_TIMEOUT):
-                entries = await asyncio.to_thread(self._extract_playlist_sync, url)
+                extract = await asyncio.to_thread(self._extract_playlist_sync, url)
 
             # Flat extraction returns metadata only, so resolve each entry individually
             tracks: list[Track] = []
-            for entry in entries:
+            for entry in extract.entries:
                 entry_url = entry.url or entry.webpage_url
                 if not entry_url:
                     continue
@@ -332,30 +332,31 @@ class YtDlpResolver(AudioResolver):
             logger.error("Playlist extraction failed for %s: %s", url, e)
             return []
 
-    async def preview_playlist(self, url: HttpUrlStr) -> list[PlaylistEntry]:
+    async def preview_playlist(self, url: HttpUrlStr) -> PlaylistPreview:
         try:
             async with asyncio.timeout(EXTRACT_TIMEOUT):
-                entries = await asyncio.to_thread(self._extract_playlist_sync, url)
+                extract = await asyncio.to_thread(self._extract_playlist_sync, url)
 
-            results: list[PlaylistEntry] = []
-            for entry in entries:
+            entries: list[PlaylistEntry] = []
+            for entry in extract.entries:
                 entry_url = entry.url or entry.webpage_url
                 if not entry_url:
                     continue
-                results.append(
+                entries.append(
                     PlaylistEntry(
                         title=entry.title,
                         url=entry_url,
                         duration_seconds=entry.duration,
                     )
                 )
-            return results
+            title = (extract.title or "").strip() or None
+            return PlaylistPreview(entries=entries, title=title)
         except TimeoutError:
             logger.error("yt-dlp playlist preview timed out after %ds for %s", EXTRACT_TIMEOUT, url)
-            return []
+            return PlaylistPreview(entries=[], title=None)
         except Exception as e:
             logger.error("Playlist preview failed for %s: %s", url, e)
-            return []
+            return PlaylistPreview(entries=[], title=None)
 
     def is_url(self, query: NonEmptyStr) -> bool:
         return any(pattern.search(query) for pattern in URL_PATTERNS)

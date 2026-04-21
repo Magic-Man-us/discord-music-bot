@@ -119,6 +119,7 @@ class YtDlpExtractResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     entries: list[YtDlpTrackInfo] = []
+    title: str | None = None
 
     @field_validator("entries", mode="before")
     @classmethod

@@ -76,6 +76,7 @@ def _make_view(
     entries: list[MagicMock] | None = None,
     user_id: int = 42,
     container: MagicMock | None = None,
+    playlist_title: str | None = "my-playlist",
 ):
     from discord_music_player.infrastructure.discord.views.playlist_view import (
         PlaylistView,
@@ -90,8 +91,15 @@ def _make_view(
     init_interaction.user = MagicMock()
     init_interaction.user.id = user_id
 
-    view = PlaylistView(entries=entries, interaction=init_interaction, container=container)
-    return view, container
+    on_finalize = AsyncMock()
+    view = PlaylistView(
+        entries=entries,
+        playlist_title=playlist_title,
+        interaction=init_interaction,
+        container=container,
+        on_finalize=on_finalize,
+    )
+    return view, container, on_finalize
 
 
 # =============================================================================
@@ -222,7 +230,7 @@ class TestBuildSelectOptions:
 class TestPlaylistViewInit:
     def test_select_added_when_entries_within_limit(self) -> None:
         entries = [_make_entry(title=f"Song {i}") for i in range(5)]
-        view, _ = _make_view(entries=entries)
+        view, _, _ = _make_view(entries=entries)
 
         selects = [item for item in view.children if isinstance(item, discord.ui.Select)]
         assert len(selects) == 1
@@ -232,7 +240,7 @@ class TestPlaylistViewInit:
             _make_entry(title=f"Song {i}")
             for i in range(PlaylistConstants.MAX_SELECT_OPTIONS + 1)
         ]
-        view, _ = _make_view(entries=entries)
+        view, _, _ = _make_view(entries=entries)
 
         selects = [item for item in view.children if isinstance(item, discord.ui.Select)]
         assert len(selects) == 0
@@ -241,13 +249,13 @@ class TestPlaylistViewInit:
         entries = [
             _make_entry(title=f"Song {i}") for i in range(PlaylistConstants.MAX_SELECT_OPTIONS)
         ]
-        view, _ = _make_view(entries=entries)
+        view, _, _ = _make_view(entries=entries)
 
         selects = [item for item in view.children if isinstance(item, discord.ui.Select)]
         assert len(selects) == 1
 
     def test_timeout_matches_constant(self) -> None:
-        view, _ = _make_view()
+        view, _, _ = _make_view()
         assert view.timeout == PlaylistConstants.VIEW_TIMEOUT
 
     def test_entries_truncated_to_max(self) -> None:
@@ -255,7 +263,7 @@ class TestPlaylistViewInit:
             _make_entry(title=f"Song {i}")
             for i in range(PlaylistConstants.MAX_PLAYLIST_TRACKS + 10)
         ]
-        view, _ = _make_view(entries=entries)
+        view, _, _ = _make_view(entries=entries)
         assert len(view._entries) == PlaylistConstants.MAX_PLAYLIST_TRACKS
 
 
@@ -267,7 +275,7 @@ class TestPlaylistViewInit:
 class TestInteractionCheck:
     @pytest.mark.asyncio
     async def test_allows_requester(self) -> None:
-        view, _ = _make_view(user_id=42)
+        view, _, _ = _make_view(user_id=42)
         interaction = _make_interaction(user_id=42)
 
         result = await view.interaction_check(interaction)
@@ -276,7 +284,7 @@ class TestInteractionCheck:
 
     @pytest.mark.asyncio
     async def test_blocks_other_user(self) -> None:
-        view, _ = _make_view(user_id=42)
+        view, _, _ = _make_view(user_id=42)
         interaction = _make_interaction(user_id=99)
 
         result = await view.interaction_check(interaction)
@@ -294,55 +302,49 @@ class TestInteractionCheck:
 
 class TestAddAllButton:
     @pytest.mark.asyncio
-    async def test_enqueues_all_tracks(self) -> None:
+    async def test_delegates_to_on_finalize(self) -> None:
         entries = [_make_entry(title=f"Song {i}") for i in range(3)]
-        container = _make_container()
-        track = MagicMock()
-        container.audio_resolver.resolve = AsyncMock(return_value=track)
-        view, _ = _make_view(entries=entries, container=container)
+        view, _, on_finalize = _make_view(entries=entries)
         interaction = _make_interaction()
 
         await view.add_all_button.callback(interaction)
 
-        assert container.audio_resolver.resolve.await_count == 3
-        assert container.queue_service.enqueue.await_count == 3
+        on_finalize.assert_awaited_once()
+        queries = on_finalize.await_args.kwargs["resolver_queries"]
+        assert len(queries) == 3
 
     @pytest.mark.asyncio
-    async def test_edits_message_with_summary(self) -> None:
+    async def test_edits_message_with_progress(self) -> None:
         entries = [_make_entry(title=f"Song {i}") for i in range(2)]
-        container = _make_container()
-        track = MagicMock()
-        container.audio_resolver.resolve = AsyncMock(return_value=track)
-        view, _ = _make_view(entries=entries, container=container)
+        view, _, _ = _make_view(entries=entries)
         interaction = _make_interaction()
 
         await view.add_all_button.callback(interaction)
 
-        interaction.edit_original_response.assert_awaited_once()
-        summary = interaction.edit_original_response.call_args[1]["content"]
-        assert "2" in summary
+        interaction.response.edit_message.assert_awaited_once()
+        content = interaction.response.edit_message.call_args[1]["content"]
+        assert "2" in content
 
 
 class TestShuffleAllButton:
     @pytest.mark.asyncio
-    async def test_enqueues_all_tracks_shuffled(self) -> None:
-        entries = [_make_entry(title=f"Song {i}") for i in range(5)]
-        container = _make_container()
-        track = MagicMock()
-        container.audio_resolver.resolve = AsyncMock(return_value=track)
-        view, _ = _make_view(entries=entries, container=container)
+    async def test_delegates_same_multiset(self) -> None:
+        entries = [
+            _make_entry(title=f"Song {i}", url=f"https://youtu.be/{i}") for i in range(5)
+        ]
+        view, _, on_finalize = _make_view(entries=entries)
         interaction = _make_interaction()
 
-        with patch("random.shuffle"):
-            await view.shuffle_all_button.callback(interaction)
+        await view.shuffle_all_button.callback(interaction)
 
-        assert container.audio_resolver.resolve.await_count == 5
+        queries = on_finalize.await_args.kwargs["resolver_queries"]
+        assert sorted(queries) == sorted(e.url for e in entries)
 
 
 class TestCancelButton:
     @pytest.mark.asyncio
     async def test_cancels_and_edits_message(self) -> None:
-        view, _ = _make_view()
+        view, _, _ = _make_view()
         interaction = _make_interaction()
 
         await view.cancel_button.callback(interaction)
@@ -354,7 +356,7 @@ class TestCancelButton:
 
     @pytest.mark.asyncio
     async def test_disables_all_items(self) -> None:
-        view, _ = _make_view()
+        view, _, _ = _make_view()
         interaction = _make_interaction()
 
         await view.cancel_button.callback(interaction)
@@ -371,86 +373,84 @@ class TestCancelButton:
 
 class TestOnSelect:
     @pytest.mark.asyncio
-    async def test_enqueues_selected_tracks(self) -> None:
-        entries = [_make_entry(title=f"Song {i}") for i in range(3)]
-        container = _make_container()
-        track = MagicMock()
-        container.audio_resolver.resolve = AsyncMock(return_value=track)
-        view, _ = _make_view(entries=entries, container=container)
+    async def test_delegates_selected_urls_to_finalize(self) -> None:
+        entries = [
+            _make_entry(title=f"Song {i}", url=f"https://youtu.be/{i}") for i in range(3)
+        ]
+        view, _, on_finalize = _make_view(entries=entries)
         interaction = _make_interaction()
 
-        # Patch the select's values property to simulate user selection
         for item in view.children:
             if isinstance(item, discord.ui.Select):
-                with patch.object(type(item), "values", new_callable=lambda: property(lambda self: ["0", "2"])):
+                with patch.object(
+                    type(item),
+                    "values",
+                    new_callable=lambda: property(lambda self: ["0", "2"]),
+                ):
                     await view._on_select(interaction)
                 break
 
-        assert container.audio_resolver.resolve.await_count == 2
+        queries = on_finalize.await_args.kwargs["resolver_queries"]
+        assert queries == ["https://youtu.be/0", "https://youtu.be/2"]
 
 
 # =============================================================================
-# _enqueue_tracks Tests
+# on_finalize invocation
 # =============================================================================
 
 
-class TestEnqueueTracks:
+class TestFinalizeCallback:
     @pytest.mark.asyncio
-    async def test_calls_resolve_and_enqueue(self) -> None:
-        entries = [_make_entry(title=f"Song {i}") for i in range(2)]
-        container = _make_container()
-        track = MagicMock()
-        container.audio_resolver.resolve = AsyncMock(return_value=track)
-        view, _ = _make_view(entries=entries, container=container)
+    async def test_add_all_invokes_finalize_with_all_urls(self) -> None:
+        entries = [
+            _make_entry(title="A", url="https://youtu.be/a"),
+            _make_entry(title="B", url="https://youtu.be/b"),
+        ]
+        view, _, on_finalize = _make_view(entries=entries, playlist_title="My Mix")
         interaction = _make_interaction()
 
-        await view._enqueue_tracks(interaction, [0, 1])
+        await view.add_all_button.callback(interaction)
 
-        assert container.audio_resolver.resolve.await_count == 2
-        assert container.queue_service.enqueue.await_count == 2
+        on_finalize.assert_awaited_once()
+        kwargs = on_finalize.await_args.kwargs
+        assert kwargs["resolver_queries"] == ["https://youtu.be/a", "https://youtu.be/b"]
+        assert kwargs["source_label"] == "YouTube playlist"
+        assert kwargs["suggested_name"] == "my mix"
 
     @pytest.mark.asyncio
-    async def test_should_start_triggers_voice_and_playback(self) -> None:
+    async def test_shuffle_all_sends_same_multiset(self) -> None:
+        entries = [
+            _make_entry(title=f"T{i}", url=f"https://youtu.be/{i}") for i in range(5)
+        ]
+        view, _, on_finalize = _make_view(entries=entries)
+        interaction = _make_interaction()
+
+        await view.shuffle_all_button.callback(interaction)
+
+        on_finalize.assert_awaited_once()
+        queries = on_finalize.await_args.kwargs["resolver_queries"]
+        assert sorted(queries) == sorted(e.url for e in entries)
+
+    @pytest.mark.asyncio
+    async def test_no_guild_short_circuits(self) -> None:
         entries = [_make_entry()]
-        container = _make_container()
-        track = MagicMock()
-        container.audio_resolver.resolve = AsyncMock(return_value=track)
-        enqueue_result = MagicMock()
-        enqueue_result.success = True
-        enqueue_result.should_start = True
-        container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
-        view, _ = _make_view(entries=entries, container=container)
-        interaction = _make_interaction()
-
-        await view._enqueue_tracks(interaction, [0])
-
-        container.playback_service.start_playback.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_skips_unresolvable_tracks(self) -> None:
-        entries = [_make_entry(title="Good"), _make_entry(title="Bad")]
-        container = _make_container()
-        good_track = MagicMock()
-        container.audio_resolver.resolve = AsyncMock(side_effect=[good_track, None])
-        view, _ = _make_view(entries=entries, container=container)
-        interaction = _make_interaction()
-
-        await view._enqueue_tracks(interaction, [0, 1])
-
-        # Only 1 enqueue call since second resolve returned None
-        assert container.queue_service.enqueue.await_count == 1
-
-    @pytest.mark.asyncio
-    async def test_no_guild_returns_early(self) -> None:
-        entries = [_make_entry()]
-        container = _make_container()
-        view, _ = _make_view(entries=entries, container=container)
+        view, _, on_finalize = _make_view(entries=entries)
         interaction = _make_interaction()
         interaction.guild = None
 
-        await view._enqueue_tracks(interaction, [0])
+        await view.add_all_button.callback(interaction)
 
-        container.audio_resolver.resolve.assert_not_awaited()
+        on_finalize.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_missing_title_falls_back_to_default(self) -> None:
+        entries = [_make_entry()]
+        view, _, on_finalize = _make_view(entries=entries, playlist_title=None)
+        interaction = _make_interaction()
+
+        await view.add_all_button.callback(interaction)
+
+        assert on_finalize.await_args.kwargs["suggested_name"] == "youtube-playlist"
 
 
 # =============================================================================
@@ -461,7 +461,7 @@ class TestEnqueueTracks:
 class TestOnTimeout:
     @pytest.mark.asyncio
     async def test_disables_items_and_deletes_message(self) -> None:
-        view, _ = _make_view()
+        view, _, _ = _make_view()
         message = AsyncMock()
         view.set_message(message)
 
@@ -474,7 +474,7 @@ class TestOnTimeout:
 
     @pytest.mark.asyncio
     async def test_no_message_does_not_raise(self) -> None:
-        view, _ = _make_view()
+        view, _, _ = _make_view()
         # No message set
         await view.on_timeout()  # should not raise
 
@@ -491,7 +491,7 @@ class TestRaceGuard:
         container = _make_container()
         track = MagicMock()
         container.audio_resolver.resolve = AsyncMock(return_value=track)
-        view, _ = _make_view(entries=entries, container=container)
+        view, _, _ = _make_view(entries=entries, container=container)
         interaction1 = _make_interaction()
         interaction2 = _make_interaction()
 
@@ -506,7 +506,7 @@ class TestRaceGuard:
 
     @pytest.mark.asyncio
     async def test_cancel_then_add_all_returns_early(self) -> None:
-        view, _ = _make_view()
+        view, _, _ = _make_view()
         interaction1 = _make_interaction()
         interaction2 = _make_interaction()
 
@@ -518,7 +518,7 @@ class TestRaceGuard:
 
     @pytest.mark.asyncio
     async def test_timeout_then_cancel_returns_early(self) -> None:
-        view, _ = _make_view()
+        view, _, _ = _make_view()
         message = AsyncMock()
         view.set_message(message)
 

@@ -107,6 +107,15 @@ _Relationships.model_rebuild()
 _TracksRelation.model_rebuild()
 
 
+class AppleMusicPlaylist(BaseModel):
+    """Result of fetching an Apple Music playlist/album/song."""
+
+    model_config = ConfigDict(frozen=True)
+
+    queries: list[NonEmptyStr]
+    name: NonEmptyStr | None = None
+
+
 def parse_apple_music_url(url: str) -> AppleMusicResource | None:
     """``/album/<name>/<id>?i=<track>`` is treated as a song lookup because
     that's the row the UI highlights."""
@@ -150,15 +159,27 @@ class AppleMusicClient:
         self._token_fetched_at: float = 0.0
         self._lock = asyncio.Lock()
 
-    async def get_track_queries(self, url: str) -> list[str]:
-        """Empty list is a valid response (empty playlist). Raises
-        ``AppleMusicError`` on unknown URLs or API failures."""
+    async def get_playlist(self, url: str) -> AppleMusicPlaylist:
+        """Fetch the playlist/album/song as search queries + playlist name.
+
+        Empty ``queries`` is a valid response (empty playlist). Raises
+        ``AppleMusicError`` on unknown URLs or API failures.
+        """
         resource = parse_apple_music_url(url)
         if resource is None:
             raise AppleMusicError(f"Not an Apple Music URL: {url}")
 
         data = await self._fetch_catalog(resource)
-        return self._extract_queries(resource.resource_type, data)
+        queries = self._extract_queries(resource.resource_type, data)
+        name = self._extract_root_name(data)
+        return AppleMusicPlaylist(queries=queries, name=name)
+
+    @staticmethod
+    def _extract_root_name(catalog: _CatalogResponse) -> str | None:
+        if not catalog.data:
+            return None
+        attrs = catalog.data[0].attributes
+        return attrs.name if attrs is not None else None
 
     async def _fetch_catalog(self, resource: AppleMusicResource) -> _CatalogResponse:
         is_song = resource.resource_type is AppleResourceType.SONG

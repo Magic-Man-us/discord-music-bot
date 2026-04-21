@@ -45,6 +45,15 @@ class PlaylistEntry(BaseModel):
     duration_seconds: DurationSeconds | None = None
 
 
+class PlaylistPreview(BaseModel):
+    """Lightweight preview of a remote playlist: its own title + track entries."""
+
+    model_config = ConfigDict(frozen=True)
+
+    entries: list[PlaylistEntry]
+    title: TrackTitleStr | None = None
+
+
 class Track(BaseModel):
     model_config = ConfigDict(frozen=True, strict=True)
 
