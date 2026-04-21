@@ -23,6 +23,7 @@ class ExecutePlayCallback(Protocol):
         query: str,
         *,
         start_seconds: StartSeconds | None = ...,
+        count: int | None = ...,
     ) -> None: ...
 
 

@@ -9,7 +9,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from ....domain.music.entities import Track
-from ....domain.shared.constants import UIConstants
+from ....domain.shared.constants import PlaylistConstants, UIConstants
 from ....domain.shared.types import DiscordSnowflake, HttpUrlStr
 from .base_cog import BaseCog
 from ..guards.voice_guards import (
@@ -74,12 +74,14 @@ class PlaybackCog(BaseCog):
     @app_commands.describe(
         query="YouTube URL or search query",
         timestamp='Start position (e.g. "1:30" or "90")',
+        count="How many tracks to import from an Apple Music playlist/album (default 5, max 50)",
     )
     async def play(
         self,
         interaction: discord.Interaction,
         query: str,
         timestamp: str | None = None,
+        count: app_commands.Range[int, 1, PlaylistConstants.MAX_PLAYLIST_TRACKS] | None = None,
     ) -> None:
         from ....domain.music.wrappers import StartSeconds
 
@@ -98,7 +100,7 @@ class PlaybackCog(BaseCog):
         seek = StartSeconds.from_optional(raw_seconds)
 
         await interaction.response.defer()
-        await self._execute_play(interaction, query, start_seconds=seek)
+        await self._execute_play(interaction, query, start_seconds=seek, count=count)
 
     async def _ensure_voice_ready(
         self,
@@ -145,6 +147,7 @@ class PlaybackCog(BaseCog):
         query: str,
         *,
         start_seconds: StartSeconds | None = None,
+        count: int | None = None,
     ) -> None:
         """Full play flow: voice checks, warmup with retry view, connect, play.
 
@@ -209,7 +212,9 @@ class PlaybackCog(BaseCog):
             return
 
         if is_apple_music_url(query):
-            handled = await self._handle_apple_music_url(interaction, query)
+            handled = await self._handle_apple_music_url(
+                interaction, query, count_override=count
+            )
             if handled:
                 return
             # Not handled (e.g. song URL) → fall through to single-track search.
@@ -240,17 +245,19 @@ class PlaybackCog(BaseCog):
         self,
         interaction: discord.Interaction,
         url: str,
+        *,
+        count_override: int | None,
     ) -> bool:
-        """Expand an Apple Music playlist/album URL and ask the user how many
-        tracks to queue. Returns True when handled as a multi-track resource;
-        False when the caller should keep processing the URL as a single
-        track (song or album?i=track)."""
+        """Expand an Apple Music playlist/album URL, enqueue up to
+        ``count_override`` tracks (default: EXTERNAL_PLAYLIST_DEFAULT_COUNT,
+        max: MAX_PLAYLIST_TRACKS). Returns True when handled as a multi-track
+        resource; False when the caller should keep processing the URL as a
+        single track (song or album?i=track)."""
         from ....infrastructure.audio.apple_music import (
             AppleMusicError,
             AppleResourceType,
             parse_apple_music_url,
         )
-        from ..views.apple_music_count_view import ExternalPlaylistCountView
 
         assert interaction.guild is not None
 
@@ -259,7 +266,7 @@ class PlaybackCog(BaseCog):
             return False
 
         try:
-            queries = await self.container.apple_music_client.get_track_queries(url)
+            all_queries = await self.container.apple_music_client.get_track_queries(url)
         except AppleMusicError as exc:
             self.logger.warning("Apple Music lookup failed for %s: %s", url, exc)
             await send_ephemeral(
@@ -269,49 +276,45 @@ class PlaybackCog(BaseCog):
             )
             return True
 
-        if not queries:
+        if not all_queries:
             await send_ephemeral(interaction, "That Apple Music playlist is empty.")
             return True
 
+        requested = count_override or PlaylistConstants.EXTERNAL_PLAYLIST_DEFAULT_COUNT
+        cap = min(requested, PlaylistConstants.MAX_PLAYLIST_TRACKS, len(all_queries))
+        queries = all_queries[:cap]
+        truncated = len(all_queries) - len(queries)
+
         source_label = f"Apple Music {resource.resource_type.value[:-1]}"
         self.logger.info(
-            "Apple Music %s: %d tracks available for guild %s",
+            "Apple Music %s: enqueuing %d/%d tracks for guild %s",
             resource.resource_type.value,
             len(queries),
+            len(all_queries),
             interaction.guild.id,
         )
 
-        # Single-track resource (very small album) — skip the picker.
-        if len(queries) == 1:
-            tracks = await self.container.audio_resolver.resolve_many(queries)
-            if not tracks:
-                await interaction.followup.send(
-                    "Couldn't find that track on YouTube.", ephemeral=True
-                )
-                return True
-            result = await self.enqueue_and_start(interaction, tracks)
+        header = f"Queueing **{len(queries)}** of **{len(all_queries)}** tracks"
+        if truncated > 0 and count_override is None:
+            header += f" (default — pass `count:` to queue up to {PlaylistConstants.MAX_PLAYLIST_TRACKS})"
+        await interaction.followup.send(
+            f"{header} from {source_label}. Resolving on YouTube…",
+            ephemeral=True,
+        )
+
+        tracks = await self.container.audio_resolver.resolve_many(queries)
+        if not tracks:
             await interaction.followup.send(
-                f"Queued **{result.enqueued}/1** track from {source_label}.",
+                "Couldn't find any of those tracks on YouTube.",
                 ephemeral=True,
             )
             return True
 
-        view = ExternalPlaylistCountView(
-            queries=queries,
-            interaction=interaction,
-            container=self.container,
-            source_label=source_label,
-        )
-        msg = await interaction.followup.send(
-            content=(
-                f"Found **{len(queries)}** tracks in that {source_label}. "
-                f"How many do you want to queue?"
-            ),
-            view=view,
+        result = await self.enqueue_and_start(interaction, tracks)
+        await interaction.followup.send(
+            f"Queued **{result.enqueued}/{len(queries)}** tracks from {source_label}.",
             ephemeral=True,
-            wait=True,
         )
-        view.set_message(msg)
         return True
 
     async def _play_track(
