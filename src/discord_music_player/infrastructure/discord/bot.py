@@ -315,11 +315,11 @@ class MusicBot(commands.Bot):
         for guild_id in self.settings.discord.test_guild_ids:
             guild = discord.Object(id=guild_id)
             try:
-                self.tree.copy_global_to(guild=guild)
-                synced = await self.tree.sync(guild=guild)
-                logger.info("Synced %s commands to guild %s", len(synced), guild_id)
+                self.tree.clear_commands(guild=guild)
+                await self.tree.sync(guild=guild)
+                logger.info("Cleared guild-scoped commands in %s", guild_id)
             except Exception as e:
-                logger.warning("Failed to sync to guild %s: %s", guild_id, e)
+                logger.warning("Failed to clear guild commands in %s: %s", guild_id, e)
 
     # ------------------------------------------------------------------
     # Lifecycle
