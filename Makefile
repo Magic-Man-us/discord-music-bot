@@ -1,4 +1,7 @@
-.PHONY: help install dev test test-cov lint format run clean db-reset check pot-start pot-stop pot-logs pot-status prereqs setup
+.PHONY: help install dev test test-cov lint format run clean db-reset check pot-start pot-stop pot-logs pot-status prereqs setup service-status service-start service-stop service-restart service-logs service-file-logs
+
+SERVICE_NAME ?= discord-music-bot
+LOG_FILE ?= logs/music_bot.log
 
 # Colors for output
 BLUE := \033[0;34m
@@ -233,3 +236,21 @@ pot-status:  ## Check POT provider status
 		echo "  Status: $(YELLOW)Not running$(NC)"; \
 		echo "  Run 'make pot-start' to start it"; \
 	fi
+
+service-status:  ## Show systemd service status
+	@systemctl status $(SERVICE_NAME) --no-pager
+
+service-start:  ## Start the systemd service (requires sudo)
+	@sudo systemctl start $(SERVICE_NAME)
+
+service-stop:  ## Stop the systemd service (requires sudo)
+	@sudo systemctl stop $(SERVICE_NAME)
+
+service-restart:  ## Restart the systemd service (requires sudo)
+	@sudo systemctl restart $(SERVICE_NAME)
+
+service-logs:  ## Follow systemd journal for the service
+	@journalctl -u $(SERVICE_NAME) -f
+
+service-file-logs:  ## Tail the bot log file written by the bot itself
+	@tail -f $(LOG_FILE)
