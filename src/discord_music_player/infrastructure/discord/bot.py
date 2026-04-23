@@ -306,23 +306,20 @@ class MusicBot(commands.Bot):
     # ------------------------------------------------------------------
 
     async def _sync_commands(self) -> None:
-        test_guilds = self.settings.discord.test_guild_ids
+        try:
+            synced = await self.tree.sync()
+            logger.info("Synced %s commands globally", len(synced))
+        except Exception as e:
+            logger.warning("Failed to sync commands globally: %s", e)
 
-        if test_guilds:
-            for guild_id in test_guilds:
-                guild = discord.Object(id=guild_id)
-                try:
-                    self.tree.copy_global_to(guild=guild)
-                    synced = await self.tree.sync(guild=guild)
-                    logger.info("Synced %s commands to guild %s", len(synced), guild_id)
-                except Exception as e:
-                    logger.warning("Failed to sync to guild %s: %s", guild_id, e)
-        else:
+        for guild_id in self.settings.discord.test_guild_ids:
+            guild = discord.Object(id=guild_id)
             try:
-                synced = await self.tree.sync()
-                logger.info("Synced %s commands globally", len(synced))
+                self.tree.copy_global_to(guild=guild)
+                synced = await self.tree.sync(guild=guild)
+                logger.info("Synced %s commands to guild %s", len(synced), guild_id)
             except Exception as e:
-                logger.warning("Failed to sync commands globally: %s", e)
+                logger.warning("Failed to sync to guild %s: %s", guild_id, e)
 
     # ------------------------------------------------------------------
     # Lifecycle
