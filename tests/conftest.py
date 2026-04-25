@@ -254,6 +254,26 @@ class StubAudioResolver:
             raise RuntimeError("StubAudioResolver.resolve forced error")
         return self.resolved_track
 
+
+class FakeContainer:
+    """Minimal container stub for cog tests. Override attributes per test.
+
+    Cog tests typically need: voice_warmup_tracker, queue_service,
+    history_repository, voice_adapter, message_state_manager. Set whatever
+    the cog under test reads via constructor kwargs or attribute assignment.
+    """
+
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+
+def make_bot_with_container(container):
+    """Build a bare bot stub carrying the container, for BaseCog.setup() flows."""
+    bot = MagicMock()
+    bot.container = container
+    return bot
+
 # ============================================================================
 # Database Fixtures
 # ============================================================================
