@@ -169,7 +169,7 @@ run:  ## Run the Discord bot
 
 run-tmux:  ## Run the bot in tmux with auto-respawn
 	@echo "$(BLUE)Starting bot in tmux session...$(NC)"
-	./music_start.py --respawn start
+	./scripts/music_start.py --respawn start
 
 db-reset:  ## Reset the database (WARNING: deletes all data)
 	@echo "$(YELLOW)⚠ This will delete all database data!$(NC)"

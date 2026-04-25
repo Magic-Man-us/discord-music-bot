@@ -19,7 +19,7 @@ A Discord music bot with AI-powered radio, built with clean architecture. Plays 
 - **FFmpeg** - [ffmpeg.org](https://ffmpeg.org/)
 - **Docker** and **Docker Compose** - For the YouTube POT provider ([Install Docker](https://docs.docker.com/get-docker/))
 - **Discord Bot Token** - [Developer Portal](https://discord.com/developers/applications) with Message Content and Server Members intents enabled
-- **tmux** *(optional)* - Only needed for `make run-tmux` / `music_start.py`
+- **tmux** *(optional)* - Only needed for `make run-tmux` / `scripts/music_start.py`
 
 ### System packages (Linux)
 
@@ -183,17 +183,17 @@ All settings use Pydantic nested delimiter format (`SECTION__KEY=value`).
 
 ## Running in Production
 
-The `music_start.py` script manages the bot inside a detached [tmux](https://github.com/tmux/tmux) session, providing process lifecycle management and optional auto-restart on crash. Requires `tmux` to be installed (`apt install tmux` or `brew install tmux`).
+The `scripts/music_start.py` script manages the bot inside a detached [tmux](https://github.com/tmux/tmux) session, providing process lifecycle management and optional auto-restart on crash. Requires `tmux` to be installed (`apt install tmux` or `brew install tmux`).
 
 ### Subcommands
 
 | Command | Description |
 |---------|-------------|
-| `./music_start.py start` | Start the bot in a detached tmux session |
-| `./music_start.py stop` | Stop the bot and kill the tmux session |
-| `./music_start.py restart` | Stop then start the bot |
-| `./music_start.py attach` | Attach to the running tmux session (Ctrl+B, D to detach) |
-| `./music_start.py status` | Show whether the session is running |
+| `./scripts/music_start.py start` | Start the bot in a detached tmux session |
+| `./scripts/music_start.py stop` | Stop the bot and kill the tmux session |
+| `./scripts/music_start.py restart` | Stop then start the bot |
+| `./scripts/music_start.py attach` | Attach to the running tmux session (Ctrl+B, D to detach) |
+| `./scripts/music_start.py status` | Show whether the session is running |
 
 ### Flags
 
@@ -208,22 +208,22 @@ The `music_start.py` script manages the bot inside a detached [tmux](https://git
 
 ```bash
 # Start with auto-restart (recommended)
-./music_start.py start --respawn
+./scripts/music_start.py start --respawn
 
 # Start with custom log location
-./music_start.py start --respawn --log-file /var/log/music_bot.log
+./scripts/music_start.py start --respawn --log-file /var/log/music_bot.log
 
 # View live logs
 tail -f logs/music_bot.log
 
 # Attach to see real-time output (Ctrl+B, D to detach)
-./music_start.py attach
+./scripts/music_start.py attach
 
 # Restart after a config change
-./music_start.py restart --respawn
+./scripts/music_start.py restart --respawn
 ```
 
-There is also a Makefile shortcut: `make run-tmux` runs `./music_start.py start --respawn`.
+There is also a Makefile shortcut: `make run-tmux` runs `./scripts/music_start.py start --respawn`.
 
 ### Docker Deployment
 

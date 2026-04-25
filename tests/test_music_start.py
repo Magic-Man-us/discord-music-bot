@@ -6,11 +6,14 @@ restarting, attaching to, and checking status of the Discord bot
 running in a tmux session.
 """
 
+import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-import music_start
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import music_start  # noqa: E402  -- relies on sys.path tweak above
 
 
 class TestUtilityFunctions:
@@ -23,12 +26,12 @@ class TestUtilityFunctions:
 
         assert result == "discord-music-player"
 
-    def test_default_cmd_fallback_to_main_py(self):
-        """Should fallback to src/discord_music_player/main.py with current Python if script not installed."""
+    def test_default_cmd_fallback_to_module(self):
+        """Should fallback to ``python -m discord_music_player`` if script not installed."""
         with patch("shutil.which", return_value=None):
             result = music_start._default_cmd()
 
-        assert "src/discord_music_player/main.py" in result
+        assert "-m discord_music_player" in result
         assert "python" in result.lower()
 
     def test_tmux_exists_when_available(self):

@@ -21,7 +21,7 @@ The `bgutil-ytdlp-pot-provider` is a service that generates Proof of Origin (PO)
 
 3. **Run your bot:**
    ```bash
-   python music_start.py
+   python scripts/music_start.py
    # or
    make run
    ```

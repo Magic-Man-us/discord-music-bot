@@ -26,14 +26,15 @@ def _default_cmd() -> str:
     """Determine the command to run the bot.
 
     Prefers the installed console script 'discord-music-player' if available,
-    otherwise falls back to running src/discord_music_player/main.py with the current Python interpreter.
+    otherwise falls back to ``python -m discord_music_player`` so the package
+    context is set up correctly (relative imports require it).
 
     Returns:
         Shell command string to execute the bot.
     """
     if shutil.which("discord-music-player"):
         return "discord-music-player"
-    return f"{shlex.quote(sys.executable)} src/discord_music_player/main.py"
+    return f"{shlex.quote(sys.executable)} -m discord_music_player"
 
 
 DEFAULT_CMD = _default_cmd()
@@ -173,7 +174,7 @@ def start_session(
     print(f"[ok] Bot started in tmux session '{session}'")
     print(f"    attach:  tmux attach -t {session}")
     print(f"    logs:    tail -f {log_path}")
-    print("    stop:    python music_start.py stop")
+    print("    stop:    ./scripts/music_start.py stop")
 
 
 def stop_session(session: str) -> None:
@@ -203,7 +204,7 @@ def attach_session(session: str) -> None:
     """
     if not has_session(session):
         print(f"[err] Session '{session}' is not running.")
-        print("      Start it with: python music_start.py start")
+        print("      Start it with: ./scripts/music_start.py start")
         sys.exit(1)
 
     # Replace current process with tmux attach

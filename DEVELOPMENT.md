@@ -29,7 +29,7 @@ Run `make help` to see all available targets. Below is the full reference:
 | Command | Description |
 |---------|-------------|
 | `make run` | Run the bot directly (requires `.env` file) |
-| `make run-tmux` | Run the bot in tmux with auto-respawn (uses `music_start.py`) |
+| `make run-tmux` | Run the bot in tmux with auto-respawn (uses `scripts/music_start.py`) |
 
 ### Database
 
