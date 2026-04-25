@@ -531,6 +531,29 @@ class TestSyncCommands:
             # Should not raise
             await bot._sync_commands()
 
+    @pytest.mark.asyncio
+    async def test_sync_commands_clears_guild_scoped_commands(
+        self, mock_container, mock_settings
+    ):
+        """Should clear guild-scoped commands in each test guild to prevent
+        duplicate commands from appearing alongside global registrations."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        mock_settings.discord.test_guild_ids = [111111, 222222]
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+
+        with (
+            patch.object(
+                bot.tree, "sync", new_callable=AsyncMock, return_value=[]
+            ),
+            patch.object(bot.tree, "clear_commands") as mock_clear,
+        ):
+            await bot._sync_commands()
+
+            assert mock_clear.call_count == 2
+            cleared_ids = {call.kwargs["guild"].id for call in mock_clear.call_args_list}
+            assert cleared_ids == {111111, 222222}
+
 
 # =============================================================================
 # App Command Error Handler Tests

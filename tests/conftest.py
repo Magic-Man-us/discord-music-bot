@@ -63,6 +63,26 @@ async def cache_repository(in_memory_database):
     return SQLiteCacheRepository(in_memory_database)
 
 
+@pytest_asyncio.fixture
+async def favorites_repository(in_memory_database):
+    """Create a favorites repository with in-memory database."""
+    from discord_music_player.infrastructure.persistence.repositories.favorites_repository import (
+        SQLiteFavoritesRepository,
+    )
+
+    return SQLiteFavoritesRepository(in_memory_database)
+
+
+@pytest_asyncio.fixture
+async def saved_queue_repository(in_memory_database):
+    """Create a saved queue repository with in-memory database."""
+    from discord_music_player.infrastructure.persistence.repositories.saved_queue_repository import (
+        SQLiteSavedQueueRepository,
+    )
+
+    return SQLiteSavedQueueRepository(in_memory_database)
+
+
 # ============================================================================
 # Domain Entity Fixtures
 # ============================================================================
