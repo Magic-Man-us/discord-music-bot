@@ -294,3 +294,149 @@ async def test_setup_no_container_raises():
 
     with pytest.raises(RuntimeError):
         await setup(bot)
+
+
+# =============================================================================
+# cog_load / cog_unload — subscribe/unsubscribe to RadioPoolExhausted
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_cog_load_subscribes_once(cog):
+    from discord_music_player.domain.shared.events import reset_event_bus
+
+    reset_event_bus()
+    cog._bus = MagicMock()
+    cog._subscribed = False
+
+    await cog.cog_load()
+    assert cog._subscribed is True
+    cog._bus.subscribe.assert_called_once()
+
+    cog._bus.subscribe.reset_mock()
+    await cog.cog_load()
+    cog._bus.subscribe.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_cog_unload_unsubscribes_once(cog):
+    cog._bus = MagicMock()
+    cog._subscribed = True
+
+    await cog.cog_unload()
+    assert cog._subscribed is False
+    cog._bus.unsubscribe.assert_called_once()
+
+    cog._bus.unsubscribe.reset_mock()
+    await cog.cog_unload()
+    cog._bus.unsubscribe.assert_not_called()
+
+
+# =============================================================================
+# _on_pool_exhausted
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_on_pool_exhausted_warns_when_no_channel_id(cog):
+    from discord_music_player.domain.shared.events import RadioPoolExhausted
+
+    event = RadioPoolExhausted(guild_id=1, channel_id=None, tracks_generated=5)
+    cog.logger = MagicMock()
+    await cog._on_pool_exhausted(event)
+    cog.logger.warning.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_on_pool_exhausted_returns_when_channel_missing(cog):
+    from discord_music_player.domain.shared.events import RadioPoolExhausted
+
+    cog.bot.get_channel = MagicMock(return_value=None)
+    event = RadioPoolExhausted(guild_id=1, channel_id=42, tracks_generated=5)
+    await cog._on_pool_exhausted(event)
+
+
+@pytest.mark.asyncio
+async def test_on_pool_exhausted_returns_when_channel_not_messageable(cog):
+    from discord_music_player.domain.shared.events import RadioPoolExhausted
+
+    cog.bot.get_channel = MagicMock(return_value=object())
+    event = RadioPoolExhausted(guild_id=1, channel_id=42, tracks_generated=5)
+    await cog._on_pool_exhausted(event)
+
+
+@pytest.mark.asyncio
+async def test_on_pool_exhausted_sends_continue_prompt(cog, mock_container):
+    from discord_music_player.domain.shared.events import RadioPoolExhausted
+
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock(return_value=MagicMock())
+    cog.bot.get_channel = MagicMock(return_value=channel)
+
+    state = MagicMock()
+    state.tracks_consumed = 7
+    mock_container.radio_service.get_state = MagicMock(return_value=state)
+
+    event = RadioPoolExhausted(guild_id=1, channel_id=42, tracks_generated=5)
+    await cog._on_pool_exhausted(event)
+
+    channel.send.assert_awaited_once()
+    kwargs = channel.send.call_args.kwargs
+    assert "embed" in kwargs and "view" in kwargs
+
+
+@pytest.mark.asyncio
+async def test_on_pool_exhausted_falls_back_to_event_count_when_no_state(
+    cog, mock_container
+):
+    from discord_music_player.domain.shared.events import RadioPoolExhausted
+
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock(return_value=MagicMock())
+    cog.bot.get_channel = MagicMock(return_value=channel)
+    mock_container.radio_service.get_state = MagicMock(return_value=None)
+
+    event = RadioPoolExhausted(guild_id=1, channel_id=42, tracks_generated=11)
+    await cog._on_pool_exhausted(event)
+
+    channel.send.assert_awaited_once()
+
+
+# =============================================================================
+# /radio without count -> _show_count_select branch
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_radio_without_count_shows_count_select(cog, interaction):
+    interaction.response.send_message = AsyncMock(
+        return_value=MagicMock(spec=discord.InteractionMessage)
+    )
+    await cog.radio.callback(cog, interaction, action=None, count=None, query=None)
+    interaction.response.send_message.assert_awaited_once()
+    kwargs = interaction.response.send_message.call_args.kwargs
+    assert kwargs.get("ephemeral") is True
+    assert "view" in kwargs
+
+
+# =============================================================================
+# _seed_track voice-guard rejection
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_seed_track_returns_false_when_voice_guard_fails(cog, mock_container):
+    i = MagicMock(spec=discord.Interaction)
+    i.guild = MagicMock()
+    i.guild.id = 1
+    # User is a non-Member (e.g. DM) -> ensure_voice rejects
+    i.user = MagicMock(spec=discord.User)
+    i.response = MagicMock()
+    i.response.is_done = MagicMock(return_value=False)
+    i.response.send_message = AsyncMock()
+    i.followup = MagicMock()
+    i.followup.send = AsyncMock()
+
+    result = await cog._seed_track(i, "some query")
+    assert result is False
+    mock_container.audio_resolver.resolve.assert_not_awaited()
