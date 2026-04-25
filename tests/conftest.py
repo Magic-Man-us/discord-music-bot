@@ -132,6 +132,128 @@ class FakeVoiceWarmupTracker:
         self.calls.append((guild_id, user_id))
         return self._remaining
 
+
+# ============================================================================
+# Application-service stubs (Protocol-shaped, no MagicMock).
+# Used by application/services tests to exercise services without infra.
+# ============================================================================
+
+
+class StubSessionRepo:
+    """In-memory SessionRepository — only the methods playback/queue services touch."""
+
+    def __init__(self):
+        self._sessions = {}
+        self.save_calls = []
+        self.delete_calls = []
+
+    async def get(self, guild_id):
+        return self._sessions.get(guild_id)
+
+    async def get_or_create(self, guild_id):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+
+        if guild_id not in self._sessions:
+            self._sessions[guild_id] = GuildPlaybackSession(guild_id=guild_id)
+        return self._sessions[guild_id]
+
+    async def save(self, session):
+        self.save_calls.append(session)
+        self._sessions[session.guild_id] = session
+
+    async def delete(self, guild_id):
+        self.delete_calls.append(guild_id)
+        return self._sessions.pop(guild_id, None) is not None
+
+    def seed(self, session):
+        """Test helper — pre-load a session by guild_id."""
+        self._sessions[session.guild_id] = session
+
+
+class StubHistoryRepo:
+    """Records record_play / mark_finished invocations."""
+
+    def __init__(self):
+        self.plays = []
+        self.marks_finished = []
+
+    async def record_play(self, *, guild_id, track):
+        self.plays.append((guild_id, track))
+
+    async def mark_finished(self, *, guild_id, track_id, skipped):
+        self.marks_finished.append((guild_id, track_id, skipped))
+
+
+class StubVoiceAdapter:
+    """Configurable VoiceAdapter stub — toggles play/stop behavior for error paths."""
+
+    def __init__(
+        self,
+        *,
+        play_returns=True,
+        stop_raises=False,
+        play_raises=False,
+        pause_raises=False,
+        resume_raises=False,
+    ):
+        self.play_returns = play_returns
+        self.stop_raises = stop_raises
+        self.play_raises = play_raises
+        self.pause_raises = pause_raises
+        self.resume_raises = resume_raises
+        self.play_calls = []
+        self.stop_calls = []
+        self.pause_calls = []
+        self.resume_calls = []
+        self.disconnect_calls = []
+        self._track_end_callback = None
+
+    async def play(self, guild_id, track, *, start_seconds=None):
+        self.play_calls.append((guild_id, track, start_seconds))
+        if self.play_raises:
+            raise RuntimeError("StubVoiceAdapter.play forced error")
+        return self.play_returns
+
+    async def stop(self, guild_id):
+        self.stop_calls.append(guild_id)
+        if self.stop_raises:
+            raise RuntimeError("StubVoiceAdapter.stop forced error")
+        return True
+
+    async def pause(self, guild_id):
+        self.pause_calls.append(guild_id)
+        if self.pause_raises:
+            raise RuntimeError("StubVoiceAdapter.pause forced error")
+        return True
+
+    async def resume(self, guild_id):
+        self.resume_calls.append(guild_id)
+        if self.resume_raises:
+            raise RuntimeError("StubVoiceAdapter.resume forced error")
+        return True
+
+    async def disconnect(self, guild_id):
+        self.disconnect_calls.append(guild_id)
+        return True
+
+    def set_on_track_end_callback(self, callback):
+        self._track_end_callback = callback
+
+
+class StubAudioResolver:
+    """Configurable AudioResolver — controls resolve() return / raise."""
+
+    def __init__(self, *, resolved_track=None, raises=False):
+        self.resolved_track = resolved_track
+        self.raises = raises
+        self.resolve_calls = []
+
+    async def resolve(self, query):
+        self.resolve_calls.append(query)
+        if self.raises:
+            raise RuntimeError("StubAudioResolver.resolve forced error")
+        return self.resolved_track
+
 # ============================================================================
 # Database Fixtures
 # ============================================================================

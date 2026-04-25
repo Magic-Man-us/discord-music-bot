@@ -1744,3 +1744,316 @@ class TestQueueApplicationServiceShuffleNoSession:
         result = await service.shuffle(guild_id=123456)
 
         assert result is False
+
+
+# =============================================================================
+# PlaybackApplicationService — stub-based tests for branches the
+# AsyncMock-based tests above don't reach.
+# =============================================================================
+
+
+from conftest import (  # noqa: E402  -- pytest adds tests/ to sys.path
+    StubAudioResolver,
+    StubHistoryRepo,
+    StubSessionRepo,
+    StubVoiceAdapter,
+)
+
+
+def _make_track(track_id: str = "t1", *, with_stream: bool = True) -> Track:
+    return Track(
+        id=TrackId(value=track_id),
+        title=f"Title {track_id}",
+        webpage_url=f"https://youtube.com/watch?v={track_id}",
+        stream_url=f"https://stream/{track_id}" if with_stream else None,
+        duration_seconds=180,
+    )
+
+
+def _make_service(
+    *,
+    session_repo: StubSessionRepo | None = None,
+    history_repo: StubHistoryRepo | None = None,
+    voice_adapter: StubVoiceAdapter | None = None,
+    audio_resolver: StubAudioResolver | None = None,
+):
+    from discord_music_player.application.services.playback_service import (
+        PlaybackApplicationService,
+    )
+
+    return PlaybackApplicationService(
+        session_repository=session_repo or StubSessionRepo(),
+        history_repository=history_repo or StubHistoryRepo(),
+        voice_adapter=voice_adapter or StubVoiceAdapter(),
+        audio_resolver=audio_resolver or StubAudioResolver(),
+    )
+
+
+# --- seek_playback ---------------------------------------------------------
+
+
+class TestSeekPlayback:
+    @pytest.mark.asyncio
+    async def test_no_session(self):
+        svc = _make_service()
+        from discord_music_player.domain.music.wrappers import StartSeconds
+
+        assert await svc.seek_playback(guild_id=1, start_seconds=StartSeconds(value=30)) is False
+
+    @pytest.mark.asyncio
+    async def test_no_current_track(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+        from discord_music_player.domain.music.wrappers import StartSeconds
+
+        repo = StubSessionRepo()
+        repo.seed(GuildPlaybackSession(guild_id=1))
+        svc = _make_service(session_repo=repo)
+
+        assert await svc.seek_playback(guild_id=1, start_seconds=StartSeconds(value=30)) is False
+
+    @pytest.mark.asyncio
+    async def test_happy_path_with_stream_url(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+        from discord_music_player.domain.music.wrappers import StartSeconds
+
+        session = GuildPlaybackSession(guild_id=1)
+        session.set_current_track(_make_track("abc"))
+        repo = StubSessionRepo()
+        repo.seed(session)
+        adapter = StubVoiceAdapter(play_returns=True)
+        svc = _make_service(session_repo=repo, voice_adapter=adapter)
+
+        result = await svc.seek_playback(guild_id=1, start_seconds=StartSeconds(value=30))
+
+        assert result is True
+        assert adapter.stop_calls == [1]
+        assert len(adapter.play_calls) == 1
+        assert adapter.play_calls[0][2].value == 30  # start_seconds passed through
+
+    @pytest.mark.asyncio
+    async def test_stop_raises_clears_suppression_and_returns_false(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+        from discord_music_player.domain.music.wrappers import StartSeconds
+
+        session = GuildPlaybackSession(guild_id=1)
+        session.set_current_track(_make_track("abc"))
+        repo = StubSessionRepo()
+        repo.seed(session)
+        adapter = StubVoiceAdapter(stop_raises=True)
+        svc = _make_service(session_repo=repo, voice_adapter=adapter)
+
+        result = await svc.seek_playback(guild_id=1, start_seconds=StartSeconds(value=10))
+
+        assert result is False
+        assert 1 not in svc._ignore_next_voice_track_end  # cleared in except
+        assert adapter.play_calls == []  # never reached play()
+
+    @pytest.mark.asyncio
+    async def test_play_returns_false(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+        from discord_music_player.domain.music.wrappers import StartSeconds
+
+        session = GuildPlaybackSession(guild_id=1)
+        session.set_current_track(_make_track("abc"))
+        repo = StubSessionRepo()
+        repo.seed(session)
+        adapter = StubVoiceAdapter(play_returns=False)
+        svc = _make_service(session_repo=repo, voice_adapter=adapter)
+
+        assert await svc.seek_playback(guild_id=1, start_seconds=StartSeconds(value=5)) is False
+
+    @pytest.mark.asyncio
+    async def test_play_raises_returns_false(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+        from discord_music_player.domain.music.wrappers import StartSeconds
+
+        session = GuildPlaybackSession(guild_id=1)
+        session.set_current_track(_make_track("abc"))
+        repo = StubSessionRepo()
+        repo.seed(session)
+        adapter = StubVoiceAdapter(play_raises=True)
+        svc = _make_service(session_repo=repo, voice_adapter=adapter)
+
+        assert await svc.seek_playback(guild_id=1, start_seconds=StartSeconds(value=5)) is False
+
+    @pytest.mark.asyncio
+    async def test_resolves_stream_url_when_missing(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+        from discord_music_player.domain.music.wrappers import StartSeconds
+
+        session = GuildPlaybackSession(guild_id=1)
+        session.set_current_track(_make_track("abc", with_stream=False))
+        repo = StubSessionRepo()
+        repo.seed(session)
+        resolved = _make_track("abc", with_stream=True)
+        resolver = StubAudioResolver(resolved_track=resolved)
+        adapter = StubVoiceAdapter(play_returns=True)
+        svc = _make_service(session_repo=repo, voice_adapter=adapter, audio_resolver=resolver)
+
+        result = await svc.seek_playback(guild_id=1, start_seconds=StartSeconds(value=5))
+
+        assert result is True
+        assert resolver.resolve_calls == ["https://youtube.com/watch?v=abc"]
+
+    @pytest.mark.asyncio
+    async def test_resolver_returns_none_aborts_seek(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+        from discord_music_player.domain.music.wrappers import StartSeconds
+
+        session = GuildPlaybackSession(guild_id=1)
+        session.set_current_track(_make_track("abc", with_stream=False))
+        repo = StubSessionRepo()
+        repo.seed(session)
+        resolver = StubAudioResolver(resolved_track=None)  # resolve fails
+        adapter = StubVoiceAdapter()
+        svc = _make_service(session_repo=repo, voice_adapter=adapter, audio_resolver=resolver)
+
+        result = await svc.seek_playback(guild_id=1, start_seconds=StartSeconds(value=5))
+
+        assert result is False
+        assert adapter.stop_calls == []  # never reached stop()
+
+
+# --- skip_track / stop_playback exception paths ----------------------------
+
+
+class TestPlaybackExceptionPaths:
+    @pytest.mark.asyncio
+    async def test_skip_track_when_stop_raises_still_advances(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+
+        session = GuildPlaybackSession(guild_id=1)
+        current = _make_track("current")
+        next_track = _make_track("next")
+        session.set_current_track(current)
+        session.queue.append(next_track)
+        # Mark playing so transition_to(IDLE) is exercised
+        session.transition_to(PlaybackState.PLAYING)
+
+        repo = StubSessionRepo()
+        repo.seed(session)
+        adapter = StubVoiceAdapter(stop_raises=True, play_returns=True)
+        svc = _make_service(session_repo=repo, voice_adapter=adapter)
+
+        skipped = await svc.skip_track(guild_id=1)
+
+        assert skipped is not None
+        assert skipped.id.value == "current"
+        # Suppression cleared after stop raised
+        assert 1 not in svc._ignore_next_voice_track_end
+
+    @pytest.mark.asyncio
+    async def test_stop_playback_when_stop_raises_returns_false_and_clears_flag(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+
+        session = GuildPlaybackSession(guild_id=1)
+        session.set_current_track(_make_track("current"))
+        session.transition_to(PlaybackState.PLAYING)
+        repo = StubSessionRepo()
+        repo.seed(session)
+        adapter = StubVoiceAdapter(stop_raises=True)
+        svc = _make_service(session_repo=repo, voice_adapter=adapter)
+
+        result = await svc.stop_playback(guild_id=1)
+
+        assert result is False
+        assert 1 not in svc._ignore_next_voice_track_end
+
+
+# --- _persist_playback_state and helpers -----------------------------------
+
+
+class TestPersistPlaybackState:
+    @pytest.mark.asyncio
+    async def test_returns_silently_when_session_missing(self):
+        repo = StubSessionRepo()
+        svc = _make_service(session_repo=repo)
+
+        # Should not raise; should not save
+        await svc._persist_playback_state(guild_id=1, current_track=None)
+        assert repo.save_calls == []
+
+    @pytest.mark.asyncio
+    async def test_remove_from_queue_when_track_absent_logs_warning(self, caplog):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+
+        session = GuildPlaybackSession(guild_id=1)
+        repo = StubSessionRepo()
+        repo.seed(session)
+        svc = _make_service(session_repo=repo)
+
+        target = _make_track("not-in-queue")
+        with caplog.at_level("WARNING"):
+            await svc._persist_playback_state(
+                guild_id=1, current_track=target, remove_from_queue=True
+            )
+
+        assert "Expected track not found" in caplog.text
+        assert repo.save_calls  # still saves
+
+    @pytest.mark.asyncio
+    async def test_invalid_state_transition_logs_warning_and_skips(self, caplog):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+
+        session = GuildPlaybackSession(guild_id=1)
+        # Session is IDLE — request a transition that PlaybackState rejects
+        # PAUSED is invalid from IDLE (must be PLAYING first)
+        repo = StubSessionRepo()
+        repo.seed(session)
+        svc = _make_service(session_repo=repo)
+
+        with caplog.at_level("WARNING"):
+            await svc._persist_playback_state(
+                guild_id=1, current_track=None, state=PlaybackState.PAUSED
+            )
+
+        assert "Skipping invalid transition" in caplog.text
+        # State remained IDLE
+        assert repo._sessions[1].state == PlaybackState.IDLE
+
+
+class TestTrackMatching:
+    def test_tracks_match_uses_id_and_requested_at_when_present(self):
+        from datetime import UTC, datetime
+
+        svc = _make_service()
+        ts = datetime(2026, 1, 1, tzinfo=UTC)
+        a = Track(
+            id=TrackId(value="x"),
+            title="x",
+            webpage_url="https://yt/x",
+            requested_by_id=1,
+            requested_at=ts,
+        )
+        b = a.model_copy()
+        c = a.model_copy(update={"requested_at": datetime(2026, 1, 2, tzinfo=UTC)})
+
+        assert svc._tracks_match(a, b) is True
+        assert svc._tracks_match(a, c) is False
+
+    def test_tracks_match_falls_back_to_url_and_requester(self):
+        svc = _make_service()
+        a = Track(
+            id=TrackId(value="x"),
+            title="x",
+            webpage_url="https://yt/x",
+            requested_by_id=1,
+        )
+        b = a.model_copy()
+        d = a.model_copy(update={"requested_by_id": 2})
+
+        assert svc._tracks_match(a, b) is True
+        assert svc._tracks_match(a, d) is False
+
+    def test_remove_first_matching_returns_false_on_empty_queue(self):
+        svc = _make_service()
+        target = _make_track("x")
+        assert svc._remove_first_matching_track([], target) is False
+
+    def test_remove_first_matching_pops_match(self):
+        svc = _make_service()
+        a = _make_track("a")
+        b = _make_track("b")
+        queue = [a, b]
+        assert svc._remove_first_matching_track(queue, b) is True
+        assert queue == [a]
