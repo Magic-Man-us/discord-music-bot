@@ -762,3 +762,495 @@ class TestSimpleCommandSuccessMessages:
         cog = _make_cog(container)
         await cog.leave.callback(cog, interaction)
         container.playback_service.cleanup_guild.assert_awaited_once_with(42)
+
+
+# =============================================================================
+# /play — timestamp parsing branches
+# =============================================================================
+
+
+class TestPlayCommandTimestamp:
+    @pytest.mark.asyncio
+    async def test_invalid_timestamp_rejects(self):
+        member, interaction = _interaction_in_voice()
+        cog = _make_cog()
+        await cog.play.callback(cog, interaction, query="some song", timestamp="garbage")
+        msg = interaction.response.send_message.call_args.args[0]
+        assert "Invalid timestamp" in msg
+
+    @pytest.mark.asyncio
+    async def test_valid_timestamp_proceeds_to_execute_play(self):
+        member, interaction = _interaction_in_voice()
+        cog = _make_cog()
+        cog._execute_play = AsyncMock()
+        await cog.play.callback(cog, interaction, query="song", timestamp="1:30")
+        cog._execute_play.assert_awaited_once()
+        # Verify start_seconds was passed
+        kwargs = cog._execute_play.call_args.kwargs
+        assert kwargs["start_seconds"] is not None
+        assert kwargs["start_seconds"].value == 90
+
+
+# =============================================================================
+# _execute_play branches: spotify rejection, external URL extract, playlist
+# routing, warmup retry view, voice connect failure
+# =============================================================================
+
+
+class TestExecutePlayBranches:
+    @pytest.mark.asyncio
+    async def test_no_member_returns(self):
+        cog = _make_cog()
+        i = make_interaction(has_guild=False)
+        await cog._execute_play(i, "any")
+        cog.container.queue_service.enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_user_not_in_voice_returns(self):
+        cog = _make_cog()
+        i = make_interaction(user=make_member(voice=None))
+        await cog._execute_play(i, "any")
+
+    @pytest.mark.asyncio
+    async def test_voice_connect_failure_returns(self):
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        container.voice_adapter = FakeVoiceAdapter(connected=False, connect_succeeds=False)
+        cog = _make_cog(container)
+        await cog._execute_play(interaction, "any query")
+        # Must not have attempted enqueue
+        container.queue_service.enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_warmup_remaining_shows_retry_view(self):
+        # Two members in channel so warmup applies
+        a = make_member(member_id=1)
+        b = make_member(member_id=2)
+        channel = make_voice_channel(channel_id=10, members=[a, b])
+        a.voice = make_voice_state(channel=channel)
+        interaction = make_interaction(user=a)
+
+        container = _container()
+        container.voice_warmup_tracker = FakeVoiceWarmupTracker(remaining=20)
+        sent = MagicMock()
+        interaction.followup.send = AsyncMock(return_value=sent)
+
+        cog = _make_cog(container)
+        await cog._execute_play(interaction, "song")
+
+        # The followup should have been called with the warmup message
+        msg = interaction.followup.send.call_args.args[0]
+        assert "20s" in msg
+
+    @pytest.mark.asyncio
+    async def test_spotify_playlist_url_rejected(self):
+        member, interaction = _interaction_in_voice()
+        cog = _make_cog()
+        await cog._execute_play(interaction, "https://open.spotify.com/playlist/abcdef")
+        # An ephemeral was sent indicating Spotify isn't supported
+        # Guard already responded; the rejection comes via send_ephemeral
+        # Since the response is fresh, response.send_message handles it
+        sent = interaction.response.send_message.call_args.args[0]
+        assert "Spotify" in sent
+
+    @pytest.mark.asyncio
+    async def test_playlist_url_routes_to_handle_playlist(self):
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        container.audio_resolver.is_url = MagicMock(return_value=True)
+        container.audio_resolver.is_playlist = MagicMock(return_value=True)
+        cog = _make_cog(container)
+        cog._handle_playlist = AsyncMock()
+        await cog._execute_play(interaction, "https://yt/playlist")
+        cog._handle_playlist.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_single_track_routes_to_play_track(self):
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        container.audio_resolver.is_url = MagicMock(return_value=False)
+        container.audio_resolver.is_playlist = MagicMock(return_value=False)
+        cog = _make_cog(container)
+        cog._play_track = AsyncMock()
+        await cog._execute_play(interaction, "some query")
+        cog._play_track.assert_awaited_once()
+
+
+# =============================================================================
+# _play_track branches
+# =============================================================================
+
+
+class TestPlayTrack:
+    @pytest.mark.asyncio
+    async def test_no_guild_returns(self):
+        cog = _make_cog()
+        i = make_interaction(has_guild=False)
+        await cog._play_track(i, "song")
+        cog.container.queue_service.enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_resolver_returns_none(self):
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        container.audio_resolver.resolve = AsyncMock(return_value=None)
+        cog = _make_cog(container)
+        await cog._play_track(interaction, "missing")
+        msg = interaction.followup.send.call_args.args[0]
+        assert "Couldn't find" in msg
+
+    @pytest.mark.asyncio
+    async def test_long_track_vote_intercepts(self):
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        container.audio_resolver.resolve = AsyncMock(return_value=_track("long"))
+        cog = _make_cog(container)
+        cog._start_long_track_vote = AsyncMock(return_value=True)
+        await cog._play_track(interaction, "any")
+        # Should have stopped before enqueue
+        container.queue_service.enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_enqueue_failure_shows_message(self):
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        container.audio_resolver.resolve = AsyncMock(return_value=_track("song"))
+        container.queue_service.enqueue = AsyncMock(
+            return_value=MagicMock(success=False, message="queue is full")
+        )
+        cog = _make_cog(container)
+        cog._start_long_track_vote = AsyncMock(return_value=False)
+        await cog._play_track(interaction, "any")
+        msg = interaction.followup.send.call_args.args[0]
+        assert msg == "queue is full"
+
+    @pytest.mark.asyncio
+    async def test_should_start_starts_playback_and_sends_now_playing(self):
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        resolved = _track("rsvd")
+        container.audio_resolver.resolve = AsyncMock(return_value=resolved)
+        container.queue_service.enqueue = AsyncMock(
+            return_value=MagicMock(success=True, should_start=True, track=resolved, position=0)
+        )
+        cog = _make_cog(container)
+        cog._start_long_track_vote = AsyncMock(return_value=False)
+        cog._send_now_playing = AsyncMock()
+        cog._send_queued = AsyncMock()
+        await cog._play_track(interaction, "any")
+        container.playback_service.start_playback.assert_awaited_once()
+        cog._send_now_playing.assert_awaited_once()
+        cog._send_queued.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_should_start_routes_to_send_queued(self):
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        resolved = _track("rsvd")
+        container.audio_resolver.resolve = AsyncMock(return_value=resolved)
+        container.queue_service.enqueue = AsyncMock(
+            return_value=MagicMock(success=True, should_start=False, track=resolved, position=2)
+        )
+        cog = _make_cog(container)
+        cog._start_long_track_vote = AsyncMock(return_value=False)
+        cog._send_now_playing = AsyncMock()
+        cog._send_queued = AsyncMock()
+        await cog._play_track(interaction, "any")
+        cog._send_queued.assert_awaited_once()
+        cog._send_now_playing.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_swallows_exception(self):
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        container.audio_resolver.resolve = AsyncMock(side_effect=RuntimeError("boom"))
+        cog = _make_cog(container)
+        cog.logger = MagicMock()
+        await cog._play_track(interaction, "any")
+        msg = interaction.followup.send.call_args.args[0]
+        assert "Command failed" in msg
+
+
+# =============================================================================
+# _start_long_track_vote
+# =============================================================================
+
+
+class TestStartLongTrackVote:
+    @pytest.mark.asyncio
+    async def test_short_track_returns_false(self):
+        member, interaction = _interaction_in_voice()
+        cog = _make_cog()
+        result = await cog._start_long_track_vote(
+            interaction,
+            Track(
+                id=TrackId(value="x"),
+                title="Short",
+                webpage_url="https://yt/x",
+                duration_seconds=60,
+            ),
+        )
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_no_duration_returns_false(self):
+        member, interaction = _interaction_in_voice()
+        cog = _make_cog()
+        result = await cog._start_long_track_vote(
+            interaction,
+            Track(
+                id=TrackId(value="x"),
+                title="Unknown",
+                webpage_url="https://yt/x",
+                duration_seconds=None,
+            ),
+        )
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_few_listeners_returns_false(self):
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        container.voice_adapter.get_listeners = AsyncMock(return_value=[1])
+        cog = _make_cog(container)
+        long_track = Track(
+            id=TrackId(value="lt"),
+            title="Long",
+            webpage_url="https://yt/lt",
+            duration_seconds=3600,  # very long
+        )
+        result = await cog._start_long_track_vote(interaction, long_track)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_no_channel_id_returns_true_with_error(self):
+        member, interaction = _interaction_in_voice()
+        interaction.channel_id = None
+        container = _container()
+        container.voice_adapter.get_listeners = AsyncMock(return_value=[1, 2, 3, 4, 5, 6, 7, 8])
+        cog = _make_cog(container)
+        long_track = Track(
+            id=TrackId(value="lt"),
+            title="Long",
+            webpage_url="https://yt/lt",
+            duration_seconds=3600,
+        )
+        result = await cog._start_long_track_vote(interaction, long_track)
+        assert result is True
+        msg = interaction.followup.send.call_args.args[0]
+        assert "no channel context" in msg.lower()
+
+    @pytest.mark.asyncio
+    async def test_starts_vote_when_channel_messageable(self):
+        member, interaction = _interaction_in_voice()
+        interaction.channel_id = 555
+        container = _container()
+        container.voice_adapter.get_listeners = AsyncMock(return_value=[1, 2, 3, 4, 5, 6, 7, 8])
+        bot = MagicMock()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock(return_value=MagicMock())
+        bot.get_channel = MagicMock(return_value=channel)
+        cog = _make_cog(container, bot=bot)
+        long_track = Track(
+            id=TrackId(value="lt"),
+            title="Long",
+            webpage_url="https://yt/lt",
+            duration_seconds=3600,
+        )
+        result = await cog._start_long_track_vote(interaction, long_track)
+        assert result is True
+        channel.send.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_non_messageable_channel_returns_true_with_error(self):
+        member, interaction = _interaction_in_voice()
+        interaction.channel_id = 555
+        container = _container()
+        container.voice_adapter.get_listeners = AsyncMock(return_value=[1, 2, 3, 4, 5, 6, 7, 8])
+        bot = MagicMock()
+        bot.get_channel = MagicMock(return_value=object())  # not Messageable
+        cog = _make_cog(container, bot=bot)
+        long_track = Track(
+            id=TrackId(value="lt"),
+            title="Long",
+            webpage_url="https://yt/lt",
+            duration_seconds=3600,
+        )
+        result = await cog._start_long_track_vote(interaction, long_track)
+        assert result is True
+        msg = interaction.followup.send.call_args.args[0]
+        assert "Could not find a channel" in msg
+
+
+# =============================================================================
+# _handle_playlist + _auto_enqueue_youtube_playlist
+# =============================================================================
+
+
+class TestHandlePlaylist:
+    @pytest.mark.asyncio
+    async def test_empty_preview_message(self):
+        from discord_music_player.domain.music.entities import PlaylistPreview
+
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        container.audio_resolver.preview_playlist = AsyncMock(
+            return_value=PlaylistPreview(entries=[], title="Empty")
+        )
+        cog = _make_cog(container)
+        await cog._handle_playlist(interaction, "https://yt/pl")
+        msg = interaction.followup.send.call_args.args[0]
+        assert "empty" in msg.lower()
+
+    @pytest.mark.asyncio
+    async def test_auto_enqueue_route_when_count_specified(self):
+        from discord_music_player.domain.music.entities import PlaylistEntry, PlaylistPreview
+
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        container.audio_resolver.preview_playlist = AsyncMock(
+            return_value=PlaylistPreview(
+                entries=[
+                    PlaylistEntry(title=f"E{i}", url=f"https://yt/e{i}") for i in range(5)
+                ],
+                title="My Playlist",
+            )
+        )
+        cog = _make_cog(container)
+        cog._auto_enqueue_youtube_playlist = AsyncMock()
+        await cog._handle_playlist(interaction, "https://yt/pl", count=3)
+        cog._auto_enqueue_youtube_playlist.assert_awaited_once()
+
+
+class TestAutoEnqueueYouTubePlaylist:
+    @pytest.mark.asyncio
+    async def test_empty_selection_warns_about_start_offset(self):
+        from discord_music_player.domain.music.entities import PlaylistEntry, PlaylistPreview
+
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        cog = _make_cog(container)
+        # Use a real-ish preview but force start past the end
+        preview = PlaylistPreview(
+            entries=[PlaylistEntry(title="E", url="https://yt/e")],
+            title="Pl",
+        )
+        await cog._auto_enqueue_youtube_playlist(
+            interaction, preview=preview, count=None, start=999, shuffle=False
+        )
+        # Either a response or ephemeral via guard — find the call
+        if interaction.response.send_message.called:
+            sent = interaction.response.send_message.call_args.args[0]
+        else:
+            sent = interaction.followup.send.call_args.args[0]
+        assert "past the end" in sent
+
+    @pytest.mark.asyncio
+    async def test_success_routes_to_finalize_playlist_import(self):
+        from discord_music_player.domain.music.entities import PlaylistEntry, PlaylistPreview
+
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        cog = _make_cog(container)
+        cog._finalize_playlist_import = AsyncMock()
+
+        preview = PlaylistPreview(
+            entries=[
+                PlaylistEntry(title=f"E{i}", url=f"https://yt/e{i}") for i in range(3)
+            ],
+            title="Mix",
+        )
+        await cog._auto_enqueue_youtube_playlist(
+            interaction, preview=preview, count=2, start=1, shuffle=False
+        )
+        cog._finalize_playlist_import.assert_awaited_once()
+
+
+# =============================================================================
+# _finalize_playlist_import
+# =============================================================================
+
+
+class TestFinalizePlaylistImport:
+    @pytest.mark.asyncio
+    async def test_no_resolved_tracks(self):
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        container.audio_resolver.resolve_many = AsyncMock(return_value=[])
+        cog = _make_cog(container)
+        await cog._finalize_playlist_import(
+            interaction,
+            resolver_queries=["https://yt/a", "https://yt/b"],
+            source_label="Test",
+            suggested_name="test",
+        )
+        msg = interaction.followup.send.call_args.args[0]
+        assert "Couldn't resolve" in msg
+
+    @pytest.mark.asyncio
+    async def test_zero_enqueued_skips_save_prompt(self):
+        member, interaction = _interaction_in_voice()
+        tracks = [_track("a"), _track("b")]
+        container = _container()
+        container.audio_resolver.resolve_many = AsyncMock(return_value=tracks)
+        cog = _make_cog(container)
+        cog.enqueue_and_start = AsyncMock(return_value=MagicMock(enqueued=0))
+        await cog._finalize_playlist_import(
+            interaction,
+            resolver_queries=["https://yt/a", "https://yt/b"],
+            source_label="Test",
+            suggested_name="test",
+        )
+        # Two followup.send calls: status, "Queued 0/2"; no save-prompt
+        assert interaction.followup.send.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_partial_enqueue_shows_save_prompt(self):
+        member, interaction = _interaction_in_voice()
+        tracks = [_track("a"), _track("b"), _track("c")]
+        container = _container()
+        container.audio_resolver.resolve_many = AsyncMock(return_value=tracks)
+        cog = _make_cog(container)
+        cog.enqueue_and_start = AsyncMock(return_value=MagicMock(enqueued=2))
+        sent = MagicMock()
+        interaction.followup.send = AsyncMock(return_value=sent)
+        await cog._finalize_playlist_import(
+            interaction,
+            resolver_queries=["https://yt/a", "https://yt/b", "https://yt/c"],
+            source_label="Test",
+            suggested_name="test-pl",
+        )
+        # Two followups: confirmation + save prompt
+        assert interaction.followup.send.await_count == 2
+
+
+# =============================================================================
+# _send_queued
+# =============================================================================
+
+
+class TestSendQueued:
+    @pytest.mark.asyncio
+    async def test_sends_queued_message_and_tracks(self):
+        member, interaction = _interaction_in_voice()
+        interaction.channel_id = 555
+        container = _container()
+        msm = container.message_state_manager
+        msm.track_queued = MagicMock()
+        msm.update_next_up = AsyncMock()
+
+        sent = MagicMock()
+        sent.id = 9001
+        sent.delete = AsyncMock()
+        interaction.followup.send = AsyncMock(return_value=sent)
+
+        # Session that exposes peek
+        session = MagicMock()
+        session.peek = MagicMock(return_value=None)
+        container.session_repository.get = AsyncMock(return_value=session)
+
+        cog = _make_cog(container)
+        await cog._send_queued(interaction, _track("q"))
+
+        msm.track_queued.assert_called_once()
+        msm.update_next_up.assert_awaited_once()
