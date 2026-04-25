@@ -2057,3 +2057,211 @@ class TestTrackMatching:
         queue = [a, b]
         assert svc._remove_first_matching_track(queue, b) is True
         assert queue == [a]
+
+
+# =============================================================================
+# QueueApplicationService — branches the existing tests don't reach.
+# =============================================================================
+
+
+def _make_queue_service(repo: StubSessionRepo | None = None):
+    from discord_music_player.application.services.queue_service import QueueApplicationService
+
+    return QueueApplicationService(session_repository=repo or StubSessionRepo())
+
+
+def _seed_session_with_full_queue(repo: StubSessionRepo, *, guild_id: int = 1) -> None:
+    from discord_music_player.domain.music.entities import GuildPlaybackSession
+
+    session = GuildPlaybackSession(guild_id=guild_id)
+    for i in range(GuildPlaybackSession.MAX_QUEUE_SIZE):
+        session.queue.append(
+            Track(
+                id=TrackId(value=f"t{i}"),
+                title=f"T{i}",
+                webpage_url=f"https://yt/t{i}",
+            )
+        )
+    repo.seed(session)
+
+
+class TestEnqueueNextFailure:
+    @pytest.mark.asyncio
+    async def test_returns_failure_when_queue_full(self):
+        repo = StubSessionRepo()
+        _seed_session_with_full_queue(repo)
+        svc = _make_queue_service(repo)
+        track = Track(
+            id=TrackId(value="new"), title="New", webpage_url="https://yt/new"
+        )
+
+        result = await svc.enqueue_next(
+            guild_id=1, track=track, user_id=42, user_name="U"
+        )
+
+        assert result.success is False
+        assert "full" in result.message.lower()
+
+
+class TestEnqueueBatch:
+    @pytest.mark.asyncio
+    async def test_empty_list_returns_zero_no_should_start(self):
+        svc = _make_queue_service()
+        result = await svc.enqueue_batch(guild_id=1, tracks=[], user_id=1, user_name="U")
+        assert result.enqueued == 0
+        assert result.should_start is False
+
+    @pytest.mark.asyncio
+    async def test_full_batch_should_start_when_no_current_track(self):
+        svc = _make_queue_service()
+        tracks = [
+            Track(id=TrackId(value=f"t{i}"), title=f"T{i}", webpage_url=f"https://yt/t{i}")
+            for i in range(3)
+        ]
+        result = await svc.enqueue_batch(
+            guild_id=1, tracks=tracks, user_id=1, user_name="U"
+        )
+        assert result.enqueued == 3
+        assert result.should_start is True
+
+    @pytest.mark.asyncio
+    async def test_should_not_start_when_current_track_set(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+
+        repo = StubSessionRepo()
+        session = GuildPlaybackSession(guild_id=1)
+        session.set_current_track(
+            Track(id=TrackId(value="cur"), title="Cur", webpage_url="https://yt/cur")
+        )
+        repo.seed(session)
+        svc = _make_queue_service(repo)
+
+        tracks = [Track(id=TrackId(value="t1"), title="T1", webpage_url="https://yt/t1")]
+        result = await svc.enqueue_batch(
+            guild_id=1, tracks=tracks, user_id=1, user_name="U"
+        )
+        assert result.enqueued == 1
+        assert result.should_start is False
+
+    @pytest.mark.asyncio
+    async def test_partial_success_when_queue_fills_mid_batch(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+
+        repo = StubSessionRepo()
+        session = GuildPlaybackSession(guild_id=1)
+        # Pre-fill to MAX-1 — only one more track fits
+        for i in range(GuildPlaybackSession.MAX_QUEUE_SIZE - 1):
+            session.queue.append(
+                Track(id=TrackId(value=f"e{i}"), title=f"E{i}", webpage_url=f"https://yt/e{i}")
+            )
+        repo.seed(session)
+        svc = _make_queue_service(repo)
+
+        tracks = [
+            Track(id=TrackId(value=f"n{i}"), title=f"N{i}", webpage_url=f"https://yt/n{i}")
+            for i in range(5)
+        ]
+        result = await svc.enqueue_batch(
+            guild_id=1, tracks=tracks, user_id=1, user_name="U"
+        )
+        # Only one slot was free; remaining four hit the BusinessRuleViolationError
+        assert result.enqueued == 1
+
+    @pytest.mark.asyncio
+    async def test_should_start_false_when_count_zero(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+
+        repo = StubSessionRepo()
+        _seed_session_with_full_queue(repo)
+        svc = _make_queue_service(repo)
+
+        tracks = [Track(id=TrackId(value="t1"), title="T1", webpage_url="https://yt/t1")]
+        result = await svc.enqueue_batch(
+            guild_id=1, tracks=tracks, user_id=1, user_name="U"
+        )
+        assert result.enqueued == 0
+        assert result.should_start is False
+
+
+class TestClearRecommendations:
+    @pytest.mark.asyncio
+    async def test_no_session_returns_zero(self):
+        svc = _make_queue_service()
+        assert await svc.clear_recommendations(guild_id=1) == 0
+
+    @pytest.mark.asyncio
+    async def test_with_session_clears_and_saves(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+
+        repo = StubSessionRepo()
+        session = GuildPlaybackSession(guild_id=1)
+        # Two recommendation tracks + one direct
+        for i in range(2):
+            session.queue.append(
+                Track(
+                    id=TrackId(value=f"rec{i}"),
+                    title=f"Rec{i}",
+                    webpage_url=f"https://yt/rec{i}",
+                    is_from_recommendation=True,
+                )
+            )
+        session.queue.append(
+            Track(id=TrackId(value="d"), title="Direct", webpage_url="https://yt/d")
+        )
+        repo.seed(session)
+        svc = _make_queue_service(repo)
+
+        cleared = await svc.clear_recommendations(guild_id=1)
+        assert cleared == 2
+        assert len(repo._sessions[1].queue) == 1
+        assert repo.save_calls  # persisted
+
+
+class TestGetQueueDurationBranches:
+    @pytest.mark.asyncio
+    async def test_total_duration_none_when_current_track_lacks_duration(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+
+        repo = StubSessionRepo()
+        session = GuildPlaybackSession(guild_id=1)
+        session.set_current_track(
+            Track(
+                id=TrackId(value="cur"),
+                title="Cur",
+                webpage_url="https://yt/cur",
+                duration_seconds=None,  # no duration
+            )
+        )
+        repo.seed(session)
+        svc = _make_queue_service(repo)
+
+        snapshot = await svc.get_queue(guild_id=1)
+        assert snapshot.total_duration is None
+
+    @pytest.mark.asyncio
+    async def test_total_duration_none_when_a_queue_track_lacks_duration(self):
+        from discord_music_player.domain.music.entities import GuildPlaybackSession
+
+        repo = StubSessionRepo()
+        session = GuildPlaybackSession(guild_id=1)
+        session.set_current_track(
+            Track(
+                id=TrackId(value="cur"),
+                title="Cur",
+                webpage_url="https://yt/cur",
+                duration_seconds=120,
+            )
+        )
+        session.queue.append(
+            Track(
+                id=TrackId(value="q1"),
+                title="Q1",
+                webpage_url="https://yt/q1",
+                duration_seconds=None,  # missing
+            )
+        )
+        repo.seed(session)
+        svc = _make_queue_service(repo)
+
+        snapshot = await svc.get_queue(guild_id=1)
+        assert snapshot.total_duration is None
