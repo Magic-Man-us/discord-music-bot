@@ -560,6 +560,176 @@ class TestRadioAutoRefill:
         subscriber.stop()
         reset_event_bus()
 
+    @pytest.mark.asyncio
+    async def test_start_is_idempotent(self):
+        from discord_music_player.application.services.radio_auto_refill import RadioAutoRefill
+
+        reset_event_bus()
+        sub = RadioAutoRefill(radio_service=AsyncMock(), playback_service=AsyncMock())
+        sub.start()
+        sub.start()  # second call must be a no-op
+        assert sub._started is True
+        sub.stop()
+        reset_event_bus()
+
+    @pytest.mark.asyncio
+    async def test_stop_when_not_started_is_noop(self):
+        from discord_music_player.application.services.radio_auto_refill import RadioAutoRefill
+
+        reset_event_bus()
+        sub = RadioAutoRefill(radio_service=AsyncMock(), playback_service=AsyncMock())
+        sub.stop()  # never started
+        assert sub._started is False
+        reset_event_bus()
+
+    @pytest.mark.asyncio
+    async def test_queue_exhausted_no_refill_does_not_start_playback(self):
+        from discord_music_player.application.services.radio_auto_refill import RadioAutoRefill
+        from discord_music_player.domain.shared.events import QueueExhausted, get_event_bus
+
+        reset_event_bus()
+        radio_service = MagicMock()
+        radio_service.is_enabled.return_value = True
+        radio_service.refill_queue = AsyncMock(return_value=0)  # nothing added
+        playback_service = AsyncMock()
+
+        sub = RadioAutoRefill(radio_service=radio_service, playback_service=playback_service)
+        sub.start()
+        await get_event_bus().publish(
+            QueueExhausted(guild_id=1, last_track_id=TrackId(value="x"), last_track_title="t")
+        )
+        radio_service.refill_queue.assert_awaited_once_with(1)
+        playback_service.start_playback.assert_not_awaited()
+        sub.stop()
+        reset_event_bus()
+
+    @pytest.mark.asyncio
+    async def test_track_started_skips_when_disabled(self):
+        from discord_music_player.application.services.radio_auto_refill import RadioAutoRefill
+        from discord_music_player.domain.shared.events import (
+            TrackStartedPlaying,
+            get_event_bus,
+        )
+
+        reset_event_bus()
+        radio_service = MagicMock()
+        radio_service.is_enabled.return_value = False
+        radio_service.has_queued_tracks = AsyncMock()
+        radio_service.replenish_from_pool = AsyncMock()
+        playback_service = AsyncMock()
+
+        sub = RadioAutoRefill(radio_service=radio_service, playback_service=playback_service)
+        sub.start()
+        await get_event_bus().publish(
+            TrackStartedPlaying(
+                guild_id=1,
+                track_id=TrackId(value="abc"),
+                track_title="t",
+                track_url="https://yt/abc",
+                duration_seconds=120,
+            )
+        )
+
+        radio_service.has_queued_tracks.assert_not_awaited()
+        radio_service.replenish_from_pool.assert_not_awaited()
+        sub.stop()
+        reset_event_bus()
+
+    @pytest.mark.asyncio
+    async def test_track_started_skips_when_queue_has_tracks(self):
+        from discord_music_player.application.services.radio_auto_refill import RadioAutoRefill
+        from discord_music_player.domain.shared.events import (
+            TrackStartedPlaying,
+            get_event_bus,
+        )
+
+        reset_event_bus()
+        radio_service = MagicMock()
+        radio_service.is_enabled.return_value = True
+        radio_service.has_queued_tracks = AsyncMock(return_value=True)
+        radio_service.replenish_from_pool = AsyncMock()
+
+        sub = RadioAutoRefill(
+            radio_service=radio_service, playback_service=AsyncMock()
+        )
+        sub.start()
+        await get_event_bus().publish(
+            TrackStartedPlaying(
+                guild_id=1,
+                track_id=TrackId(value="abc"),
+                track_title="t",
+                track_url="https://yt/abc",
+                duration_seconds=120,
+            )
+        )
+
+        radio_service.replenish_from_pool.assert_not_awaited()
+        sub.stop()
+        reset_event_bus()
+
+    @pytest.mark.asyncio
+    async def test_track_started_replenishes_when_queue_empty(self):
+        from discord_music_player.application.services.radio_auto_refill import RadioAutoRefill
+        from discord_music_player.domain.shared.events import (
+            TrackStartedPlaying,
+            get_event_bus,
+        )
+
+        reset_event_bus()
+        radio_service = MagicMock()
+        radio_service.is_enabled.return_value = True
+        radio_service.has_queued_tracks = AsyncMock(return_value=False)
+        radio_service.replenish_from_pool = AsyncMock(return_value=1)
+
+        sub = RadioAutoRefill(
+            radio_service=radio_service, playback_service=AsyncMock()
+        )
+        sub.start()
+        await get_event_bus().publish(
+            TrackStartedPlaying(
+                guild_id=1,
+                track_id=TrackId(value="abc"),
+                track_title="t",
+                track_url="https://yt/abc",
+                duration_seconds=120,
+            )
+        )
+
+        radio_service.replenish_from_pool.assert_awaited_once_with(1)
+        sub.stop()
+        reset_event_bus()
+
+    @pytest.mark.asyncio
+    async def test_track_started_swallows_replenish_exception(self):
+        from discord_music_player.application.services.radio_auto_refill import RadioAutoRefill
+        from discord_music_player.domain.shared.events import (
+            TrackStartedPlaying,
+            get_event_bus,
+        )
+
+        reset_event_bus()
+        radio_service = MagicMock()
+        radio_service.is_enabled.return_value = True
+        radio_service.has_queued_tracks = AsyncMock(return_value=False)
+        radio_service.replenish_from_pool = AsyncMock(side_effect=RuntimeError("boom"))
+
+        sub = RadioAutoRefill(
+            radio_service=radio_service, playback_service=AsyncMock()
+        )
+        sub.start()
+        # Must not raise
+        await get_event_bus().publish(
+            TrackStartedPlaying(
+                guild_id=1,
+                track_id=TrackId(value="abc"),
+                track_title="t",
+                track_url="https://yt/abc",
+                duration_seconds=120,
+            )
+        )
+        sub.stop()
+        reset_event_bus()
+
 
 # =============================================================================
 # warmup_next + _publish_pool_exhausted
