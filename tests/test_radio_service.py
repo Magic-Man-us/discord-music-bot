@@ -559,3 +559,419 @@ class TestRadioAutoRefill:
 
         subscriber.stop()
         reset_event_bus()
+
+
+# =============================================================================
+# warmup_next + _publish_pool_exhausted
+# =============================================================================
+
+
+class TestWarmupNext:
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_radio_inactive(self):
+        svc, _ = _make_service()
+        assert await svc.warmup_next(guild_id=1) == 0
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_at_session_limit(self):
+        track = _make_track()
+        session = _make_session(current_track=track)
+        recs = [_make_rec(title=f"r{i}") for i in range(3)]
+        resolved = _make_track(track_id="x")
+        svc, _ = _make_service(
+            recommendations=recs,
+            resolve_returns=resolved,
+            session=session,
+            settings=RadioSettings(batch_size=3, visible_count=3, max_tracks_per_session=1),
+        )
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="U")
+
+        # Simulate session limit reached
+        state = svc.get_state(1)
+        state.tracks_consumed = state.tracks_consumed.__class__(99) if hasattr(state.tracks_consumed, "__class__") else 99
+        # Simpler: just bump counter directly
+        state.tracks_consumed = 999
+
+        assert await svc.warmup_next(1) == 0
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_session_missing(self):
+        track = _make_track()
+        session = _make_session(current_track=track)
+        recs = [_make_rec(title=f"r{i}") for i in range(3)]
+        resolved = _make_track(track_id="x")
+        svc, mocks = _make_service(
+            recommendations=recs,
+            resolve_returns=resolved,
+            session=session,
+            settings=RadioSettings(batch_size=3, visible_count=3),
+        )
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="U")
+
+        # Now make session_repo return None
+        mocks["session_repo"].get.return_value = None
+        assert await svc.warmup_next(1) == 0
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_queue_not_empty(self):
+        track = _make_track()
+        session = _make_session(current_track=track)
+        recs = [_make_rec(title=f"r{i}") for i in range(3)]
+        resolved = _make_track(track_id="x")
+        svc, mocks = _make_service(
+            recommendations=recs,
+            resolve_returns=resolved,
+            session=session,
+            settings=RadioSettings(batch_size=3, visible_count=3),
+        )
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="U")
+
+        # Make next session check show non-empty queue
+        non_empty = _make_session(current_track=track, queue=[track])
+        mocks["session_repo"].get.return_value = non_empty
+        assert await svc.warmup_next(1) == 0
+
+    @pytest.mark.asyncio
+    async def test_publishes_exhausted_when_pool_empty(self):
+        from discord_music_player.domain.shared.events import RadioPoolExhausted, get_event_bus
+
+        track = _make_track()
+        session = _make_session(current_track=track)
+        recs = [_make_rec(title=f"r{i}") for i in range(3)]
+        resolved = _make_track(track_id="x")
+        svc, mocks = _make_service(
+            recommendations=recs,
+            resolve_returns=resolved,
+            session=session,
+            settings=RadioSettings(batch_size=3, visible_count=3),
+        )
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="U", channel_id=42)
+
+        # Empty queue session
+        empty_session = _make_session(current_track=track, queue=[])
+        mocks["session_repo"].get.return_value = empty_session
+
+        # Drain pool to empty
+        state = svc.get_state(1)
+        state.pool = []
+
+        handler = AsyncMock()
+        get_event_bus().subscribe(RadioPoolExhausted, handler)
+
+        result = await svc.warmup_next(1)
+
+        assert result == 0
+        handler.assert_awaited_once()
+        assert handler.call_args[0][0].channel_id == 42
+
+    @pytest.mark.asyncio
+    async def test_happy_path_drains_one_track(self):
+        track = _make_track()
+        session = _make_session(current_track=track)
+        recs = [_make_rec(title=f"r{i}") for i in range(5)]
+        resolved = _make_track(track_id="x")
+        svc, mocks = _make_service(
+            recommendations=recs,
+            resolve_returns=resolved,
+            session=session,
+            settings=RadioSettings(batch_size=5, visible_count=2),
+        )
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="U")
+
+        empty_session = _make_session(current_track=track, queue=[])
+        mocks["session_repo"].get.return_value = empty_session
+
+        # Pool has 3 items after toggle; drain should pull one
+        result = await svc.warmup_next(1)
+        assert result == 1
+
+
+class TestPublishPoolExhausted:
+    @pytest.mark.asyncio
+    async def test_publishes_event_with_state_data(self):
+        from discord_music_player.application.services.radio_service import RadioState
+        from discord_music_player.domain.shared.events import RadioPoolExhausted, get_event_bus
+
+        svc, _ = _make_service()
+        state = RadioState(
+            enabled=True,
+            user_id=100,
+            user_name="U",
+            seed_track_title="seed",
+            channel_id=999,
+        )
+        state.tracks_consumed = 7
+
+        handler = AsyncMock()
+        get_event_bus().subscribe(RadioPoolExhausted, handler)
+
+        await svc._publish_pool_exhausted(guild_id=1, state=state)
+
+        handler.assert_awaited_once()
+        event = handler.call_args[0][0]
+        assert event.guild_id == 1
+        assert event.channel_id == 999
+        assert event.tracks_generated == 7
+
+
+# =============================================================================
+# continue_radio — missing branches
+# =============================================================================
+
+
+class TestContinueRadioBranches:
+    @pytest.mark.asyncio
+    async def test_returns_no_track_message_when_base_track_missing(self):
+        track = _make_track()
+        session = _make_session(current_track=track)
+        recs = [_make_rec(title=f"r{i}") for i in range(3)]
+        resolved = _make_track(track_id="x")
+        svc, mocks = _make_service(
+            recommendations=recs,
+            resolve_returns=resolved,
+            session=session,
+            settings=RadioSettings(batch_size=3, visible_count=3),
+        )
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="U")
+
+        # Make base_track lookup fail
+        mocks["session_repo"].get.return_value = None
+
+        result = await svc.continue_radio(1)
+
+        assert result.enabled is False
+        assert "currently playing" in result.message.lower()
+
+    @pytest.mark.asyncio
+    async def test_disables_when_session_budget_exhausted(self):
+        track = _make_track()
+        session = _make_session(current_track=track)
+        recs = [_make_rec(title=f"r{i}") for i in range(3)]
+        resolved = _make_track(track_id="x")
+        svc, _ = _make_service(
+            recommendations=recs,
+            resolve_returns=resolved,
+            session=session,
+            settings=RadioSettings(batch_size=3, visible_count=3, max_tracks_per_session=2),
+        )
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="U")
+
+        state = svc.get_state(1)
+        state.tracks_consumed = 100  # exhausted
+
+        result = await svc.continue_radio(1)
+
+        assert result.enabled is False
+        assert "limit" in result.message.lower()
+        assert svc.is_enabled(1) is False
+
+    @pytest.mark.asyncio
+    async def test_returns_enabled_message_when_no_recommendations(self):
+        track = _make_track()
+        session = _make_session(current_track=track)
+        recs = [_make_rec(title=f"r{i}") for i in range(3)]
+        resolved = _make_track(track_id="x")
+        svc, mocks = _make_service(
+            recommendations=recs,
+            resolve_returns=resolved,
+            session=session,
+        )
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="U")
+
+        # Continue but AI returns nothing
+        mocks["ai_client"].get_recommendations.return_value = []
+
+        result = await svc.continue_radio(1)
+
+        assert result.enabled is True
+        assert "couldn't find" in result.message.lower()
+
+
+# =============================================================================
+# reroll_track — missing branches + _restore_removed_track
+# =============================================================================
+
+
+class TestRerollBranches:
+    @pytest.mark.asyncio
+    async def test_returns_none_when_base_track_missing(self):
+        track = _make_track()
+        session = _make_session(current_track=track)
+        recs = [_make_rec(title=f"r{i}") for i in range(3)]
+        resolved = _make_track(track_id="x")
+        svc, mocks = _make_service(
+            recommendations=recs,
+            resolve_returns=resolved,
+            session=session,
+        )
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="U")
+
+        mocks["session_repo"].get.return_value = None
+
+        result = await svc.reroll_track(guild_id=1, queue_position=0, user_id=100, user_name="U")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_remove_returns_none(self):
+        track = _make_track()
+        session = _make_session(current_track=track)
+        recs = [_make_rec(title=f"r{i}") for i in range(3)]
+        resolved = _make_track(track_id="x")
+        svc, mocks = _make_service(
+            recommendations=recs,
+            resolve_returns=resolved,
+            session=session,
+        )
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="U")
+
+        mocks["queue_service"].remove.return_value = None
+
+        result = await svc.reroll_track(guild_id=1, queue_position=0, user_id=100, user_name="U")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_restores_track_when_no_recommendations(self):
+        track = _make_track()
+        session = _make_session(current_track=track)
+        initial_recs = [_make_rec(title=f"r{i}") for i in range(3)]
+        resolved = _make_track(track_id="x")
+        svc, mocks = _make_service(
+            recommendations=initial_recs,
+            resolve_returns=resolved,
+            session=session,
+        )
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="U")
+
+        # Remove returns the existing queued track
+        removed = _make_track(title="Removed", track_id="rem1")
+        mocks["queue_service"].remove.return_value = removed
+
+        # AI returns no recs after removal
+        mocks["ai_client"].get_recommendations.return_value = []
+
+        result = await svc.reroll_track(guild_id=1, queue_position=2, user_id=100, user_name="U")
+
+        assert result is None
+        # _restore_removed_track called enqueue
+        assert mocks["queue_service"].enqueue.called
+
+    @pytest.mark.asyncio
+    async def test_restores_track_when_resolve_first_fails(self):
+        track = _make_track()
+        session = _make_session(current_track=track)
+        initial_recs = [_make_rec(title=f"r{i}") for i in range(3)]
+        resolved = _make_track(track_id="x")
+        svc, mocks = _make_service(
+            recommendations=initial_recs,
+            resolve_returns=resolved,
+            session=session,
+        )
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="U")
+
+        removed = _make_track(title="Removed", track_id="rem1")
+        mocks["queue_service"].remove.return_value = removed
+        # New batch fetched, but resolver returns None for all
+        mocks["ai_client"].get_recommendations.return_value = [_make_rec(title="x")]
+        mocks["audio_resolver"].resolve.return_value = None
+
+        result = await svc.reroll_track(guild_id=1, queue_position=2, user_id=100, user_name="U")
+        assert result is None
+
+
+class TestRestoreRemovedTrack:
+    @pytest.mark.asyncio
+    async def test_happy_path_calls_move_when_position_differs(self):
+        track = _make_track()
+        session = _make_session(current_track=track)
+        recs = [_make_rec(title=f"r{i}") for i in range(3)]
+        resolved = _make_track(track_id="x")
+        svc, mocks = _make_service(
+            recommendations=recs,
+            resolve_returns=resolved,
+            session=session,
+        )
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="U")
+
+        # Set up: enqueue succeeds; new session has queue_length=3
+        new_session = _make_session(current_track=track, queue=[track, track, track])
+        mocks["session_repo"].get.return_value = new_session
+
+        await svc._restore_removed_track(
+            guild_id=1, track=track, position=0, user_id=100, user_name="U"
+        )
+
+        # from_pos=2 (queue_length-1), position=0, so move was called
+        mocks["queue_service"].move.assert_called_with(1, 2, 0)
+
+    @pytest.mark.asyncio
+    async def test_swallows_exception(self):
+        track = _make_track()
+        session = _make_session(current_track=track)
+        recs = [_make_rec(title=f"r{i}") for i in range(3)]
+        resolved = _make_track(track_id="x")
+        svc, mocks = _make_service(
+            recommendations=recs,
+            resolve_returns=resolved,
+            session=session,
+        )
+        await svc.toggle_radio(guild_id=1, user_id=100, user_name="U")
+
+        # Force enqueue to raise — _restore_removed_track must swallow it.
+        mocks["queue_service"].enqueue.side_effect = RuntimeError("boom")
+
+        # Should not raise.
+        await svc._restore_removed_track(
+            guild_id=1, track=track, position=0, user_id=100, user_name="U"
+        )
+
+
+# =============================================================================
+# _try_resolve_and_enqueue error paths
+# =============================================================================
+
+
+class TestTryResolveErrorPaths:
+    @pytest.mark.asyncio
+    async def test_returns_none_when_resolver_returns_none(self):
+        recs = [_make_rec(title="r0")]
+        svc, mocks = _make_service(
+            recommendations=recs,
+            resolve_returns=None,  # resolver returns None
+            session=_make_session(current_track=_make_track()),
+        )
+        rec = recs[0]
+        result = await svc._try_resolve_and_enqueue(
+            rec, guild_id=1, user_id=100, user_name="U"
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_resolver_raises(self):
+        recs = [_make_rec(title="r0")]
+        svc, mocks = _make_service(
+            recommendations=recs,
+            resolve_returns=_make_track(track_id="x"),
+            session=_make_session(current_track=_make_track()),
+        )
+        mocks["audio_resolver"].resolve.side_effect = RuntimeError("net down")
+
+        # The exception path returns None instead of bubbling.
+        result = await svc._try_resolve_and_enqueue(
+            recs[0], guild_id=1, user_id=100, user_name="U"
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_enqueue_unsuccessful(self):
+        recs = [_make_rec(title="r0")]
+        resolved = _make_track(track_id="x")
+        svc, mocks = _make_service(
+            recommendations=recs,
+            resolve_returns=resolved,
+            enqueue_success=False,  # enqueue.success=False
+            session=_make_session(current_track=_make_track()),
+        )
+        result = await svc._try_resolve_and_enqueue(
+            recs[0], guild_id=1, user_id=100, user_name="U"
+        )
+        assert result is None
