@@ -88,6 +88,7 @@ def make_interaction(
     interaction.response = MagicMock()
     interaction.response.is_done = MagicMock(return_value=response_done)
     interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
     interaction.followup = MagicMock()
     interaction.followup.send = AsyncMock()
 
