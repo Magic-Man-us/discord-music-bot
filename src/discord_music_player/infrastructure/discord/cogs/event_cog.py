@@ -12,8 +12,8 @@ from discord.ext import commands
 
 from ....domain.shared.constants import ConfigKeys, DiscordEmbedLimits, UIConstants
 from ....domain.shared.types import DiscordSnowflake
-from .base_cog import BaseCog
 from ....utils.reply import truncate
+from .base_cog import BaseCog
 
 if TYPE_CHECKING:
     from ....config.container import Container
@@ -329,6 +329,34 @@ class EventCog(BaseCog):
             await self.container.message_state_manager.reset(guild.id)
         except Exception:
             self.logger.exception("Failed to disconnect and cleanup guild %s", guild.id)
+
+    # ─────────────────────────────────────────────────────────────────
+    # Presence Events — feeds /dj follow
+    # ─────────────────────────────────────────────────────────────────
+
+    @commands.Cog.listener()
+    async def on_presence_update(
+        self, before: discord.Member, after: discord.Member
+    ) -> None:
+        if after.bot:
+            return
+
+        follow_mode = self.container.follow_mode
+        if follow_mode.followed_user_id(after.guild.id) != after.id:
+            return
+
+        from ..services.activity import extract_listening_query
+
+        query = extract_listening_query(after)
+        if query is None:
+            return
+
+        try:
+            await follow_mode.on_track_change(
+                guild_id=after.guild.id, user_id=after.id, query=query
+            )
+        except Exception:
+            self.logger.exception("FollowMode on_track_change failed for guild %s", after.guild.id)
 
     # ─────────────────────────────────────────────────────────────────
     # Message Events

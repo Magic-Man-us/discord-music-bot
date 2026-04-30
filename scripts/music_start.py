@@ -104,8 +104,10 @@ def start_session(
     else:
         env_prelude = "set -a; [ -f .env ] && . ./.env; set +a;"
 
-    # Always use tee for logging (makes debugging easier)
-    inner_cmd = f"{env_prelude} {cmd} 2>&1 | tee -a {shlex.quote(str(log_path))}"
+    # The bot configures its own RotatingFileHandler → logs/music_bot.log,
+    # so we don't tee here (would produce duplicate lines). The tmux pane
+    # itself still shows live stdout for interactive attach.
+    inner_cmd = f"{env_prelude} {cmd}"
 
     if respawn:
         # Keep restarting the bot with crash-loop detection.
@@ -140,7 +142,8 @@ def start_session(
         )
 
     # Launch detached tmux session
-    repo_root = Path(__file__).resolve().parent
+    # __file__ is scripts/music_start.py — go up one more level for the repo root.
+    repo_root = Path(__file__).resolve().parent.parent
     res = run(
         [
             "tmux",

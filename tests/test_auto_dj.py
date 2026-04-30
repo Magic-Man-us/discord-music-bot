@@ -161,6 +161,60 @@ class TestLifecycle:
 
 
 # ============================================================================
+# Opt-in (enable / disable / is_enabled)
+# ============================================================================
+
+
+class TestOptIn:
+    def test_default_state_is_disabled(self, auto_dj: AutoDJ) -> None:
+        assert auto_dj.is_enabled(GUILD_ID) is False
+
+    def test_enable_marks_guild_as_enabled(self, auto_dj: AutoDJ) -> None:
+        auto_dj.enable(GUILD_ID)
+        assert auto_dj.is_enabled(GUILD_ID) is True
+
+    def test_enable_is_idempotent(self, auto_dj: AutoDJ) -> None:
+        auto_dj.enable(GUILD_ID)
+        auto_dj.enable(GUILD_ID)
+        assert auto_dj.is_enabled(GUILD_ID) is True
+
+    def test_disable_clears_flag(self, auto_dj: AutoDJ) -> None:
+        auto_dj.enable(GUILD_ID)
+        auto_dj.disable(GUILD_ID)
+        assert auto_dj.is_enabled(GUILD_ID) is False
+
+    def test_disable_when_not_enabled_is_noop(self, auto_dj: AutoDJ) -> None:
+        auto_dj.disable(GUILD_ID)  # should not raise
+        assert auto_dj.is_enabled(GUILD_ID) is False
+
+    def test_disable_cancels_pending_timer(self, auto_dj: AutoDJ) -> None:
+        auto_dj.enable(GUILD_ID)
+        fake_task = MagicMock()
+        fake_task.done.return_value = False
+        auto_dj._timers[GUILD_ID] = fake_task
+
+        auto_dj.disable(GUILD_ID)
+
+        fake_task.cancel.assert_called_once()
+        assert GUILD_ID not in auto_dj._timers
+
+    def test_enable_is_per_guild(self, auto_dj: AutoDJ) -> None:
+        auto_dj.enable(111)
+        assert auto_dj.is_enabled(111) is True
+        assert auto_dj.is_enabled(222) is False
+
+    def test_stop_clears_all_enabled_guilds(self, auto_dj: AutoDJ) -> None:
+        auto_dj.start()
+        auto_dj.enable(111)
+        auto_dj.enable(222)
+
+        auto_dj.stop()
+
+        assert auto_dj.is_enabled(111) is False
+        assert auto_dj.is_enabled(222) is False
+
+
+# ============================================================================
 # Queue Exhausted → Timer Scheduling
 # ============================================================================
 
@@ -170,6 +224,7 @@ class TestOnQueueExhausted:
     async def test_schedules_timer_on_queue_exhausted(self, auto_dj: AutoDJ) -> None:
         event = QueueExhausted(guild_id=GUILD_ID)
         auto_dj.start()
+        auto_dj.enable(GUILD_ID)
 
         await auto_dj._on_queue_exhausted(event)
 
@@ -178,10 +233,20 @@ class TestOnQueueExhausted:
         auto_dj.stop()
 
     @pytest.mark.asyncio
+    async def test_skips_if_guild_not_opted_in(self, auto_dj: AutoDJ) -> None:
+        """No timer scheduled when /dj on was never invoked for this guild."""
+        event = QueueExhausted(guild_id=GUILD_ID)
+
+        await auto_dj._on_queue_exhausted(event)
+
+        assert GUILD_ID not in auto_dj._timers
+
+    @pytest.mark.asyncio
     async def test_skips_if_radio_already_enabled(
         self, auto_dj: AutoDJ, radio_service: MagicMock
     ) -> None:
         radio_service.is_enabled.return_value = True
+        auto_dj.enable(GUILD_ID)
         event = QueueExhausted(guild_id=GUILD_ID)
 
         await auto_dj._on_queue_exhausted(event)
@@ -190,6 +255,7 @@ class TestOnQueueExhausted:
 
     @pytest.mark.asyncio
     async def test_skips_if_delay_is_zero(self, auto_dj: AutoDJ) -> None:
+        auto_dj.enable(GUILD_ID)
         event = QueueExhausted(guild_id=GUILD_ID)
 
         with (
@@ -208,6 +274,7 @@ class TestOnQueueExhausted:
     async def test_replaces_existing_timer_for_same_guild(self, auto_dj: AutoDJ) -> None:
         event = QueueExhausted(guild_id=GUILD_ID)
         auto_dj.start()
+        auto_dj.enable(GUILD_ID)
 
         await auto_dj._on_queue_exhausted(event)
         first_task = auto_dj._timers[GUILD_ID]
@@ -230,6 +297,7 @@ class TestOnTrackStarted:
     @pytest.mark.asyncio
     async def test_cancels_pending_timer(self, auto_dj: AutoDJ) -> None:
         auto_dj.start()
+        auto_dj.enable(GUILD_ID)
 
         # Schedule a timer
         event_exhausted = QueueExhausted(guild_id=GUILD_ID)
@@ -474,6 +542,8 @@ class TestMultiGuild:
         auto_dj.start()
 
         guild_a, guild_b = 111, 222
+        auto_dj.enable(guild_a)
+        auto_dj.enable(guild_b)
         await auto_dj._on_queue_exhausted(QueueExhausted(guild_id=guild_a))
         await auto_dj._on_queue_exhausted(QueueExhausted(guild_id=guild_b))
 

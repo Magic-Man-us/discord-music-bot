@@ -29,6 +29,10 @@ from discord_music_player.infrastructure.discord.cogs.playback_cog import (
     _format_slice_status,
     _suggest_save_name,
 )
+from discord_music_player.infrastructure.discord.services.activity import (
+    APPLE_MUSIC_APP_ID,
+    extract_listening_query,
+)
 
 from conftest import (  # noqa: E402  -- pytest adds tests/ to sys.path
     FakeContainer,
@@ -173,6 +177,12 @@ def _container(**overrides) -> FakeContainer:
     radio_service.is_enabled = MagicMock(return_value=False)
     radio_service.disable_radio = MagicMock()
 
+    auto_dj = MagicMock()
+    auto_dj.disable = MagicMock()
+
+    follow_mode = MagicMock()
+    follow_mode.disable = MagicMock()
+
     container = FakeContainer(
         playback_service=playback_service,
         auto_skip_on_requester_leave=auto_skip,
@@ -183,6 +193,8 @@ def _container(**overrides) -> FakeContainer:
         voice_adapter=voice_adapter,
         audio_resolver=audio_resolver,
         radio_service=radio_service,
+        auto_dj=auto_dj,
+        follow_mode=follow_mode,
         settings=settings,
         ai_enabled=False,
     )
@@ -1254,3 +1266,97 @@ class TestSendQueued:
 
         msm.track_queued.assert_called_once()
         msm.update_next_up.assert_awaited_once()
+
+
+# =============================================================================
+# extract_listening_query — Spotify + Apple Music + nothing
+# =============================================================================
+
+
+class TestExtractListeningQuery:
+    def test_returns_none_for_user_without_member_attrs(self):
+        # discord.User has no .activities, treated as no-activity
+        user = MagicMock(spec=discord.User)
+        assert extract_listening_query(user) is None
+
+    def test_returns_none_for_member_with_no_activities(self):
+        member = MagicMock(spec=discord.Member)
+        member.activities = []
+        assert extract_listening_query(member) is None
+
+    def test_extracts_from_spotify_typed_activity(self):
+        spotify = MagicMock(spec=discord.Spotify)
+        spotify.title = "Song Title"
+        spotify.artist = "Artist Name"
+
+        member = MagicMock(spec=discord.Member)
+        member.activities = [spotify]
+
+        assert extract_listening_query(member) == "Artist Name - Song Title"
+
+    def test_extracts_from_apple_music_generic_activity_by_app_id(self):
+        apple = MagicMock(spec=discord.Activity)
+        apple.type = discord.ActivityType.listening
+        apple.application_id = APPLE_MUSIC_APP_ID
+        apple.name = "Apple Music"
+        apple.details = "Spent A Quarter Ticket (Intro)"
+        apple.state = "Bally Baby & Hoodrich Keem"
+
+        member = MagicMock(spec=discord.Member)
+        member.activities = [apple]
+
+        assert (
+            extract_listening_query(member)
+            == "Bally Baby & Hoodrich Keem - Spent A Quarter Ticket (Intro)"
+        )
+
+    def test_extracts_apple_music_when_app_id_missing_but_name_matches(self):
+        # app_id can be None for some integrations — fall back to name match
+        apple = MagicMock(spec=discord.Activity)
+        apple.type = discord.ActivityType.listening
+        apple.application_id = None
+        apple.name = "Apple Music"
+        apple.details = "Track"
+        apple.state = "Artist"
+
+        member = MagicMock(spec=discord.Member)
+        member.activities = [apple]
+
+        assert extract_listening_query(member) == "Artist - Track"
+
+    def test_skips_non_listening_activities(self):
+        playing = MagicMock(spec=discord.Activity)
+        playing.type = discord.ActivityType.playing
+        playing.application_id = APPLE_MUSIC_APP_ID
+        playing.name = "Apple Music"
+        playing.details = "Track"
+        playing.state = "Artist"
+
+        member = MagicMock(spec=discord.Member)
+        member.activities = [playing]
+
+        assert extract_listening_query(member) is None
+
+    def test_skips_listening_activity_from_other_apps(self):
+        other = MagicMock(spec=discord.Activity)
+        other.type = discord.ActivityType.listening
+        other.application_id = 9999
+        other.name = "SomeOtherMusicApp"
+        other.details = "Track"
+        other.state = "Artist"
+
+        member = MagicMock(spec=discord.Member)
+        member.activities = [other]
+
+        assert extract_listening_query(member) is None
+
+    def test_picks_first_recognised_among_many(self):
+        custom = MagicMock(spec=discord.CustomActivity)
+        spotify = MagicMock(spec=discord.Spotify)
+        spotify.title = "Spot Title"
+        spotify.artist = "Spot Artist"
+
+        member = MagicMock(spec=discord.Member)
+        member.activities = [custom, spotify]
+
+        assert extract_listening_query(member) == "Spot Artist - Spot Title"

@@ -150,6 +150,9 @@ class LimitConstants:
     LONG_TRACK_THRESHOLD_SECONDS = 360  # 6 minutes
     LONG_TRACK_VOTE_BYPASS_LISTENERS = 4  # skip vote when <= this many listeners
 
+    # /dj follow — auto-stop after this many distinct tracks have been mirrored
+    MAX_FOLLOW_TRACKS = 5
+
     # Discord limits
     MAX_DISCORD_SNOWFLAKE = 2**64
     MIN_COMMAND_PREFIX_LENGTH = 1

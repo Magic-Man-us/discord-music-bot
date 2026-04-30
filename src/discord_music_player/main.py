@@ -20,6 +20,10 @@ _PID_FILE = Path(__file__).resolve().parents[2] / "bot.pid"
 def setup_logging(log_level: str = "INFO") -> None:
     resolved_level = logging.getLevelNamesMapping().get(log_level.upper(), logging.INFO)
 
+    # RotatingFileHandler refuses to open if the parent dir is missing — make sure
+    # logs/ exists before dictConfig regardless of how the bot was launched.
+    (Path(__file__).resolve().parents[2] / "logs").mkdir(exist_ok=True)
+
     try:
         with open(_LOGGING_CONFIG_PATH) as f:
             config = json.load(f)
@@ -48,19 +52,22 @@ def setup_logging(log_level: str = "INFO") -> None:
 
 def _acquire_pid_lock(logger: logging.Logger) -> int | None:
     """Acquire an exclusive lock via bot.pid. Returns the fd or None on failure."""
+    # Open in "a+" (no truncation) so a second instance racing for the lock
+    # cannot wipe the running instance's PID before flock fails.
+    fd = _PID_FILE.open("a+")
     try:
-        fd = _PID_FILE.open("w")
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        fd.write(str(os.getpid()))
-        fd.flush()
-        return fd  # type: ignore[return-value]  # keep fd alive to hold lock
     except OSError:
-        try:
-            existing_pid = _PID_FILE.read_text().strip()
-        except OSError:
-            existing_pid = "unknown"
+        fd.seek(0)
+        existing_pid = fd.read().strip() or "unknown"
+        fd.close()
         logger.error("Another bot instance is already running (PID %s). Exiting.", existing_pid)
         return None
+    fd.seek(0)
+    fd.truncate()
+    fd.write(str(os.getpid()))
+    fd.flush()
+    return fd  # type: ignore[return-value]  # keep fd alive to hold lock
 
 
 def main() -> int:

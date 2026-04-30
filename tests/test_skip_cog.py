@@ -40,7 +40,10 @@ def cog(mock_container):
 def interaction():
     i = MagicMock(spec=discord.Interaction)
     i.response = MagicMock()
-    i.response.is_done.return_value = False
+    # /skip defers up front, so by the time the cog reaches send paths the
+    # response is already done — guards/handlers should use followup.send.
+    i.response.is_done.return_value = True
+    i.response.defer = AsyncMock()
     i.response.send_message = AsyncMock()
     i.followup = MagicMock()
     i.followup.send = AsyncMock()
@@ -134,7 +137,8 @@ async def test_handle_vote_skip_action_executed(cog, interaction, mock_container
     await cog._handle_vote_skip(interaction, interaction.user)
 
     mock_container.playback_service.skip_track.assert_awaited_once_with(111)
-    msg = interaction.response.send_message.call_args[0][0]
+    # /skip defers up front, so the cog replies via followup.send.
+    msg = interaction.followup.send.call_args[0][0]
     assert "Requester skipped" in msg
     assert "My Track" in msg
 
@@ -149,7 +153,7 @@ async def test_handle_vote_skip_no_action(cog, interaction, mock_container):
     await cog._handle_vote_skip(interaction, interaction.user)
 
     mock_container.playback_service.skip_track.assert_not_awaited()
-    msg = interaction.response.send_message.call_args[0][0]
+    msg = interaction.followup.send.call_args[0][0]
     assert "2/3" in msg
 
 
@@ -160,7 +164,7 @@ async def test_handle_vote_skip_nothing_playing(cog, interaction, mock_container
 
     await cog._handle_vote_skip(interaction, interaction.user)
 
-    msg = interaction.response.send_message.call_args[0][0]
+    msg = interaction.followup.send.call_args[0][0]
     assert "Nothing is playing" in msg
 
 
@@ -171,14 +175,15 @@ async def test_handle_vote_skip_nothing_playing(cog, interaction, mock_container
 
 @pytest.mark.asyncio
 async def test_skip_user_not_member(cog, interaction, mock_container):
-    # User is Member for the voice guard, but we set it to a non-Member after
+    # discord.User (DM-style) doesn't satisfy the Member-in-voice guard.
     interaction.user = MagicMock(spec=discord.User)
     interaction.user.voice = None
 
     await cog.skip.callback(cog, interaction, force=False)
 
-    # Should be rejected by voice guard (user not in voice)
-    interaction.response.send_message.assert_called_once()
+    # /skip defers up front; guard rejection routes through followup.send.
+    interaction.response.defer.assert_awaited_once()
+    interaction.followup.send.assert_called_once()
 
 
 # =============================================================================

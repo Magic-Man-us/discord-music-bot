@@ -221,6 +221,11 @@ class AppleMusicClient:
 
         queries: list[str] = []
         for track in root.relationships.tracks.data:
+            # Albums can include music-videos / extras alongside songs in the
+            # tracks relationship. Filter to the audio rows the user actually
+            # sees in the Apple Music UI.
+            if track.type != AppleResourceType.SONG.value:
+                continue
             attrs = track.attributes
             if attrs is None or attrs.artistName is None:
                 continue

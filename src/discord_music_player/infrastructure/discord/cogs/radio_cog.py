@@ -8,15 +8,17 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from ....domain.shared.enums import RadioAction
+from ....domain.shared.constants import LimitConstants
+from ....domain.shared.enums import AutoDJAction, RadioAction
 from ....domain.shared.events import RadioPoolExhausted, get_event_bus
-from .base_cog import BaseCog
 from ..guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     ensure_voice,
 )
+from .base_cog import BaseCog
 
 if TYPE_CHECKING:
+    from ....application.services.follow_mode import FollowMode
     from ....application.services.radio_models import RadioToggleResult
     from ....config.container import Container
 
@@ -216,6 +218,125 @@ class RadioCog(BaseCog):
             radio_service.disable_radio(guild_id)
 
         return True
+
+    @app_commands.command(
+        name="dj",
+        description="Auto-DJ controls — on/off, or follow another listener live.",
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        action=(
+            "on = radio when queue empties; "
+            "follow = mirror your current music activity; "
+            "off = stop everything"
+        )
+    )
+    @app_commands.choices(
+        action=[
+            app_commands.Choice(name="on", value=AutoDJAction.ON),
+            app_commands.Choice(name="off", value=AutoDJAction.OFF),
+            app_commands.Choice(name="follow", value=AutoDJAction.FOLLOW),
+        ]
+    )
+    async def dj(
+        self,
+        interaction: discord.Interaction,
+        action: app_commands.Choice[str],
+    ) -> None:
+        if not await ensure_user_in_voice_and_warm(
+            interaction, self.container.voice_warmup_tracker
+        ):
+            return
+
+        assert interaction.guild is not None
+
+        auto_dj = self.container.auto_dj
+        follow_mode = self.container.follow_mode
+        guild_id = interaction.guild.id
+
+        choice = AutoDJAction(action.value)
+
+        if choice is AutoDJAction.OFF:
+            auto_dj.disable(guild_id)
+            follow_mode.disable(guild_id)
+            await interaction.response.send_message(
+                "Auto-DJ + follow disabled.", ephemeral=True
+            )
+            return
+
+        if choice is AutoDJAction.ON:
+            if not await self.container.ai_client.is_available():
+                await interaction.response.send_message(
+                    "Auto-DJ needs AI, but no AI provider is configured.",
+                    ephemeral=True,
+                )
+                return
+            auto_dj.enable(guild_id)
+            await interaction.response.send_message(
+                "Auto-DJ enabled. I'll keep the music going once the queue empties.",
+                ephemeral=True,
+            )
+            return
+
+        # FOLLOW
+        await self._handle_follow(interaction, follow_mode)
+
+    async def _handle_follow(
+        self,
+        interaction: discord.Interaction,
+        follow_mode: FollowMode,
+    ) -> None:
+        from ..services.activity import extract_listening_query
+
+        assert interaction.guild is not None
+        guild_id = interaction.guild.id
+        user = interaction.user
+
+        if not isinstance(user, discord.Member):
+            await interaction.response.send_message(
+                "Follow mode needs a Member context.", ephemeral=True
+            )
+            return
+
+        seed_query = extract_listening_query(user)
+        if seed_query is None:
+            hint = ""
+            if not interaction.client.intents.presences:
+                hint = (
+                    " *(bot's `presences` intent is OFF — check Developer "
+                    "Portal + bot.py.)*"
+                )
+            await interaction.response.send_message(
+                "I can't see what you're listening to. Make sure Spotify or "
+                "Apple Music is open and **Activity Privacy → Display "
+                f"current activity as a status message** is on.{hint}",
+                ephemeral=True,
+            )
+            return
+
+        follow_mode.enable(
+            guild_id=guild_id, user_id=user.id, user_name=user.display_name
+        )
+        await interaction.response.defer(ephemeral=True)
+
+        # Seed with whatever they're listening to right now so the user
+        # doesn't have to switch tracks to kick things off.
+        enqueued = await follow_mode.on_track_change(
+            guild_id=guild_id, user_id=user.id, query=seed_query
+        )
+        cap = LimitConstants.MAX_FOLLOW_TRACKS
+        if enqueued:
+            await interaction.followup.send(
+                f"Following you. Up to **{cap}** tracks will mirror your "
+                f"listening, then I'll auto-stop.",
+                ephemeral=True,
+            )
+        else:
+            await interaction.followup.send(
+                f"Following you, but I couldn't resolve **{seed_query}** on "
+                f"YouTube. The next track you switch to should pick up.",
+                ephemeral=True,
+            )
 
     async def _send_radio_enabled(
         self,

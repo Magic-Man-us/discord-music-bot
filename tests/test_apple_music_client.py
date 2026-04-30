@@ -8,7 +8,11 @@ from unittest.mock import patch
 
 import pytest
 
-from discord_music_player.infrastructure.audio.apple_music import AppleMusicClient
+from discord_music_player.infrastructure.audio.apple_music import (
+    AppleMusicClient,
+    AppleResourceType,
+    _CatalogResponse,
+)
 
 
 class TestTokenRefreshCoalesce:
@@ -77,3 +81,55 @@ class TestTokenRefreshCoalesce:
 
         assert scrape_calls == 1
         assert a == b
+
+
+class TestExtractQueriesSongFilter:
+    """Albums commonly include music-videos alongside songs in tracks.data;
+    the queue should only get the audio rows."""
+
+    def test_skips_music_videos(self) -> None:
+        catalog = _CatalogResponse.model_validate(
+            {
+                "data": [
+                    {
+                        "id": "1234567890",
+                        "type": "albums",
+                        "attributes": {"name": "Test Album"},
+                        "relationships": {
+                            "tracks": {
+                                "data": [
+                                    {
+                                        "id": "1",
+                                        "type": "songs",
+                                        "attributes": {
+                                            "name": "Track One",
+                                            "artistName": "Artist A",
+                                        },
+                                    },
+                                    {
+                                        "id": "2",
+                                        "type": "music-videos",
+                                        "attributes": {
+                                            "name": "Bonus Video",
+                                            "artistName": "Artist A",
+                                        },
+                                    },
+                                    {
+                                        "id": "3",
+                                        "type": "songs",
+                                        "attributes": {
+                                            "name": "Track Two",
+                                            "artistName": "Artist A",
+                                        },
+                                    },
+                                ]
+                            }
+                        },
+                    }
+                ]
+            }
+        )
+
+        queries = AppleMusicClient._extract_queries(AppleResourceType.ALBUM, catalog)
+
+        assert queries == ["Artist A - Track One", "Artist A - Track Two"]

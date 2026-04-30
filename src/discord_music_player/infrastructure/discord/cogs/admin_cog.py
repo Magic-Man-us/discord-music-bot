@@ -187,6 +187,40 @@ class AdminCog(BaseCog):
             self.logger.exception(_FAILED_RELOAD_LOG, mod)
             await self._reply(ctx, f"Failed to reload `{mod}`")
 
+    @commands.command(name="load", description="Load a cog (extension) at runtime.")
+    @require_owner()
+    async def load(self, ctx: commands.Context, extension: str) -> None:
+        if extension.startswith("discord_music_player."):
+            mod = extension
+        else:
+            mod = f"discord_music_player.infrastructure.discord.cogs.{extension}"
+
+        try:
+            await self.bot.load_extension(mod)
+            await self._reply(ctx, f"Loaded `{mod}`")
+        except commands.ExtensionAlreadyLoaded:
+            await self._reply(ctx, f"`{mod}` is already loaded — use `!reload` instead.")
+        except Exception:
+            self.logger.exception("Failed to load %s", mod)
+            await self._reply(ctx, f"Failed to load `{mod}` (see logs).")
+
+    @commands.command(name="unload", description="Unload a cog (extension) at runtime.")
+    @require_owner()
+    async def unload(self, ctx: commands.Context, extension: str) -> None:
+        if extension.startswith("discord_music_player."):
+            mod = extension
+        else:
+            mod = f"discord_music_player.infrastructure.discord.cogs.{extension}"
+
+        try:
+            await self.bot.unload_extension(mod)
+            await self._reply(ctx, f"Unloaded `{mod}`")
+        except commands.ExtensionNotLoaded:
+            await self._reply(ctx, f"`{mod}` is not loaded.")
+        except Exception:
+            self.logger.exception("Failed to unload %s", mod)
+            await self._reply(ctx, f"Failed to unload `{mod}` (see logs).")
+
     @commands.command(name="reload_all", description="Reload all cogs.")
     @require_owner()
     async def reload_all(self, ctx: commands.Context) -> None:

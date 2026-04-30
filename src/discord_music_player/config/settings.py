@@ -131,8 +131,10 @@ class AudioSettings(BaseModel):
         }
     )
     ytdlp_format: NonEmptyStr = "bestaudio/best"
+    # bgutil's getpot plugin only auto-injects for yt-dlp's WEBPO_CLIENTS;
+    # "android" isn't in that set, so it gets queued without a token and 403s.
     player_client: list[NonEmptyStr] = Field(
-        default_factory=lambda: ["web", "android"],
+        default_factory=lambda: ["web", "mweb"],
     )
     pot_server_url: HttpUrlStr = Field(
         default="http://127.0.0.1:4416",

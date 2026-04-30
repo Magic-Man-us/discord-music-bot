@@ -1,8 +1,11 @@
-"""Auto-DJ: automatically starts radio when the queue empties and no one adds tracks.
+"""Auto-DJ: opt-in feature that starts radio when the queue empties and no one adds tracks.
 
-Subscribes to QueueExhausted → waits AUTO_DJ_DELAY_SECONDS → if still idle and
-radio is not already active, toggles radio on using the last played track as seed.
-Cancels the timer when a new track starts (TrackStartedPlaying).
+Opt-in via ``enable(guild_id)`` (the ``/play dj=true`` flag). Without that, all
+QueueExhausted events for the guild are ignored. Once enabled, subscribes to
+QueueExhausted → waits AUTO_DJ_DELAY_SECONDS → if still idle and radio is not
+already active, toggles radio on using the last played track as seed. Cancels
+the timer when a new track starts (TrackStartedPlaying). ``/stop`` and
+``/leave`` call ``disable(guild_id)`` to reset the opt-in.
 """
 
 from __future__ import annotations
@@ -52,6 +55,7 @@ class AutoDJ:
         self._bus = get_event_bus()
         self._started = False
         self._timers: dict[DiscordSnowflake, asyncio.Task[None]] = {}
+        self._enabled_guilds: set[DiscordSnowflake] = set()
 
     def start(self) -> None:
         if self._started:
@@ -70,11 +74,28 @@ class AutoDJ:
             if not timer.done():
                 timer.cancel()
         self._timers.clear()
+        self._enabled_guilds.clear()
         self._started = False
 
+    def enable(self, guild_id: DiscordSnowflake) -> None:
+        """Opt this guild in. Future queue-exhaust events trigger auto-DJ."""
+        self._enabled_guilds.add(guild_id)
+
+    def disable(self, guild_id: DiscordSnowflake) -> None:
+        """Opt this guild out and cancel any pending timer."""
+        self._enabled_guilds.discard(guild_id)
+        self._cancel_timer(guild_id)
+
+    def is_enabled(self, guild_id: DiscordSnowflake) -> bool:
+        return guild_id in self._enabled_guilds
+
     async def _on_queue_exhausted(self, event: QueueExhausted) -> None:
-        """Schedule auto-DJ activation after a delay."""
+        """Schedule auto-DJ activation after a delay (only if guild opted in)."""
         guild_id = event.guild_id
+
+        # Auto-DJ is opt-in per guild via /play dj=true.
+        if guild_id not in self._enabled_guilds:
+            return
 
         # Don't schedule if radio is already active
         if self._radio_service.is_enabled(guild_id):

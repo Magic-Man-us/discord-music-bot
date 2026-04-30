@@ -5,12 +5,12 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
-from .base_cog import BaseCog
 from ..guards.voice_guards import (
     can_force_skip,
     ensure_user_in_voice_and_warm,
     send_ephemeral,
 )
+from .base_cog import BaseCog
 
 
 class SkipCog(BaseCog):
@@ -20,17 +20,19 @@ class SkipCog(BaseCog):
     @app_commands.guild_only()
     @app_commands.describe(force="Force skip (admin only)")
     async def skip(self, interaction: discord.Interaction, force: bool = False) -> None:
+        # Defer immediately so downstream Discord API calls (get_listeners, skip_track)
+        # can't blow past the 3s interaction-token deadline (was producing 10062 errors).
+        await interaction.response.defer(ephemeral=True)
+
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker
         ):
             return
 
+        # The voice guard already enforces guild + Member + member.voice.channel.
         assert interaction.guild is not None
-
+        assert isinstance(interaction.user, discord.Member)
         user = interaction.user
-        if not isinstance(user, discord.Member):
-            await send_ephemeral(interaction, "Could not verify your permissions.")
-            return
 
         if force:
             if not can_force_skip(user, self.container.settings.discord.owner_ids):
@@ -49,28 +51,26 @@ class SkipCog(BaseCog):
         track = await playback_service.skip_track(interaction.guild.id)
 
         if track:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"Force skipped: **{track.title}**",
                 ephemeral=True,
             )
         else:
-            await interaction.response.send_message("Nothing is playing.", ephemeral=True)
+            await interaction.followup.send("Nothing is playing.", ephemeral=True)
 
     async def _handle_vote_skip(
         self, interaction: discord.Interaction, user: discord.Member
     ) -> None:
+        # Guard guarantees guild + member-in-voice; trust the invariant here.
         assert interaction.guild is not None
-
-        user_channel_id = None
-        if user.voice and user.voice.channel:
-            user_channel_id = user.voice.channel.id
+        assert user.voice is not None and user.voice.channel is not None
 
         from ....application.commands.vote_skip import VoteSkipCommand
 
         command = VoteSkipCommand(
             guild_id=interaction.guild.id,
             user_id=user.id,
-            user_channel_id=user_channel_id,
+            user_channel_id=user.voice.channel.id,
         )
 
         handler = self.container.vote_skip_handler
@@ -86,7 +86,7 @@ class SkipCog(BaseCog):
         else:
             msg = result.message
 
-        await interaction.response.send_message(msg, ephemeral=True)
+        await interaction.followup.send(msg, ephemeral=True)
 
 
 setup = SkipCog.setup

@@ -264,10 +264,14 @@ class TestAudioSettings:
         assert audio.ytdlp_format == "bestaudio[ext=m4a]"
 
     def test_player_client_default(self):
-        """Should default player_client to web-first order for PoToken compatibility."""
+        """Default to clients bgutil's getpot plugin auto-injects for (WEBPO_CLIENTS).
+
+        android isn't on that list — keeping it produced "GVS PO Token required"
+        warnings. mweb is the yt-dlp wiki's recommended fallback.
+        """
         audio = AudioSettings()
 
-        assert audio.player_client == ["web", "android"]
+        assert audio.player_client == ["web", "mweb"]
 
     def test_player_client_custom(self):
         """Should accept custom player_client list."""

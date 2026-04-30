@@ -748,7 +748,8 @@ class TestSkipCommand:
         await skip_cog.skip.callback(skip_cog, mock_interaction, force=False)
 
         mock_container.vote_skip_handler.handle.assert_called_once()
-        mock_interaction.response.send_message.assert_called_once()
+        # /skip defers up front; the vote-skip reply lands on followup.send.
+        mock_interaction.followup.send.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_skip_threshold_met(
@@ -808,8 +809,9 @@ class TestSkipCommand:
 
         await skip_cog.skip.callback(skip_cog, mock_interaction, force=True)
 
-        mock_interaction.response.send_message.assert_called_once()
-        args = mock_interaction.response.send_message.call_args
+        # /skip defers up front; force-skip reply lands on followup.send.
+        mock_interaction.followup.send.assert_called_once()
+        args = mock_interaction.followup.send.call_args
         assert "Nothing" in args[0][0]
 
 

@@ -8,7 +8,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from ....domain.music.entities import PlaylistEntry, PlaylistPreview, Track
+from ....domain.music.entities import PlaylistPreview, Track
 from ....domain.shared.constants import PlaylistConstants, UIConstants
 from ....domain.shared.types import (
     DiscordSnowflake,
@@ -16,7 +16,12 @@ from ....domain.shared.types import (
     PlaylistImportCount,
     PlaylistStartIndex,
 )
-from .base_cog import BaseCog
+from ....utils.reply import (
+    extract_youtube_timestamp,
+    format_duration,
+    parse_timestamp,
+    truncate,
+)
 from ..guards.voice_guards import (
     ensure_dj_role,
     ensure_user_in_voice_and_warm,
@@ -24,16 +29,12 @@ from ..guards.voice_guards import (
     is_solo_in_channel,
     send_ephemeral,
 )
+from ..services.activity import extract_listening_query
 from ..services.embed_builder import (
     build_now_playing_embed,
     format_queued_line,
 )
-from ....utils.reply import (
-    extract_youtube_timestamp,
-    format_duration,
-    parse_timestamp,
-    truncate,
-)
+from .base_cog import BaseCog
 
 if TYPE_CHECKING:
     from ....config.container import Container
@@ -105,11 +106,11 @@ class PlaybackCog(BaseCog):
     # ─────────────────────────────────────────────────────────────────
 
     @app_commands.command(
-        name="play", description="Play a song — paste a YouTube link or just type a song name."
+        name="play", description="Play a song — paste a YouTube link, type a song, or use mine."
     )
     @app_commands.guild_only()
     @app_commands.describe(
-        query="YouTube URL or search query",
+        query="YouTube URL or search query (omit when using mine)",
         timestamp='Start position within a single track (e.g. "1:30" or "90")',
         count=(
             "How many tracks to import from a playlist "
@@ -118,17 +119,52 @@ class PlaybackCog(BaseCog):
         ),
         start="1-based position in the playlist to start importing from",
         shuffle="Randomise the selected tracks before queuing",
+        mine="Play whatever you're currently listening to (Spotify / Apple Music)",
     )
     async def play(
         self,
         interaction: discord.Interaction,
-        query: str,
+        query: str | None = None,
         timestamp: str | None = None,
         count: app_commands.Range[int, 1, PlaylistConstants.MAX_PLAYLIST_TRACKS] | None = None,
         start: app_commands.Range[int, 1, 1000] | None = None,
         shuffle: bool = False,
+        mine: bool = False,
     ) -> None:
         from ....domain.music.wrappers import StartSeconds
+
+        notices: list[str] = []
+
+        # Resolve mine vs query — never both, never neither.
+        if mine and query:
+            notices.append("Both `query` and `mine` were set — using your typed query.")
+            mine = False
+
+        if mine:
+            # mine implies a single track, so playlist-only args don't apply.
+            if count is not None or start is not None or shuffle:
+                notices.append("`count` / `start` / `shuffle` ignored with `mine`.")
+                count = None
+                start = None
+                shuffle = False
+            resolved = extract_listening_query(interaction.user)
+            if resolved is None:
+                await interaction.response.send_message(
+                    "I don't see a music activity for you. Make sure Spotify "
+                    "or Apple Music is open and your **Activity Privacy → "
+                    "Display current activity as a status message** is on.",
+                    ephemeral=True,
+                )
+                return
+            query = resolved
+
+        if not query:
+            await interaction.response.send_message(
+                "Give me a song to play — paste a URL/name, or set `mine: True` "
+                "to play your current listening activity.",
+                ephemeral=True,
+            )
+            return
 
         raw_seconds: int | None = None
         if timestamp is not None:
@@ -145,6 +181,10 @@ class PlaybackCog(BaseCog):
         seek = StartSeconds.from_optional(raw_seconds)
 
         await interaction.response.defer()
+
+        if notices:
+            await interaction.followup.send(" ".join(notices), ephemeral=True)
+
         await self._execute_play(
             interaction,
             query,
@@ -385,9 +425,10 @@ class PlaybackCog(BaseCog):
             interaction.guild.id,
         )
 
-        await interaction.followup.send(
+        status_msg = await interaction.followup.send(
             _format_slice_status(source_label, slice_info, count_override),
             ephemeral=True,
+            wait=True,
         )
 
         await self._finalize_playlist_import(
@@ -395,8 +436,28 @@ class PlaybackCog(BaseCog):
             resolver_queries=queries,
             source_label=source_label,
             suggested_name=_suggest_save_name(playlist.name, source_label),
+            status_message=status_msg,
         )
         return True
+
+    async def _send_or_edit_status(
+        self,
+        interaction: discord.Interaction,
+        status_message: discord.WebhookMessage | None,
+        content: str,
+    ) -> None:
+        """Edit an existing status followup in place, or send a fresh one.
+
+        Falls back to a new followup if the edit raises (e.g. the original
+        was deleted or the interaction token expired).
+        """
+        if status_message is not None:
+            try:
+                await status_message.edit(content=content)
+                return
+            except discord.HTTPException:
+                self.logger.debug("Status message edit failed; sending fresh followup")
+        await interaction.followup.send(content, ephemeral=True)
 
     async def _finalize_playlist_import(
         self,
@@ -405,12 +466,18 @@ class PlaybackCog(BaseCog):
         resolver_queries: list[str],
         source_label: str,
         suggested_name: str,
+        status_message: discord.WebhookMessage | None = None,
     ) -> None:
         """Resolve → batch-enqueue → confirmation → save-prompt.
 
         Single completion point for every playlist-style import so the save
         prompt fires consistently across Apple Music, YouTube auto-enqueue,
         and ``PlaylistView``.
+
+        ``status_message``: an existing ephemeral followup (e.g. the
+        "Queueing X of Y… Resolving on YouTube…" one) that should be edited
+        with the final result instead of dropping a second message. Falls
+        back to a fresh followup if missing or the edit fails.
         """
         from ..views.save_playlist_prompt_view import SavePlaylistPromptView
 
@@ -418,16 +485,18 @@ class PlaybackCog(BaseCog):
 
         tracks = await self.container.audio_resolver.resolve_many(resolver_queries)
         if not tracks:
-            await interaction.followup.send(
+            await self._send_or_edit_status(
+                interaction,
+                status_message,
                 "Couldn't resolve any of those tracks on YouTube.",
-                ephemeral=True,
             )
             return
 
         result = await self.enqueue_and_start(interaction, tracks)
-        await interaction.followup.send(
+        await self._send_or_edit_status(
+            interaction,
+            status_message,
             f"Queued **{result.enqueued}/{len(resolver_queries)}** tracks from {source_label}.",
-            ephemeral=True,
         )
 
         # enqueue_batch preserves order and only rejects at the tail when the
@@ -802,9 +871,10 @@ class PlaybackCog(BaseCog):
             slice_info.shuffled,
             interaction.guild.id,
         )
-        await interaction.followup.send(
+        status_msg = await interaction.followup.send(
             _format_slice_status("YouTube playlist", slice_info, count),
             ephemeral=True,
+            wait=True,
         )
 
         await self._finalize_playlist_import(
@@ -812,6 +882,7 @@ class PlaybackCog(BaseCog):
             resolver_queries=[entry.url for entry in selected],
             source_label="YouTube playlist",
             suggested_name=_suggest_save_name(preview.title, "YouTube playlist"),
+            status_message=status_msg,
         )
 
     # ─────────────────────────────────────────────────────────────────
@@ -982,6 +1053,8 @@ class PlaybackCog(BaseCog):
         queue_service = self.container.queue_service
 
         self.container.radio_service.disable_radio(interaction.guild.id)
+        self.container.auto_dj.disable(interaction.guild.id)
+        self.container.follow_mode.disable(interaction.guild.id)
         stopped = await playback_service.stop_playback(interaction.guild.id)
         cleared = await queue_service.clear(interaction.guild.id)
 
@@ -1049,6 +1122,8 @@ class PlaybackCog(BaseCog):
         playback_service = self.container.playback_service
 
         self.container.radio_service.disable_radio(interaction.guild.id)
+        self.container.auto_dj.disable(interaction.guild.id)
+        self.container.follow_mode.disable(interaction.guild.id)
         was_connected = voice_adapter.is_connected(interaction.guild.id)
         await playback_service.cleanup_guild(interaction.guild.id)
         await self.container.message_state_manager.reset(interaction.guild.id)

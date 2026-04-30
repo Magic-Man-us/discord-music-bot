@@ -11,8 +11,8 @@ if TYPE_CHECKING:
     from ..application.interfaces.ai_client import AIClient
     from ..application.interfaces.audio_resolver import AudioResolver
     from ..application.interfaces.voice_adapter import VoiceAdapter
-    from ..infrastructure.audio.apple_music import AppleMusicClient
     from ..application.services.auto_dj import AutoDJ
+    from ..application.services.follow_mode import FollowMode
     from ..application.services.playback_service import PlaybackApplicationService
     from ..application.services.queue_service import QueueApplicationService
     from ..application.services.radio_auto_refill import RadioAutoRefill
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from ..domain.recommendations.repository import RecommendationCacheRepository
     from ..domain.voting.repository import VoteSessionRepository
     from ..infrastructure.ai.genre_classifier import AIGenreClassifier
+    from ..infrastructure.audio.apple_music import AppleMusicClient
     from ..infrastructure.charts.chart_generator import ChartGenerator
     from ..infrastructure.discord.services.message_state_manager import MessageStateManager
     from ..infrastructure.discord.services.voice_warmup import VoiceWarmupTracker
@@ -68,6 +69,7 @@ class Container:
         self._radio_service: RadioApplicationService | None = None
         self._radio_auto_refill: RadioAutoRefill | None = None
         self._auto_dj: AutoDJ | None = None
+        self._follow_mode: FollowMode | None = None
         self._vote_skip_handler: VoteSkipHandler | None = None
         self._cleanup_job: CleanupJob | None = None
 
@@ -351,6 +353,18 @@ class Container:
         return self._auto_dj
 
     @property
+    def follow_mode(self) -> FollowMode:
+        if self._follow_mode is None:
+            from ..application.services.follow_mode import FollowMode
+
+            self._follow_mode = FollowMode(
+                audio_resolver=self.audio_resolver,
+                queue_service=self.queue_service,
+                playback_service=self.playback_service,
+            )
+        return self._follow_mode
+
+    @property
     def cleanup_job(self) -> CleanupJob:
         if self._cleanup_job is None:
             from ..infrastructure.persistence.cleanup import CleanupJob
@@ -367,6 +381,7 @@ class Container:
     async def initialize(self) -> None:
         await self.database.initialize()
         self.auto_skip_on_requester_leave.start()
+        self.follow_mode.start()
         if self.ai_enabled:
             self.radio_auto_refill.start()
             self.auto_dj.start()
@@ -376,6 +391,7 @@ class Container:
             self._auto_skip_on_requester_leave,
             self._radio_auto_refill,
             self._auto_dj,
+            self._follow_mode,
         ):
             if subscriber is not None:
                 try:

@@ -17,6 +17,14 @@ class RadioAction(StrEnum):
     OFF = "off"
 
 
+class AutoDJAction(StrEnum):
+    """Toggle states for the /dj command."""
+
+    ON = "on"
+    OFF = "off"
+    FOLLOW = "follow"
+
+
 class LeaderboardCategory(StrEnum):
     """Leaderboard ranking categories."""
 

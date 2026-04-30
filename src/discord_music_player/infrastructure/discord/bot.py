@@ -36,6 +36,7 @@ class MusicBot(commands.Bot):
         intents.voice_states = True
         intents.guilds = True
         intents.members = True
+        intents.presences = True  # required for Member.activities (Spotify, etc.)
 
         super().__init__(
             command_prefix=settings.discord.command_prefix,

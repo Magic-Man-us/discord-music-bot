@@ -39,6 +39,18 @@ def mock_container():
     container.playback_service = MagicMock()
     container.playback_service.start_playback = AsyncMock()
 
+    container.auto_dj = MagicMock()
+    container.auto_dj.enable = MagicMock()
+    container.auto_dj.disable = MagicMock()
+
+    container.follow_mode = MagicMock()
+    container.follow_mode.enable = MagicMock()
+    container.follow_mode.disable = MagicMock()
+    container.follow_mode.on_track_change = AsyncMock(return_value=True)
+
+    container.ai_client = MagicMock()
+    container.ai_client.is_available = AsyncMock(return_value=True)
+
     return container
 
 
@@ -440,3 +452,76 @@ async def test_seed_track_returns_false_when_voice_guard_fails(cog, mock_contain
     result = await cog._seed_track(i, "some query")
     assert result is False
     mock_container.audio_resolver.resolve.assert_not_awaited()
+
+
+# =============================================================================
+# /dj on/off
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_dj_on_enables_auto_dj(cog, interaction, mock_container):
+    await cog.dj.callback(cog, interaction, action=_choice("on"))
+
+    mock_container.auto_dj.enable.assert_called_once_with(111)
+    mock_container.auto_dj.disable.assert_not_called()
+    msg = interaction.response.send_message.call_args[0][0]
+    assert "enabled" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_dj_on_blocked_when_ai_unavailable(cog, interaction, mock_container):
+    mock_container.ai_client.is_available = AsyncMock(return_value=False)
+
+    await cog.dj.callback(cog, interaction, action=_choice("on"))
+
+    mock_container.auto_dj.enable.assert_not_called()
+    msg = interaction.response.send_message.call_args[0][0]
+    assert "AI" in msg
+
+
+@pytest.mark.asyncio
+async def test_dj_off_disables_auto_dj_and_follow(cog, interaction, mock_container):
+    await cog.dj.callback(cog, interaction, action=_choice("off"))
+
+    mock_container.auto_dj.disable.assert_called_once_with(111)
+    mock_container.follow_mode.disable.assert_called_once_with(111)
+    mock_container.auto_dj.enable.assert_not_called()
+    msg = interaction.response.send_message.call_args[0][0]
+    assert "disabled" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_dj_follow_with_no_activity_returns_hint(cog, interaction, mock_container):
+    # User has no music activity → reject + don't enable
+    interaction.user.activities = []
+    interaction.client = MagicMock()
+    interaction.client.intents = MagicMock()
+    interaction.client.intents.presences = True
+
+    await cog.dj.callback(cog, interaction, action=_choice("follow"))
+
+    mock_container.follow_mode.enable.assert_not_called()
+    msg = interaction.response.send_message.call_args[0][0]
+    assert "listening" in msg.lower() or "activity" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_dj_follow_with_activity_enables_and_seeds(cog, interaction, mock_container):
+    import discord
+
+    spotify = MagicMock(spec=discord.Spotify)
+    spotify.title = "Song"
+    spotify.artist = "Artist"
+
+    interaction.user.activities = [spotify]
+    interaction.client = MagicMock()
+    interaction.client.intents = MagicMock()
+    interaction.client.intents.presences = True
+
+    await cog.dj.callback(cog, interaction, action=_choice("follow"))
+
+    mock_container.follow_mode.enable.assert_called_once()
+    mock_container.follow_mode.on_track_change.assert_awaited_once()
+    # initial defer + followup confirmation
+    interaction.followup.send.assert_awaited()
