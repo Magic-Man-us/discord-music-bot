@@ -22,7 +22,13 @@ class AutoDJAction(StrEnum):
 
     ON = "on"
     OFF = "off"
-    FOLLOW = "follow"
+
+
+class PlaymineAction(StrEnum):
+    """Toggle states for the /playmine command (live activity mirror)."""
+
+    ON = "on"
+    OFF = "off"
 
 
 class LeaderboardCategory(StrEnum):

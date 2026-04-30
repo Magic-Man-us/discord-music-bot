@@ -481,25 +481,40 @@ async def test_dj_on_blocked_when_ai_unavailable(cog, interaction, mock_containe
 
 
 @pytest.mark.asyncio
-async def test_dj_off_disables_auto_dj_and_follow(cog, interaction, mock_container):
+async def test_dj_off_disables_auto_dj_only(cog, interaction, mock_container):
+    """/dj off only touches Auto-DJ — follow mode has its own /playmine off."""
     await cog.dj.callback(cog, interaction, action=_choice("off"))
 
     mock_container.auto_dj.disable.assert_called_once_with(111)
-    mock_container.follow_mode.disable.assert_called_once_with(111)
+    mock_container.follow_mode.disable.assert_not_called()
     mock_container.auto_dj.enable.assert_not_called()
     msg = interaction.response.send_message.call_args[0][0]
     assert "disabled" in msg.lower()
 
 
+# =============================================================================
+# /playmine on/off — live activity mirror
+# =============================================================================
+
+
 @pytest.mark.asyncio
-async def test_dj_follow_with_no_activity_returns_hint(cog, interaction, mock_container):
-    # User has no music activity → reject + don't enable
+async def test_playmine_off_disables_follow_mode(cog, interaction, mock_container):
+    await cog.playmine.callback(cog, interaction, action=_choice("off"))
+
+    mock_container.follow_mode.disable.assert_called_once_with(111)
+    mock_container.follow_mode.enable.assert_not_called()
+    msg = interaction.response.send_message.call_args[0][0]
+    assert "disabled" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_playmine_on_with_no_activity_returns_hint(cog, interaction, mock_container):
     interaction.user.activities = []
     interaction.client = MagicMock()
     interaction.client.intents = MagicMock()
     interaction.client.intents.presences = True
 
-    await cog.dj.callback(cog, interaction, action=_choice("follow"))
+    await cog.playmine.callback(cog, interaction, action=_choice("on"))
 
     mock_container.follow_mode.enable.assert_not_called()
     msg = interaction.response.send_message.call_args[0][0]
@@ -507,7 +522,7 @@ async def test_dj_follow_with_no_activity_returns_hint(cog, interaction, mock_co
 
 
 @pytest.mark.asyncio
-async def test_dj_follow_with_activity_enables_and_seeds(cog, interaction, mock_container):
+async def test_playmine_on_with_activity_enables_and_seeds(cog, interaction, mock_container):
     import discord
 
     spotify = MagicMock(spec=discord.Spotify)
@@ -519,9 +534,8 @@ async def test_dj_follow_with_activity_enables_and_seeds(cog, interaction, mock_
     interaction.client.intents = MagicMock()
     interaction.client.intents.presences = True
 
-    await cog.dj.callback(cog, interaction, action=_choice("follow"))
+    await cog.playmine.callback(cog, interaction, action=_choice("on"))
 
     mock_container.follow_mode.enable.assert_called_once()
     mock_container.follow_mode.on_track_change.assert_awaited_once()
-    # initial defer + followup confirmation
     interaction.followup.send.assert_awaited()

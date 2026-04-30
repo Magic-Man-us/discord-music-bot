@@ -9,7 +9,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from ....domain.shared.constants import LimitConstants
-from ....domain.shared.enums import AutoDJAction, RadioAction
+from ....domain.shared.enums import AutoDJAction, PlaymineAction, RadioAction
 from ....domain.shared.events import RadioPoolExhausted, get_event_bus
 from ..guards.voice_guards import (
     ensure_user_in_voice_and_warm,
@@ -74,8 +74,8 @@ class RadioCog(BaseCog):
     )
     @app_commands.choices(
         action=[
-            app_commands.Choice(name="on", value=RadioAction.ON),
-            app_commands.Choice(name="off", value=RadioAction.OFF),
+            app_commands.Choice(name=RadioAction.ON.value, value=RadioAction.ON),
+            app_commands.Choice(name=RadioAction.OFF.value, value=RadioAction.OFF),
         ]
     )
     async def radio(
@@ -221,21 +221,14 @@ class RadioCog(BaseCog):
 
     @app_commands.command(
         name="dj",
-        description="Auto-DJ controls — on/off, or follow another listener live.",
+        description="Auto-DJ — when on, AI radio kicks in once the queue empties.",
     )
     @app_commands.guild_only()
-    @app_commands.describe(
-        action=(
-            "on = radio when queue empties; "
-            "follow = mirror your current music activity; "
-            "off = stop everything"
-        )
-    )
+    @app_commands.describe(action="Turn Auto-DJ on or off")
     @app_commands.choices(
         action=[
-            app_commands.Choice(name="on", value=AutoDJAction.ON),
-            app_commands.Choice(name="off", value=AutoDJAction.OFF),
-            app_commands.Choice(name="follow", value=AutoDJAction.FOLLOW),
+            app_commands.Choice(name=AutoDJAction.ON.value, value=AutoDJAction.ON),
+            app_commands.Choice(name=AutoDJAction.OFF.value, value=AutoDJAction.OFF),
         ]
     )
     async def dj(
@@ -249,39 +242,62 @@ class RadioCog(BaseCog):
             return
 
         assert interaction.guild is not None
-
         auto_dj = self.container.auto_dj
-        follow_mode = self.container.follow_mode
         guild_id = interaction.guild.id
 
-        choice = AutoDJAction(action.value)
-
-        if choice is AutoDJAction.OFF:
+        if AutoDJAction(action.value) is AutoDJAction.OFF:
             auto_dj.disable(guild_id)
-            follow_mode.disable(guild_id)
-            await interaction.response.send_message(
-                "Auto-DJ + follow disabled.", ephemeral=True
-            )
+            await interaction.response.send_message("Auto-DJ disabled.", ephemeral=True)
             return
 
-        if choice is AutoDJAction.ON:
-            if not await self.container.ai_client.is_available():
-                await interaction.response.send_message(
-                    "Auto-DJ needs AI, but no AI provider is configured.",
-                    ephemeral=True,
-                )
-                return
-            auto_dj.enable(guild_id)
+        if not await self.container.ai_client.is_available():
             await interaction.response.send_message(
-                "Auto-DJ enabled. I'll keep the music going once the queue empties.",
+                "Auto-DJ needs AI, but no AI provider is configured.",
                 ephemeral=True,
             )
             return
+        auto_dj.enable(guild_id)
+        await interaction.response.send_message(
+            "Auto-DJ enabled. I'll keep the music going once the queue empties.",
+            ephemeral=True,
+        )
 
-        # FOLLOW
-        await self._handle_follow(interaction, follow_mode)
+    @app_commands.command(
+        name="playmine",
+        description="Mirror your live Spotify/Apple Music activity into the queue.",
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(action="Turn live mirror on or off")
+    @app_commands.choices(
+        action=[
+            app_commands.Choice(name=PlaymineAction.ON.value, value=PlaymineAction.ON),
+            app_commands.Choice(name=PlaymineAction.OFF.value, value=PlaymineAction.OFF),
+        ]
+    )
+    async def playmine(
+        self,
+        interaction: discord.Interaction,
+        action: app_commands.Choice[str],
+    ) -> None:
+        if not await ensure_user_in_voice_and_warm(
+            interaction, self.container.voice_warmup_tracker
+        ):
+            return
 
-    async def _handle_follow(
+        assert interaction.guild is not None
+        follow_mode = self.container.follow_mode
+        guild_id = interaction.guild.id
+
+        if PlaymineAction(action.value) is PlaymineAction.OFF:
+            follow_mode.disable(guild_id)
+            await interaction.response.send_message(
+                "Live mirror disabled.", ephemeral=True
+            )
+            return
+
+        await self._handle_playmine_on(interaction, follow_mode)
+
+    async def _handle_playmine_on(
         self,
         interaction: discord.Interaction,
         follow_mode: FollowMode,
@@ -294,7 +310,7 @@ class RadioCog(BaseCog):
 
         if not isinstance(user, discord.Member):
             await interaction.response.send_message(
-                "Follow mode needs a Member context.", ephemeral=True
+                "Live mirror needs a Member context.", ephemeral=True
             )
             return
 
@@ -327,13 +343,13 @@ class RadioCog(BaseCog):
         cap = LimitConstants.MAX_FOLLOW_TRACKS
         if enqueued:
             await interaction.followup.send(
-                f"Following you. Up to **{cap}** tracks will mirror your "
-                f"listening, then I'll auto-stop.",
+                f"Mirroring your listening. Up to **{cap}** tracks will queue, "
+                f"then I'll auto-stop.",
                 ephemeral=True,
             )
         else:
             await interaction.followup.send(
-                f"Following you, but I couldn't resolve **{seed_query}** on "
+                f"Mirror started, but I couldn't resolve **{seed_query}** on "
                 f"YouTube. The next track you switch to should pick up.",
                 ephemeral=True,
             )
