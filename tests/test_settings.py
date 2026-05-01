@@ -264,20 +264,29 @@ class TestAudioSettings:
         assert audio.ytdlp_format == "bestaudio[ext=m4a]"
 
     def test_player_client_default(self):
-        """Default to clients bgutil's getpot plugin auto-injects for (WEBPO_CLIENTS).
+        """web/mweb (PO-token clients) + android last as the no-JS-runtime fallback.
 
-        android isn't on that list — keeping it produced "GVS PO Token required"
-        warnings. mweb is the yt-dlp wiki's recommended fallback.
+        Android serves legacy format 18 (combined mp4) without n-challenge
+        decryption, so it works in the systemd service environment where
+        nvm's node isn't on PATH.
         """
+        from discord_music_player.domain.shared.enums import YtDlpPlayerClient
+
         audio = AudioSettings()
 
-        assert audio.player_client == ["web", "mweb"]
+        assert audio.player_client == [
+            YtDlpPlayerClient.WEB,
+            YtDlpPlayerClient.MWEB,
+            YtDlpPlayerClient.ANDROID,
+        ]
 
     def test_player_client_custom(self):
         """Should accept custom player_client list."""
-        audio = AudioSettings(player_client=["android"])
+        from discord_music_player.domain.shared.enums import YtDlpPlayerClient
 
-        assert audio.player_client == ["android"]
+        audio = AudioSettings(player_client=[YtDlpPlayerClient.ANDROID])
+
+        assert audio.player_client == [YtDlpPlayerClient.ANDROID]
 
 
 # =============================================================================

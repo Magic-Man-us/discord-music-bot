@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from discord.ext.commands import Bot
 
-    from ..application.commands.vote_skip import VoteSkipHandler
     from ..application.interfaces.ai_client import AIClient
     from ..application.interfaces.audio_resolver import AudioResolver
     from ..application.interfaces.voice_adapter import VoiceAdapter
@@ -20,6 +19,7 @@ if TYPE_CHECKING:
     from ..application.services.requester_leave_autoskip import (
         AutoSkipOnRequesterLeave,
     )
+    from ..application.services.voting_service import VotingApplicationService
     from ..domain.music.repository import SessionRepository, TrackHistoryRepository
     from ..domain.recommendations.repository import RecommendationCacheRepository
     from ..domain.voting.repository import VoteSessionRepository
@@ -70,7 +70,7 @@ class Container:
         self._radio_auto_refill: RadioAutoRefill | None = None
         self._auto_dj: AutoDJ | None = None
         self._follow_mode: FollowMode | None = None
-        self._vote_skip_handler: VoteSkipHandler | None = None
+        self._voting_service: VotingApplicationService | None = None
         self._cleanup_job: CleanupJob | None = None
 
     def set_bot(self, bot: Bot) -> None:
@@ -261,16 +261,16 @@ class Container:
         return self._queue_service
 
     @property
-    def vote_skip_handler(self) -> VoteSkipHandler:
-        if self._vote_skip_handler is None:
-            from ..application.commands.vote_skip import VoteSkipHandler
+    def voting_service(self) -> VotingApplicationService:
+        if self._voting_service is None:
+            from ..application.services.voting_service import VotingApplicationService
 
-            self._vote_skip_handler = VoteSkipHandler(
+            self._voting_service = VotingApplicationService(
                 session_repository=self.session_repository,
                 vote_repository=self.vote_repository,
                 voice_adapter=self.voice_adapter,
             )
-        return self._vote_skip_handler
+        return self._voting_service
 
     @property
     def voice_warmup_tracker(self) -> VoiceWarmupTracker:

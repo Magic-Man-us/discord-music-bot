@@ -31,6 +31,16 @@ class PlaymineAction(StrEnum):
     OFF = "off"
 
 
+class YtDlpPlayerClient(StrEnum):
+    """Identifiers yt-dlp accepts for the YouTube ``player_client`` extractor arg."""
+
+    WEB = "web"
+    MWEB = "mweb"
+    ANDROID = "android"
+    IOS = "ios"
+    TV_SIMPLY = "tv_simply"
+
+
 class LeaderboardCategory(StrEnum):
     """Leaderboard ranking categories."""
 

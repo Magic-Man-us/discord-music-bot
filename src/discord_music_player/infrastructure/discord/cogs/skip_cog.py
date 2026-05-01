@@ -65,16 +65,11 @@ class SkipCog(BaseCog):
         assert interaction.guild is not None
         assert user.voice is not None and user.voice.channel is not None
 
-        from ....application.commands.vote_skip import VoteSkipCommand
-
-        command = VoteSkipCommand(
+        result = await self.container.voting_service.vote_skip(
             guild_id=interaction.guild.id,
             user_id=user.id,
             user_channel_id=user.voice.channel.id,
         )
-
-        handler = self.container.vote_skip_handler
-        result = await handler.handle(command)
 
         if result.action_executed:
             skipped_track = await self.container.playback_service.skip_track(interaction.guild.id)

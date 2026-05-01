@@ -386,29 +386,29 @@ class TestQueueService:
             MockService.assert_called_once()
 
         # =============================================================================
-        # Command Handler Tests
+        # Voting Service Tests
         # =============================================================================
         with patch(
-            "discord_music_player.application.commands.vote_skip.VoteSkipHandler"
-        ) as MockHandler:
-            handler = container.vote_skip_handler
-            MockHandler.assert_called_once_with(
+            "discord_music_player.application.services.voting_service.VotingApplicationService"
+        ) as MockService:
+            service = container.voting_service
+            MockService.assert_called_once_with(
                 session_repository=container.session_repository,
                 vote_repository=container.vote_repository,
                 voice_adapter=container.voice_adapter,
             )
-            assert handler == MockHandler.return_value
+            assert service == MockService.return_value
 
     def test_caching(self, container, mock_bot):
         """Should return same instance on subsequent calls."""
         container.set_bot(mock_bot)
         with patch(
-            "discord_music_player.application.commands.vote_skip.VoteSkipHandler"
-        ) as MockHandler:
-            handler1 = container.vote_skip_handler
-            handler2 = container.vote_skip_handler
-            assert handler1 is handler2
-            MockHandler.assert_called_once()
+            "discord_music_player.application.services.voting_service.VotingApplicationService"
+        ) as MockService:
+            service1 = container.voting_service
+            service2 = container.voting_service
+            assert service1 is service2
+            MockService.assert_called_once()
 
     # =============================================================================
     # Query Handler Tests
@@ -646,8 +646,10 @@ class TestContainerIntegration:
         """Should share repository instances across services."""
         container.set_bot(mock_bot)
 
-        with patch("discord_music_player.application.commands.vote_skip.VoteSkipHandler"):
-            _ = container.vote_skip_handler
+        with patch(
+            "discord_music_player.application.services.voting_service.VotingApplicationService"
+        ):
+            _ = container.voting_service
             _ = container.queue_service
 
             assert container._session_repository is not None

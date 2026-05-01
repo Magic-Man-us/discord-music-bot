@@ -119,9 +119,9 @@ def mock_container():
     container.history_repository = MagicMock()
     container.history_repository.record_play = AsyncMock()
 
-    # Mock vote skip handler (async methods)
-    container.vote_skip_handler = MagicMock()
-    container.vote_skip_handler.execute = AsyncMock()
+    # Mock voting service (async methods)
+    container.voting_service = MagicMock()
+    container.voting_service.vote_skip = AsyncMock()
 
     # Mock warmup tracker (sync methods)
     container.voice_warmup_tracker = MagicMock()
@@ -743,11 +743,11 @@ class TestSkipCommand:
         result.votes_current = 2
         result.votes_needed = 3
         result.action_executed = False
-        mock_container.vote_skip_handler.handle = AsyncMock(return_value=result)
+        mock_container.voting_service.vote_skip = AsyncMock(return_value=result)
 
         await skip_cog.skip.callback(skip_cog, mock_interaction, force=False)
 
-        mock_container.vote_skip_handler.handle.assert_called_once()
+        mock_container.voting_service.vote_skip.assert_called_once()
         # /skip defers up front; the vote-skip reply lands on followup.send.
         mock_interaction.followup.send.assert_called_once()
 
@@ -761,7 +761,7 @@ class TestSkipCommand:
         result.votes_current = 3
         result.votes_needed = 3
         result.action_executed = True
-        mock_container.vote_skip_handler.handle = AsyncMock(return_value=result)
+        mock_container.voting_service.vote_skip = AsyncMock(return_value=result)
         mock_container.playback_service.skip_track = AsyncMock(return_value=sample_track)
 
         await skip_cog.skip.callback(skip_cog, mock_interaction, force=False)

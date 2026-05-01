@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from discord_music_player.application.commands.vote_skip import VoteSkipResult
+from discord_music_player.application.services.voting_service import VoteSkipResult
 from discord_music_player.domain.voting.enums import VoteResult, VoteType
 from discord_music_player.infrastructure.discord.cogs.skip_cog import SkipCog
 
@@ -25,8 +25,8 @@ def mock_container():
     container.settings.discord.owner_ids = [999]
     container.playback_service = MagicMock()
     container.playback_service.skip_track = AsyncMock()
-    container.vote_skip_handler = MagicMock()
-    container.vote_skip_handler.handle = AsyncMock()
+    container.voting_service = MagicMock()
+    container.voting_service.vote_skip = AsyncMock()
     return container
 
 
@@ -132,7 +132,7 @@ async def test_handle_vote_skip_action_executed(cog, interaction, mock_container
     mock_container.playback_service.skip_track = AsyncMock(return_value=sample_track)
 
     result = VoteSkipResult.from_vote_result(VoteResult.REQUESTER_SKIP)
-    mock_container.vote_skip_handler.handle = AsyncMock(return_value=result)
+    mock_container.voting_service.vote_skip = AsyncMock(return_value=result)
 
     await cog._handle_vote_skip(interaction, interaction.user)
 
@@ -148,7 +148,7 @@ async def test_handle_vote_skip_no_action(cog, interaction, mock_container):
     result = VoteSkipResult.from_vote_result(
         VoteResult.VOTE_RECORDED, votes_current=2, votes_needed=3
     )
-    mock_container.vote_skip_handler.handle = AsyncMock(return_value=result)
+    mock_container.voting_service.vote_skip = AsyncMock(return_value=result)
 
     await cog._handle_vote_skip(interaction, interaction.user)
 
@@ -160,7 +160,7 @@ async def test_handle_vote_skip_no_action(cog, interaction, mock_container):
 @pytest.mark.asyncio
 async def test_handle_vote_skip_nothing_playing(cog, interaction, mock_container):
     result = VoteSkipResult.from_vote_result(VoteResult.NO_PLAYING)
-    mock_container.vote_skip_handler.handle = AsyncMock(return_value=result)
+    mock_container.voting_service.vote_skip = AsyncMock(return_value=result)
 
     await cog._handle_vote_skip(interaction, interaction.user)
 

@@ -16,7 +16,7 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ..domain.shared.enums import EnvironmentType, LogLevel
+from ..domain.shared.enums import EnvironmentType, LogLevel, YtDlpPlayerClient
 from ..domain.shared.types import (
     BusyTimeoutMs,
     CommandPrefixStr,
@@ -131,10 +131,13 @@ class AudioSettings(BaseModel):
         }
     )
     ytdlp_format: NonEmptyStr = "bestaudio/best"
-    # bgutil's getpot plugin only auto-injects for yt-dlp's WEBPO_CLIENTS;
-    # "android" isn't in that set, so it gets queued without a token and 403s.
-    player_client: list[NonEmptyStr] = Field(
-        default_factory=lambda: ["web", "mweb"],
+    # android last is the no-JS-runtime fallback (legacy fmt 18, no PO token).
+    player_client: list[YtDlpPlayerClient] = Field(
+        default_factory=lambda: [
+            YtDlpPlayerClient.WEB,
+            YtDlpPlayerClient.MWEB,
+            YtDlpPlayerClient.ANDROID,
+        ],
     )
     pot_server_url: HttpUrlStr = Field(
         default="http://127.0.0.1:4416",

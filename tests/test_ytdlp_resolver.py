@@ -840,7 +840,13 @@ class TestPOTProviderConfiguration:
         assert isinstance(opts, YtDlpOpts)
         assert opts.extractor_args is not None
         assert opts.extractor_args.youtube.pot_server_url == settings.pot_server_url
-        assert opts.extractor_args.youtube.player_client == ["web", "mweb"]
+        from discord_music_player.domain.shared.enums import YtDlpPlayerClient
+
+        assert opts.extractor_args.youtube.player_client == [
+            YtDlpPlayerClient.WEB,
+            YtDlpPlayerClient.MWEB,
+            YtDlpPlayerClient.ANDROID,
+        ]
 
     def test_pot_config_included_in_opts(self):
         """Should include POT configuration in yt-dlp options."""
@@ -982,12 +988,14 @@ class TestModelValidation:
             YouTubeExtractorConfig,
         )
 
+        from discord_music_player.domain.shared.enums import YtDlpPlayerClient
+
         opts = YtDlpOpts(
             format="bestaudio/best",
             extractor_args=ExtractorArgs(
                 youtube=YouTubeExtractorConfig(
                     pot_server_url="http://localhost:4416",
-                    player_client=["web", "mweb"],
+                    player_client=[YtDlpPlayerClient.WEB, YtDlpPlayerClient.MWEB],
                 )
             ),
         )
