@@ -495,6 +495,14 @@ class TestSettings:
         assert settings.audio.default_volume == 0.75
         assert settings.discord.sync_on_startup is True
 
+    def test_debug_tolerates_release_shell_value(self, monkeypatch):
+        """Should treat shell ``DEBUG=release`` as disabled instead of crashing."""
+        monkeypatch.setenv("DEBUG", "release")
+
+        settings = Settings()
+
+        assert settings.debug is False
+
     def test_environment_validation(self, monkeypatch):
         """Should validate environment is one of allowed literal values."""
         monkeypatch.setenv("ENVIRONMENT", "invalid")

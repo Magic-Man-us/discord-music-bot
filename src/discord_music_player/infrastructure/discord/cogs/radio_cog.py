@@ -8,7 +8,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from ....domain.shared.constants import LimitConstants
 from ....domain.shared.enums import AutoDJAction, PlaymineAction, RadioAction
 from ....domain.shared.events import RadioPoolExhausted, get_event_bus
 from ..guards.voice_guards import (
@@ -42,7 +41,9 @@ class RadioCog(BaseCog):
     async def _on_pool_exhausted(self, event: RadioPoolExhausted) -> None:
         """Send 'Continue Radio?' prompt to the channel where radio was started."""
         if event.channel_id is None:
-            self.logger.warning("RadioPoolExhausted has no channel_id for guild %s", event.guild_id)
+            self.logger.warning(
+                "RadioPoolExhausted has no channel_id for guild %s", event.guild_id
+            )
             return
 
         channel = self.bot.get_channel(event.channel_id)
@@ -109,7 +110,9 @@ class RadioCog(BaseCog):
         await interaction.response.defer(ephemeral=True)
 
         self.container.radio_service.disable_radio(interaction.guild.id)
-        count = await self.container.queue_service.clear_recommendations(interaction.guild.id)
+        count = await self.container.queue_service.clear_recommendations(
+            interaction.guild.id
+        )
 
         msg = (
             f"Radio disabled. Removed **{count}** AI recommendation(s) from the queue."
@@ -196,7 +199,9 @@ class RadioCog(BaseCog):
 
         track = await self.container.audio_resolver.resolve(query)
         if not track:
-            await interaction.followup.send(f"Couldn't find a track for: {query}", ephemeral=True)
+            await interaction.followup.send(
+                f"Couldn't find a track for: {query}", ephemeral=True
+            )
             return False
 
         result = await self.container.queue_service.enqueue(
@@ -271,7 +276,9 @@ class RadioCog(BaseCog):
     @app_commands.choices(
         action=[
             app_commands.Choice(name=PlaymineAction.ON.value, value=PlaymineAction.ON),
-            app_commands.Choice(name=PlaymineAction.OFF.value, value=PlaymineAction.OFF),
+            app_commands.Choice(
+                name=PlaymineAction.OFF.value, value=PlaymineAction.OFF
+            ),
         ]
     )
     async def playmine(
@@ -279,20 +286,22 @@ class RadioCog(BaseCog):
         interaction: discord.Interaction,
         action: app_commands.Choice[str],
     ) -> None:
-        if not await ensure_user_in_voice_and_warm(
-            interaction, self.container.voice_warmup_tracker
-        ):
-            return
-
-        assert interaction.guild is not None
         follow_mode = self.container.follow_mode
-        guild_id = interaction.guild.id
 
         if PlaymineAction(action.value) is PlaymineAction.OFF:
+            assert interaction.guild is not None
+            guild_id = interaction.guild.id
             follow_mode.disable(guild_id)
             await interaction.response.send_message(
                 "Live mirror disabled.", ephemeral=True
             )
+            return
+
+        if not await ensure_voice(
+            interaction,
+            self.container.voice_warmup_tracker,
+            self.container.voice_adapter,
+        ):
             return
 
         await self._handle_playmine_on(interaction, follow_mode)
@@ -302,57 +311,9 @@ class RadioCog(BaseCog):
         interaction: discord.Interaction,
         follow_mode: FollowMode,
     ) -> None:
-        from ..services.activity import extract_listening_query
+        from ..services.activity import enable_live_mirror
 
-        assert interaction.guild is not None
-        guild_id = interaction.guild.id
-        user = interaction.user
-
-        if not isinstance(user, discord.Member):
-            await interaction.response.send_message(
-                "Live mirror needs a Member context.", ephemeral=True
-            )
-            return
-
-        seed_query = extract_listening_query(user)
-        if seed_query is None:
-            hint = ""
-            if not interaction.client.intents.presences:
-                hint = (
-                    " *(bot's `presences` intent is OFF — check Developer "
-                    "Portal + bot.py.)*"
-                )
-            await interaction.response.send_message(
-                "I can't see what you're listening to. Make sure Spotify or "
-                "Apple Music is open and **Activity Privacy → Display "
-                f"current activity as a status message** is on.{hint}",
-                ephemeral=True,
-            )
-            return
-
-        follow_mode.enable(
-            guild_id=guild_id, user_id=user.id, user_name=user.display_name
-        )
-        await interaction.response.defer(ephemeral=True)
-
-        # Seed with whatever they're listening to right now so the user
-        # doesn't have to switch tracks to kick things off.
-        enqueued = await follow_mode.on_track_change(
-            guild_id=guild_id, user_id=user.id, query=seed_query
-        )
-        cap = LimitConstants.MAX_FOLLOW_TRACKS
-        if enqueued:
-            await interaction.followup.send(
-                f"Mirroring your listening. Up to **{cap}** tracks will queue, "
-                f"then I'll auto-stop.",
-                ephemeral=True,
-            )
-        else:
-            await interaction.followup.send(
-                f"Mirror started, but I couldn't resolve **{seed_query}** on "
-                f"YouTube. The next track you switch to should pick up.",
-                ephemeral=True,
-            )
+        await enable_live_mirror(interaction, follow_mode=follow_mode)
 
     async def _send_radio_enabled(
         self,

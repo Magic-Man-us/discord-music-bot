@@ -22,6 +22,7 @@ from discord_music_player.application.services.queue_models import (
     BatchEnqueueResult,
     QueueSnapshot,
 )
+from discord_music_player.domain.shared.events import FollowModeTrackQueued
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.wrappers import StartSeconds, TrackId
 from discord_music_player.infrastructure.discord.cogs.playback_cog import (
@@ -31,6 +32,7 @@ from discord_music_player.infrastructure.discord.cogs.playback_cog import (
 )
 from discord_music_player.infrastructure.discord.services.activity import (
     APPLE_MUSIC_APP_ID,
+    SPOTIFY_APP_ID,
     extract_listening_query,
 )
 
@@ -87,7 +89,9 @@ class TestFormatSliceStatus:
         assert "starting at #3" in status
 
     def test_includes_shuffled_marker(self):
-        status = _format_slice_status("YT", self._slice(shuffled=True), count_override=None)
+        status = _format_slice_status(
+            "YT", self._slice(shuffled=True), count_override=None
+        )
         assert "shuffled" in status.lower()
 
     def test_truncation_hint_when_default_count_truncates(self):
@@ -97,9 +101,7 @@ class TestFormatSliceStatus:
         assert "Default" in status
 
     def test_no_truncation_hint_when_count_override_set(self):
-        status = _format_slice_status(
-            "YT", self._slice(truncated=2), count_override=10
-        )
+        status = _format_slice_status("YT", self._slice(truncated=2), count_override=10)
         assert "Default" not in status
 
 
@@ -154,9 +156,13 @@ def _container(**overrides) -> FakeContainer:
             total_duration=180,
         )
     )
-    queue_service.enqueue = AsyncMock(return_value=MagicMock(success=True, should_start=False))
+    queue_service.enqueue = AsyncMock(
+        return_value=MagicMock(success=True, should_start=False)
+    )
     queue_service.enqueue_next = AsyncMock(return_value=MagicMock(success=True))
-    queue_service.enqueue_batch = AsyncMock(return_value=BatchEnqueueResult(enqueued=0, should_start=False))
+    queue_service.enqueue_batch = AsyncMock(
+        return_value=BatchEnqueueResult(enqueued=0, should_start=False)
+    )
     queue_service.clear = AsyncMock(return_value=0)
 
     session_repository = MagicMock()
@@ -181,7 +187,9 @@ def _container(**overrides) -> FakeContainer:
     auto_dj.disable = MagicMock()
 
     follow_mode = MagicMock()
+    follow_mode.enable = MagicMock()
     follow_mode.disable = MagicMock()
+    follow_mode.on_track_change = AsyncMock(return_value=True)
 
     container = FakeContainer(
         playback_service=playback_service,
@@ -210,7 +218,9 @@ def _make_cog(container=None, *, bot=None) -> PlaybackCog:
 
 def _interaction_in_voice(*, guild_id=42):
     member = make_member(member_id=1)
-    member.voice = make_voice_state(channel=make_voice_channel(channel_id=10, members=[member]))
+    member.voice = make_voice_state(
+        channel=make_voice_channel(channel_id=10, members=[member])
+    )
     interaction = make_interaction(user=member, guild_id=guild_id)
     return member, interaction
 
@@ -227,8 +237,9 @@ class TestCogLifecycle:
         await cog.cog_load()
         # Three callbacks set, plus event subscription stored
         cog.container.playback_service.set_track_finished_callback.assert_called_once()
-        cog.container.auto_skip_on_requester_leave.set_on_requester_left_callback.assert_called_once()
-        cog.container.auto_skip_on_requester_leave.set_on_requester_rejoined_callback.assert_called_once()
+        leave_callbacks = cog.container.auto_skip_on_requester_leave
+        leave_callbacks.set_on_requester_left_callback.assert_called_once()
+        leave_callbacks.set_on_requester_rejoined_callback.assert_called_once()
         assert hasattr(cog, "_event_bus")
 
     @pytest.mark.asyncio
@@ -236,8 +247,11 @@ class TestCogLifecycle:
         cog = _make_cog()
         await cog.cog_load()
         await cog.cog_unload()
-        cog.container.playback_service.set_track_finished_callback.assert_called_with(None)
-        cog.container.auto_skip_on_requester_leave.set_on_requester_left_callback.assert_called_with(None)
+        cog.container.playback_service.set_track_finished_callback.assert_called_with(
+            None
+        )
+        leave_callbacks = cog.container.auto_skip_on_requester_leave
+        leave_callbacks.set_on_requester_left_callback.assert_called_with(None)
         cog.container.message_state_manager.clear_all.assert_called_once()
 
     @pytest.mark.asyncio
@@ -286,7 +300,9 @@ class TestEnsureVoiceReady:
     async def test_returns_none_when_voice_connect_fails(self):
         member, interaction = _interaction_in_voice()
         container = _container()
-        container.voice_adapter = FakeVoiceAdapter(connected=False, connect_succeeds=False)
+        container.voice_adapter = FakeVoiceAdapter(
+            connected=False, connect_succeeds=False
+        )
         cog = _make_cog(container)
         result = await cog._ensure_voice_ready(interaction)
         assert result is None
@@ -349,7 +365,9 @@ class TestFindAutoPostChannel:
         guild.voice_client = None
         guild.system_channel = None
         unwritable = MagicMock(spec=discord.TextChannel)
-        unwritable.permissions_for = MagicMock(return_value=MagicMock(send_messages=False))
+        unwritable.permissions_for = MagicMock(
+            return_value=MagicMock(send_messages=False)
+        )
         guild.text_channels = [unwritable]
         bot.get_guild = MagicMock(return_value=guild)
         cog = _make_cog(bot=bot)
@@ -378,7 +396,9 @@ class TestOnTrackStartedAutoPost:
     @pytest.mark.asyncio
     async def test_skips_when_now_playing_reserved(self):
         container = _container()
-        container.message_state_manager.get_state.return_value.now_playing_reserved = True
+        container.message_state_manager.get_state.return_value.now_playing_reserved = (
+            True
+        )
         cog = _make_cog(container)
         await cog._on_track_started_auto_post(self._event())
         # Should never reach session_repository
@@ -626,7 +646,9 @@ class TestSeekCommand:
     @pytest.mark.asyncio
     async def test_voice_guard_fail(self):
         cog = _make_cog()
-        await cog.seek.callback(cog, make_interaction(user=make_member(voice=None)), timestamp="0:30")
+        await cog.seek.callback(
+            cog, make_interaction(user=make_member(voice=None)), timestamp="0:30"
+        )
         cog.container.playback_service.seek_playback.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -786,7 +808,9 @@ class TestPlayCommandTimestamp:
     async def test_invalid_timestamp_rejects(self):
         member, interaction = _interaction_in_voice()
         cog = _make_cog()
-        await cog.play.callback(cog, interaction, query="some song", timestamp="garbage")
+        await cog.play.callback(
+            cog, interaction, query="some song", timestamp="garbage"
+        )
         msg = interaction.response.send_message.call_args.args[0]
         assert "Invalid timestamp" in msg
 
@@ -827,11 +851,102 @@ class TestExecutePlayBranches:
     async def test_voice_connect_failure_returns(self):
         member, interaction = _interaction_in_voice()
         container = _container()
-        container.voice_adapter = FakeVoiceAdapter(connected=False, connect_succeeds=False)
+        container.voice_adapter = FakeVoiceAdapter(
+            connected=False, connect_succeeds=False
+        )
         cog = _make_cog(container)
         await cog._execute_play(interaction, "any query")
         # Must not have attempted enqueue
         container.queue_service.enqueue.assert_not_awaited()
+
+
+class TestPlayMineUsesCurrentActivityQuery:
+    @pytest.mark.asyncio
+    async def test_prefers_cached_guild_member_for_activity(self):
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        cog = _make_cog(container)
+        cog._execute_play = AsyncMock(return_value=True)
+
+        interaction.user.activities = []
+        interaction.client = MagicMock()
+        interaction.client.intents = MagicMock()
+        interaction.client.intents.presences = True
+
+        spotify = MagicMock(spec=discord.Activity)
+        spotify.type = discord.ActivityType.listening
+        spotify.application_id = None
+        spotify.name = "Spotify"
+        spotify.details = "Song Title"
+        spotify.state = "Artist Name"
+
+        cached_member = make_member(member_id=member.id)
+        cached_member.activities = [spotify]
+        interaction.guild.get_member = MagicMock(return_value=cached_member)
+
+        await cog.play.callback(cog, interaction, mine=True)
+
+        cog._execute_play.assert_awaited_once()
+        assert cog._execute_play.await_args.args[1] == "Artist Name - Song Title"
+        container.follow_mode.enable.assert_called_once_with(
+            guild_id=interaction.guild.id,
+            user_id=interaction.user.id,
+            user_name=interaction.user.display_name,
+            channel_id=interaction.channel_id,
+            source_label="Spotify",
+            last_key="Artist Name - Song Title",
+            enqueued_count=1,
+        )
+
+    @pytest.mark.asyncio
+    async def test_query_wins_over_mine_shortcut(self):
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        cog = _make_cog(container)
+        cog._execute_play = AsyncMock(return_value=True)
+        interaction.client = MagicMock()
+        interaction.client.intents = MagicMock()
+        interaction.client.intents.presences = True
+
+        await cog.play.callback(
+            cog,
+            interaction,
+            query="manual query",
+            mine=True,
+        )
+
+        cog._execute_play.assert_awaited_once()
+        assert cog._execute_play.await_args.args[1] == "manual query"
+        container.follow_mode.enable.assert_not_called()
+        interaction.followup.send.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_does_not_enable_follow_mode_when_execute_play_fails(self):
+        member, interaction = _interaction_in_voice()
+        container = _container()
+        cog = _make_cog(container)
+        cog._execute_play = AsyncMock(return_value=False)
+
+        interaction.user.activities = []
+        interaction.client = MagicMock()
+        interaction.client.intents = MagicMock()
+        interaction.client.intents.presences = True
+
+        spotify = MagicMock(spec=discord.Activity)
+        spotify.type = discord.ActivityType.listening
+        spotify.application_id = None
+        spotify.name = "Spotify"
+        spotify.details = "Song Title"
+        spotify.state = "Artist Name"
+
+        cached_member = make_member(member_id=member.id)
+        cached_member.activities = [spotify]
+        interaction.guild.get_member = MagicMock(return_value=cached_member)
+
+        await cog.play.callback(cog, interaction, mine=True)
+
+        cog._execute_play.assert_awaited_once()
+        container.follow_mode.enable.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_warmup_remaining_shows_retry_view(self):
@@ -943,7 +1058,9 @@ class TestPlayTrack:
         resolved = _track("rsvd")
         container.audio_resolver.resolve = AsyncMock(return_value=resolved)
         container.queue_service.enqueue = AsyncMock(
-            return_value=MagicMock(success=True, should_start=True, track=resolved, position=0)
+            return_value=MagicMock(
+                success=True, should_start=True, track=resolved, position=0
+            )
         )
         cog = _make_cog(container)
         cog._start_long_track_vote = AsyncMock(return_value=False)
@@ -961,7 +1078,9 @@ class TestPlayTrack:
         resolved = _track("rsvd")
         container.audio_resolver.resolve = AsyncMock(return_value=resolved)
         container.queue_service.enqueue = AsyncMock(
-            return_value=MagicMock(success=True, should_start=False, track=resolved, position=2)
+            return_value=MagicMock(
+                success=True, should_start=False, track=resolved, position=2
+            )
         )
         cog = _make_cog(container)
         cog._start_long_track_vote = AsyncMock(return_value=False)
@@ -1039,7 +1158,9 @@ class TestStartLongTrackVote:
         member, interaction = _interaction_in_voice()
         interaction.channel_id = None
         container = _container()
-        container.voice_adapter.get_listeners = AsyncMock(return_value=[1, 2, 3, 4, 5, 6, 7, 8])
+        container.voice_adapter.get_listeners = AsyncMock(
+            return_value=[1, 2, 3, 4, 5, 6, 7, 8]
+        )
         cog = _make_cog(container)
         long_track = Track(
             id=TrackId(value="lt"),
@@ -1057,7 +1178,9 @@ class TestStartLongTrackVote:
         member, interaction = _interaction_in_voice()
         interaction.channel_id = 555
         container = _container()
-        container.voice_adapter.get_listeners = AsyncMock(return_value=[1, 2, 3, 4, 5, 6, 7, 8])
+        container.voice_adapter.get_listeners = AsyncMock(
+            return_value=[1, 2, 3, 4, 5, 6, 7, 8]
+        )
         bot = MagicMock()
         channel = MagicMock(spec=discord.TextChannel)
         channel.send = AsyncMock(return_value=MagicMock())
@@ -1078,7 +1201,9 @@ class TestStartLongTrackVote:
         member, interaction = _interaction_in_voice()
         interaction.channel_id = 555
         container = _container()
-        container.voice_adapter.get_listeners = AsyncMock(return_value=[1, 2, 3, 4, 5, 6, 7, 8])
+        container.voice_adapter.get_listeners = AsyncMock(
+            return_value=[1, 2, 3, 4, 5, 6, 7, 8]
+        )
         bot = MagicMock()
         bot.get_channel = MagicMock(return_value=object())  # not Messageable
         cog = _make_cog(container, bot=bot)
@@ -1116,14 +1241,18 @@ class TestHandlePlaylist:
 
     @pytest.mark.asyncio
     async def test_auto_enqueue_route_when_count_specified(self):
-        from discord_music_player.domain.music.entities import PlaylistEntry, PlaylistPreview
+        from discord_music_player.domain.music.entities import (
+            PlaylistEntry,
+            PlaylistPreview,
+        )
 
         member, interaction = _interaction_in_voice()
         container = _container()
         container.audio_resolver.preview_playlist = AsyncMock(
             return_value=PlaylistPreview(
                 entries=[
-                    PlaylistEntry(title=f"E{i}", url=f"https://yt/e{i}") for i in range(5)
+                    PlaylistEntry(title=f"E{i}", url=f"https://yt/e{i}")
+                    for i in range(5)
                 ],
                 title="My Playlist",
             )
@@ -1137,7 +1266,10 @@ class TestHandlePlaylist:
 class TestAutoEnqueueYouTubePlaylist:
     @pytest.mark.asyncio
     async def test_empty_selection_warns_about_start_offset(self):
-        from discord_music_player.domain.music.entities import PlaylistEntry, PlaylistPreview
+        from discord_music_player.domain.music.entities import (
+            PlaylistEntry,
+            PlaylistPreview,
+        )
 
         member, interaction = _interaction_in_voice()
         container = _container()
@@ -1159,7 +1291,10 @@ class TestAutoEnqueueYouTubePlaylist:
 
     @pytest.mark.asyncio
     async def test_success_routes_to_finalize_playlist_import(self):
-        from discord_music_player.domain.music.entities import PlaylistEntry, PlaylistPreview
+        from discord_music_player.domain.music.entities import (
+            PlaylistEntry,
+            PlaylistPreview,
+        )
 
         member, interaction = _interaction_in_voice()
         container = _container()
@@ -1268,6 +1403,46 @@ class TestSendQueued:
         msm.update_next_up.assert_awaited_once()
 
 
+class TestFollowModeQueuedAnnouncement:
+    @pytest.mark.asyncio
+    async def test_posts_channel_update_for_follow_mode_queue(self):
+        container = _container()
+        msm = container.message_state_manager
+        msm.track_queued = MagicMock()
+        msm.update_next_up = AsyncMock()
+
+        session = MagicMock()
+        session.peek = MagicMock(return_value=_track("next"))
+        container.session_repository.get = AsyncMock(return_value=session)
+
+        sent = MagicMock()
+        sent.id = 8123
+        sent.delete = AsyncMock()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock(return_value=sent)
+
+        bot = MagicMock()
+        bot.get_channel = MagicMock(return_value=channel)
+        cog = _make_cog(container, bot=bot)
+
+        event = FollowModeTrackQueued(
+            guild_id=42,
+            channel_id=555,
+            track=_track("f1"),
+            source_label="Spotify",
+        )
+
+        await cog._on_follow_mode_track_queued(event)
+
+        channel.send.assert_awaited_once()
+        content = channel.send.await_args.kwargs["content"]
+        assert "Queued for play" in content
+        assert "Spotify" in content
+        sent.delete.assert_awaited_once()
+        msm.track_queued.assert_called_once()
+        msm.update_next_up.assert_awaited_once()
+
+
 # =============================================================================
 # extract_listening_query — Spotify + Apple Music + nothing
 # =============================================================================
@@ -1309,6 +1484,32 @@ class TestExtractListeningQuery:
             extract_listening_query(member)
             == "Bally Baby & Hoodrich Keem - Spent A Quarter Ticket (Intro)"
         )
+
+    def test_extracts_from_spotify_generic_activity_by_app_id(self):
+        spotify = MagicMock(spec=discord.Activity)
+        spotify.type = discord.ActivityType.listening
+        spotify.application_id = SPOTIFY_APP_ID
+        spotify.name = "Spotify"
+        spotify.details = "Song Title"
+        spotify.state = "Artist Name"
+
+        member = MagicMock(spec=discord.Member)
+        member.activities = [spotify]
+
+        assert extract_listening_query(member) == "Artist Name - Song Title"
+
+    def test_extracts_from_spotify_generic_activity_by_name(self):
+        spotify = MagicMock(spec=discord.Activity)
+        spotify.type = discord.ActivityType.listening
+        spotify.application_id = None
+        spotify.name = "Spotify"
+        spotify.details = "Song Title"
+        spotify.state = "Artist Name"
+
+        member = MagicMock(spec=discord.Member)
+        member.activities = [spotify]
+
+        assert extract_listening_query(member) == "Artist Name - Song Title"
 
     def test_extracts_apple_music_when_app_id_missing_but_name_matches(self):
         # app_id can be None for some integrations — fall back to name match

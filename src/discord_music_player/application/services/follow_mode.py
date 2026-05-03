@@ -14,8 +14,12 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict
 
 from ...domain.shared.constants import LimitConstants
-from ...domain.shared.events import VoiceMemberLeftVoiceChannel, get_event_bus
-from ...domain.shared.types import DiscordSnowflake, NonEmptyStr
+from ...domain.shared.events import (
+    FollowModeTrackQueued,
+    VoiceMemberLeftVoiceChannel,
+    get_event_bus,
+)
+from ...domain.shared.types import ChannelIdField, DiscordSnowflake, NonEmptyStr
 from ...utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -33,6 +37,8 @@ class FollowState(BaseModel):
 
     user_id: DiscordSnowflake
     user_name: NonEmptyStr
+    channel_id: ChannelIdField | None = None
+    source_label: NonEmptyStr | None = None
     last_key: str | None = None
     enqueued_count: int = 0
 
@@ -71,8 +77,20 @@ class FollowMode:
         guild_id: DiscordSnowflake,
         user_id: DiscordSnowflake,
         user_name: NonEmptyStr,
+        channel_id: ChannelIdField | None = None,
+        source_label: NonEmptyStr | None = None,
+        *,
+        last_key: str | None = None,
+        enqueued_count: int = 0,
     ) -> None:
-        self._states[guild_id] = FollowState(user_id=user_id, user_name=user_name)
+        self._states[guild_id] = FollowState(
+            user_id=user_id,
+            user_name=user_name,
+            channel_id=channel_id,
+            source_label=source_label,
+            last_key=last_key,
+            enqueued_count=enqueued_count,
+        )
         logger.info("FollowMode enabled in guild %s for user %s", guild_id, user_id)
 
     def disable(self, guild_id: DiscordSnowflake) -> None:
@@ -110,7 +128,9 @@ class FollowMode:
 
         track = await self._audio_resolver.resolve(query)
         if track is None:
-            logger.debug("FollowMode resolve failed for query=%r in guild %s", query, guild_id)
+            logger.debug(
+                "FollowMode resolve failed for query=%r in guild %s", query, guild_id
+            )
             return False
 
         result = await self._queue_service.enqueue(
@@ -133,6 +153,20 @@ class FollowMode:
             LimitConstants.MAX_FOLLOW_TRACKS,
             guild_id,
         )
+
+        if (
+            not result.should_start
+            and result.track is not None
+            and state.channel_id is not None
+        ):
+            await self._bus.publish(
+                FollowModeTrackQueued(
+                    guild_id=guild_id,
+                    channel_id=state.channel_id,
+                    track=result.track,
+                    source_label=state.source_label,
+                )
+            )
 
         if result.should_start:
             await self._playback_service.start_playback(guild_id)

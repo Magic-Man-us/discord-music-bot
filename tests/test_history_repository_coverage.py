@@ -29,12 +29,16 @@ class TestHistoryRepositoryEdgeCases:
             requested_by_name="TestUser",
         )
 
-    async def test_record_play_with_custom_timestamp(self, history_repository, sample_track):
+    async def test_record_play_with_custom_timestamp(
+        self, history_repository, sample_track
+    ):
         """Should record play with custom timestamp."""
         guild_id = 123
         custom_time = datetime.now(UTC) - timedelta(hours=1)
 
-        await history_repository.record_play(guild_id, sample_track, played_at=custom_time)
+        await history_repository.record_play(
+            guild_id, sample_track, played_at=custom_time
+        )
 
         # Get recent and verify timestamp
         recent = await history_repository.get_recent(guild_id, limit=1)
@@ -70,7 +74,9 @@ class TestHistoryRepositoryEdgeCases:
 
         assert count == 0
 
-    async def test_get_play_count_counts_multiple_plays(self, history_repository, sample_track):
+    async def test_get_play_count_counts_multiple_plays(
+        self, history_repository, sample_track
+    ):
         """Should count multiple plays of the same track."""
         guild_id = 123
         track_id = sample_track.id
@@ -83,7 +89,9 @@ class TestHistoryRepositoryEdgeCases:
 
         assert count == 5
 
-    async def test_get_most_played_returns_empty_for_no_history(self, history_repository):
+    async def test_get_most_played_returns_empty_for_no_history(
+        self, history_repository
+    ):
         """Should return empty list when no history exists."""
         result = await history_repository.get_most_played(guild_id=999, limit=10)
 
@@ -125,7 +133,30 @@ class TestHistoryRepositoryEdgeCases:
         assert most_played[1][1] == 3  # Second has 3 plays
         assert most_played[2][1] == 1  # Third has 1 play
 
-    async def test_clear_history_removes_all_guild_entries(self, history_repository, sample_track):
+    async def test_get_most_played_uses_latest_metadata_for_track(
+        self, history_repository, sample_track
+    ):
+        """Should return the newest title/metadata for repeated track IDs."""
+        guild_id = 123
+        original = sample_track.model_copy(
+            update={"id": TrackId(value="same-track"), "title": "Old Title"}
+        )
+        renamed = sample_track.model_copy(
+            update={"id": TrackId(value="same-track"), "title": "New Title"}
+        )
+
+        await history_repository.record_play(guild_id, original)
+        await history_repository.record_play(guild_id, renamed)
+
+        most_played = await history_repository.get_most_played(guild_id, limit=1)
+
+        assert len(most_played) == 1
+        assert most_played[0][0].title == "New Title"
+        assert most_played[0][1] == 2
+
+    async def test_clear_history_removes_all_guild_entries(
+        self, history_repository, sample_track
+    ):
         """Should remove all history for a specific guild."""
         guild1 = 123
         guild2 = 456
@@ -147,7 +178,9 @@ class TestHistoryRepositoryEdgeCases:
         guild2_history = await history_repository.get_recent(guild2)
         assert len(guild2_history) == 1
 
-    async def test_mark_finished_updates_most_recent_play(self, history_repository, sample_track):
+    async def test_mark_finished_updates_most_recent_play(
+        self, history_repository, sample_track
+    ):
         """Should mark the most recent play as finished."""
         guild_id = 123
         track_id = sample_track.id
@@ -172,7 +205,9 @@ class TestHistoryRepositoryEdgeCases:
         # Mark it as skipped
         await history_repository.mark_finished(guild_id, track_id, skipped=True)
 
-    async def test_cleanup_old_removes_old_entries(self, history_repository, sample_track):
+    async def test_cleanup_old_removes_old_entries(
+        self, history_repository, sample_track
+    ):
         """Should remove history entries older than cutoff."""
         guild_id = 123
 
@@ -197,7 +232,9 @@ class TestHistoryRepositoryEdgeCases:
         assert len(history) == 1
         assert history[0].title == "Recent Song"
 
-    async def test_cleanup_old_with_no_old_entries(self, history_repository, sample_track):
+    async def test_cleanup_old_with_no_old_entries(
+        self, history_repository, sample_track
+    ):
         """Should return 0 when no old entries exist."""
         guild_id = 123
 

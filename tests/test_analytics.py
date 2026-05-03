@@ -1,4 +1,4 @@
-"""Tests for analytics: repository queries, chart generator, genre classifier, genre repository, and cog commands."""
+"""Tests for analytics, charts, genre classification, and cog commands."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -145,6 +145,26 @@ class TestHistoryAnalytics:
         assert top[0] == ("Rock Anthem", 3)
         assert top[1] == ("Chill Vibes", 1)
 
+    async def test_get_top_requesters_uses_latest_display_name(
+        self, history_repository, make_track
+    ):
+        older = make_track(
+            "repeat", "Song A", requester_id=100, requester_name="OldAlice"
+        )
+        newer = make_track(
+            "repeat-2",
+            "Song B",
+            requester_id=100,
+            requester_name="NewAlice",
+        )
+
+        await history_repository.record_play(1, older)
+        await history_repository.record_play(1, newer)
+
+        top = await history_repository.get_top_requesters(1, limit=5)
+
+        assert top[0] == (100, "NewAlice", 2)
+
     async def test_get_activity_by_day(self, history_repository, make_track):
         await self._seed(history_repository, make_track)
         data = await history_repository.get_activity_by_day(1, days=30)
@@ -201,7 +221,9 @@ class TestGenreRepository:
 class TestChartGenerator:
     @pytest.fixture
     def chart_gen(self):
-        from discord_music_player.infrastructure.charts.chart_generator import ChartGenerator
+        from discord_music_player.infrastructure.charts.chart_generator import (
+            ChartGenerator,
+        )
 
         return ChartGenerator()
 
@@ -257,7 +279,9 @@ class TestGenreClassifier:
 
     @pytest.fixture
     def classifier(self, ai_settings):
-        from discord_music_player.infrastructure.ai.genre_classifier import AIGenreClassifier
+        from discord_music_player.infrastructure.ai.genre_classifier import (
+            AIGenreClassifier,
+        )
 
         return AIGenreClassifier(ai_settings)
 
@@ -267,7 +291,9 @@ class TestGenreClassifier:
 
     def test_is_not_available_on_error(self):
         from discord_music_player.config.settings import AISettings
-        from discord_music_player.infrastructure.ai.genre_classifier import AIGenreClassifier
+        from discord_music_player.infrastructure.ai.genre_classifier import (
+            AIGenreClassifier,
+        )
 
         settings = AISettings(model="openai:gpt-5-mini")
         c = AIGenreClassifier(settings)
@@ -329,8 +355,9 @@ class TestGenreClassifier:
         with patch(
             "discord_music_player.infrastructure.ai.genre_classifier.Agent"
         ) as mock_agent_cls:
-            agent = classifier._get_agent()
+            created = classifier._get_agent()
             mock_agent_cls.assert_called_once()
+            assert created is classifier._agent
             assert classifier._agent is not None
 
     async def test_classify_batch_empty_response(self, classifier):
@@ -347,7 +374,9 @@ class TestGenreClassifier:
         mock_agent.run = AsyncMock(return_value=mock_result)
         classifier._agent = mock_agent
 
-        result = await classifier.classify_tracks([_track("t1", "Song A"), _track("t2", "Song B")])
+        result = await classifier.classify_tracks(
+            [_track("t1", "Song A"), _track("t2", "Song B")]
+        )
         assert result == {"t1": "Unknown", "t2": "Unknown"}
 
     async def test_classify_tracks_batching(self, classifier):
@@ -460,8 +489,12 @@ def mock_history_repo():
             skip_rate=0.1,
         )
     )
-    repo.get_user_top_tracks = AsyncMock(return_value=[("Rock Anthem", 8), ("Chill Vibes", 4)])
-    repo.get_activity_by_day = AsyncMock(return_value=[("2026-02-01", 10), ("2026-02-02", 15)])
+    repo.get_user_top_tracks = AsyncMock(
+        return_value=[("Rock Anthem", 8), ("Chill Vibes", 4)]
+    )
+    repo.get_activity_by_day = AsyncMock(
+        return_value=[("2026-02-01", 10), ("2026-02-02", 15)]
+    )
     repo.get_activity_by_weekday = AsyncMock(return_value=[(0, 5), (1, 12), (3, 8)])
     repo.get_activity_by_hour = AsyncMock(return_value=[(14, 20), (15, 15), (20, 10)])
     repo.get_user_tracks_for_genre = AsyncMock(return_value=[])
@@ -519,7 +552,9 @@ class TestStatsCogCommand:
         assert "Skip Rate" in field_names
 
     @pytest.mark.asyncio
-    async def test_stats_no_data(self, analytics_cog, mock_interaction, mock_history_repo):
+    async def test_stats_no_data(
+        self, analytics_cog, mock_interaction, mock_history_repo
+    ):
         """Should send no-data message when guild has no plays."""
         mock_history_repo.get_total_tracks = AsyncMock(return_value=0)
 
@@ -533,7 +568,9 @@ class TestStatsCogCommand:
         self, analytics_cog, mock_interaction, mock_chart_gen
     ):
         """Should still send embed even if chart generation fails."""
-        mock_chart_gen.async_horizontal_bar_chart = AsyncMock(side_effect=Exception("chart error"))
+        mock_chart_gen.async_horizontal_bar_chart = AsyncMock(
+            side_effect=Exception("chart error")
+        )
 
         await analytics_cog.stats.callback(analytics_cog, mock_interaction)
 
@@ -563,7 +600,9 @@ class TestStatsCogCommand:
         assert "Alice" in field_values["Most Active"]
 
     @pytest.mark.asyncio
-    async def test_stats_no_top_tracks(self, analytics_cog, mock_interaction, mock_history_repo):
+    async def test_stats_no_top_tracks(
+        self, analytics_cog, mock_interaction, mock_history_repo
+    ):
         """Should omit top track field when no top tracks."""
         mock_history_repo.get_most_played = AsyncMock(return_value=[])
 
@@ -575,7 +614,9 @@ class TestStatsCogCommand:
         assert "Top Track" not in field_names
 
     @pytest.mark.asyncio
-    async def test_stats_no_requesters(self, analytics_cog, mock_interaction, mock_history_repo):
+    async def test_stats_no_requesters(
+        self, analytics_cog, mock_interaction, mock_history_repo
+    ):
         """Should omit most active field when no requesters."""
         mock_history_repo.get_top_requesters = AsyncMock(return_value=[])
 
@@ -647,7 +688,9 @@ class TestTopCogCommand:
         assert "Pop Hit" in embed.description
 
     @pytest.mark.asyncio
-    async def test_top_tracks_no_data(self, analytics_cog, mock_interaction, mock_history_repo):
+    async def test_top_tracks_no_data(
+        self, analytics_cog, mock_interaction, mock_history_repo
+    ):
         """Should send no-data message when no tracks."""
         mock_history_repo.get_most_played_since = AsyncMock(return_value=[])
 
@@ -659,7 +702,9 @@ class TestTopCogCommand:
         assert args[0] == "No music has been played yet in this server."
 
     @pytest.mark.asyncio
-    async def test_top_users_no_data(self, analytics_cog, mock_interaction, mock_history_repo):
+    async def test_top_users_no_data(
+        self, analytics_cog, mock_interaction, mock_history_repo
+    ):
         """Should send no-data message when no requesters."""
         mock_history_repo.get_top_requesters_since = AsyncMock(return_value=[])
         choice = MagicMock()
@@ -673,7 +718,9 @@ class TestTopCogCommand:
         assert args[0] == "No music has been played yet in this server."
 
     @pytest.mark.asyncio
-    async def test_top_skipped_no_data(self, analytics_cog, mock_interaction, mock_history_repo):
+    async def test_top_skipped_no_data(
+        self, analytics_cog, mock_interaction, mock_history_repo
+    ):
         """Should send no-data message when no skipped tracks."""
         mock_history_repo.get_most_skipped_since = AsyncMock(return_value=[])
         choice = MagicMock()
@@ -691,7 +738,9 @@ class TestTopCogCommand:
         self, analytics_cog, mock_interaction, mock_chart_gen
     ):
         """Should still send embed even if chart generation fails."""
-        mock_chart_gen.async_horizontal_bar_chart = AsyncMock(side_effect=Exception("chart error"))
+        mock_chart_gen.async_horizontal_bar_chart = AsyncMock(
+            side_effect=Exception("chart error")
+        )
 
         await analytics_cog.top.callback(
             analytics_cog, mock_interaction, category=None, period=None
@@ -720,7 +769,9 @@ class TestMystatsCogCommand:
         assert "Skip Rate" in field_names
 
     @pytest.mark.asyncio
-    async def test_mystats_no_data(self, analytics_cog, mock_interaction, mock_history_repo):
+    async def test_mystats_no_data(
+        self, analytics_cog, mock_interaction, mock_history_repo
+    ):
         """Should send no-data message when user has no plays."""
         mock_history_repo.get_user_stats = AsyncMock(
             return_value=UserStats(
@@ -748,7 +799,9 @@ class TestMystatsCogCommand:
         assert "Rock Anthem" in field_values["Your Top Songs"]
 
     @pytest.mark.asyncio
-    async def test_mystats_no_top_tracks(self, analytics_cog, mock_interaction, mock_history_repo):
+    async def test_mystats_no_top_tracks(
+        self, analytics_cog, mock_interaction, mock_history_repo
+    ):
         """Should omit top songs field when empty."""
         mock_history_repo.get_user_top_tracks = AsyncMock(return_value=[])
 
@@ -768,7 +821,9 @@ class TestMystatsCogCommand:
         mock_history_repo.get_user_tracks_for_genre = AsyncMock(
             return_value=[GenreTrackInfo(track_id="t1", title="Song", artist="A")]
         )
-        analytics_cog.container.genre_repository.get_genres = AsyncMock(return_value={"t1": "Rock"})
+        analytics_cog.container.genre_repository.get_genres = AsyncMock(
+            return_value={"t1": "Rock"}
+        )
         mock_chart_gen.async_pie_chart = AsyncMock(side_effect=Exception("chart error"))
 
         await analytics_cog.mystats.callback(analytics_cog, mock_interaction)
@@ -783,7 +838,9 @@ class TestActivityCogCommand:
     @pytest.mark.asyncio
     async def test_activity_daily_default(self, analytics_cog, mock_interaction):
         """Should default to daily period."""
-        await analytics_cog.activity.callback(analytics_cog, mock_interaction, period=None)
+        await analytics_cog.activity.callback(
+            analytics_cog, mock_interaction, period=None
+        )
 
         mock_interaction.response.defer.assert_called_once()
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
@@ -797,7 +854,9 @@ class TestActivityCogCommand:
         choice = MagicMock()
         choice.value = "daily"
 
-        await analytics_cog.activity.callback(analytics_cog, mock_interaction, period=choice)
+        await analytics_cog.activity.callback(
+            analytics_cog, mock_interaction, period=choice
+        )
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
@@ -809,7 +868,9 @@ class TestActivityCogCommand:
         choice = MagicMock()
         choice.value = "weekly"
 
-        await analytics_cog.activity.callback(analytics_cog, mock_interaction, period=choice)
+        await analytics_cog.activity.callback(
+            analytics_cog, mock_interaction, period=choice
+        )
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
@@ -821,18 +882,24 @@ class TestActivityCogCommand:
         choice = MagicMock()
         choice.value = "hourly"
 
-        await analytics_cog.activity.callback(analytics_cog, mock_interaction, period=choice)
+        await analytics_cog.activity.callback(
+            analytics_cog, mock_interaction, period=choice
+        )
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
         assert "Peak hour" in embed.description
 
     @pytest.mark.asyncio
-    async def test_activity_no_data(self, analytics_cog, mock_interaction, mock_history_repo):
+    async def test_activity_no_data(
+        self, analytics_cog, mock_interaction, mock_history_repo
+    ):
         """Should send no-data message when guild has no plays."""
         mock_history_repo.get_total_tracks = AsyncMock(return_value=0)
 
-        await analytics_cog.activity.callback(analytics_cog, mock_interaction, period=None)
+        await analytics_cog.activity.callback(
+            analytics_cog, mock_interaction, period=None
+        )
 
         args = mock_interaction.followup.send.call_args[0]
         assert args[0] == "No music has been played yet in this server."
@@ -842,9 +909,13 @@ class TestActivityCogCommand:
         self, analytics_cog, mock_interaction, mock_chart_gen
     ):
         """Should show 'not enough data' fallback when chart fails."""
-        mock_chart_gen.async_line_chart = AsyncMock(side_effect=Exception("chart error"))
+        mock_chart_gen.async_line_chart = AsyncMock(
+            side_effect=Exception("chart error")
+        )
 
-        await analytics_cog.activity.callback(analytics_cog, mock_interaction, period=None)
+        await analytics_cog.activity.callback(
+            analytics_cog, mock_interaction, period=None
+        )
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
@@ -858,7 +929,9 @@ class TestActivityCogCommand:
         """Should show fallback message when daily data is empty."""
         mock_history_repo.get_activity_by_day = AsyncMock(return_value=[])
 
-        await analytics_cog.activity.callback(analytics_cog, mock_interaction, period=None)
+        await analytics_cog.activity.callback(
+            analytics_cog, mock_interaction, period=None
+        )
 
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs["embed"]
@@ -903,20 +976,28 @@ class TestGetUserGenreData:
             return_value=[GenreTrackInfo(track_id="t1", title="Song", artist="A")]
         )
         analytics_cog.container.genre_repository.get_genres = AsyncMock(return_value={})
-        analytics_cog.container.genre_classifier.is_available = MagicMock(return_value=False)
+        analytics_cog.container.genre_classifier.is_available = MagicMock(
+            return_value=False
+        )
 
         result = await analytics_cog._get_user_genre_data(111, 333)
 
         assert result == {"Unknown": 1}
 
     @pytest.mark.asyncio
-    async def test_uncached_classified_when_ai_available(self, analytics_cog, mock_history_repo):
+    async def test_uncached_classified_when_ai_available(
+        self, analytics_cog, mock_history_repo
+    ):
         """Should classify uncached tracks when AI is available."""
         mock_history_repo.get_user_tracks_for_genre = AsyncMock(
-            return_value=[GenreTrackInfo(track_id="t1", title="Rock Song", artist="Band A")]
+            return_value=[
+                GenreTrackInfo(track_id="t1", title="Rock Song", artist="Band A")
+            ]
         )
         analytics_cog.container.genre_repository.get_genres = AsyncMock(return_value={})
-        analytics_cog.container.genre_classifier.is_available = MagicMock(return_value=True)
+        analytics_cog.container.genre_classifier.is_available = MagicMock(
+            return_value=True
+        )
         analytics_cog.container.genre_classifier.classify_tracks = AsyncMock(
             return_value={"t1": "Rock"}
         )
@@ -928,7 +1009,9 @@ class TestGetUserGenreData:
         analytics_cog.container.genre_repository.save_genres.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_genre_aggregation_by_play_count(self, analytics_cog, mock_history_repo):
+    async def test_genre_aggregation_by_play_count(
+        self, analytics_cog, mock_history_repo
+    ):
         """Should aggregate genres by number of plays, not unique tracks."""
         mock_history_repo.get_user_tracks_for_genre = AsyncMock(
             return_value=[

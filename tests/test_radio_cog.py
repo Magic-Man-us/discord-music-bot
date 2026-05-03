@@ -84,6 +84,7 @@ def interaction():
     other = MagicMock(spec=discord.Member)
     other.bot = False
     member.voice.channel.members = [member, other]
+    i.guild.get_member = MagicMock(return_value=member)
     i.user = member
     return i
 
@@ -189,7 +190,9 @@ async def test_toggle_disable_with_message(cog, interaction, mock_container):
 
 
 @pytest.mark.asyncio
-async def test_toggle_with_query_resolves_and_enqueues(cog, interaction, mock_container):
+async def test_toggle_with_query_resolves_and_enqueues(
+    cog, interaction, mock_container
+):
     """Seed query resolves a track via audio_resolver and enqueues it."""
     seed_track = MagicMock()
     seed_track.title = "Queried Song"
@@ -249,7 +252,9 @@ async def test_toggle_with_query_enqueue_fails(cog, interaction, mock_container)
 
 
 @pytest.mark.asyncio
-async def test_toggle_with_query_disables_existing_radio(cog, interaction, mock_container):
+async def test_toggle_with_query_disables_existing_radio(
+    cog, interaction, mock_container
+):
     """When radio is already enabled, _seed_track disables it so toggle re-enables fresh."""
     mock_container.radio_service.is_enabled = MagicMock(return_value=True)
 
@@ -508,7 +513,9 @@ async def test_playmine_off_disables_follow_mode(cog, interaction, mock_containe
 
 
 @pytest.mark.asyncio
-async def test_playmine_on_with_no_activity_returns_hint(cog, interaction, mock_container):
+async def test_playmine_on_with_no_activity_returns_hint(
+    cog, interaction, mock_container
+):
     interaction.user.activities = []
     interaction.client = MagicMock()
     interaction.client.intents = MagicMock()
@@ -522,7 +529,9 @@ async def test_playmine_on_with_no_activity_returns_hint(cog, interaction, mock_
 
 
 @pytest.mark.asyncio
-async def test_playmine_on_with_activity_enables_and_seeds(cog, interaction, mock_container):
+async def test_playmine_on_with_activity_enables_and_seeds(
+    cog, interaction, mock_container
+):
     import discord
 
     spotify = MagicMock(spec=discord.Spotify)
@@ -539,3 +548,88 @@ async def test_playmine_on_with_activity_enables_and_seeds(cog, interaction, moc
     mock_container.follow_mode.enable.assert_called_once()
     mock_container.follow_mode.on_track_change.assert_awaited_once()
     interaction.followup.send.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_playmine_on_with_generic_spotify_activity_enables_and_seeds(
+    cog, interaction, mock_container
+):
+    import discord
+
+    spotify = MagicMock(spec=discord.Activity)
+    spotify.type = discord.ActivityType.listening
+    spotify.application_id = None
+    spotify.name = "Spotify"
+    spotify.details = "Song"
+    spotify.state = "Artist"
+
+    interaction.user.activities = [spotify]
+    interaction.client = MagicMock()
+    interaction.client.intents = MagicMock()
+    interaction.client.intents.presences = True
+
+    await cog.playmine.callback(cog, interaction, action=_choice("on"))
+
+    mock_container.follow_mode.enable.assert_called_once()
+    mock_container.follow_mode.on_track_change.assert_awaited_once_with(
+        guild_id=111, user_id=222, query="Artist - Song"
+    )
+    interaction.followup.send.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_playmine_on_prefers_cached_guild_member_for_activity(
+    cog, interaction, mock_container
+):
+    import discord
+
+    spotify = MagicMock(spec=discord.Activity)
+    spotify.type = discord.ActivityType.listening
+    spotify.application_id = None
+    spotify.name = "Spotify"
+    spotify.details = "Song"
+    spotify.state = "Artist"
+
+    interaction.user.activities = []
+    cached_member = MagicMock(spec=discord.Member)
+    cached_member.activities = [spotify]
+    cached_member.id = interaction.user.id
+    cached_member.display_name = interaction.user.display_name
+    interaction.guild.get_member = MagicMock(return_value=cached_member)
+    interaction.client = MagicMock()
+    interaction.client.intents = MagicMock()
+    interaction.client.intents.presences = True
+
+    await cog.playmine.callback(cog, interaction, action=_choice("on"))
+
+    mock_container.follow_mode.enable.assert_called_once()
+    mock_container.follow_mode.on_track_change.assert_awaited_once_with(
+        guild_id=111, user_id=222, query="Artist - Song"
+    )
+    interaction.followup.send.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_playmine_on_connects_voice_before_seeding(
+    cog, interaction, mock_container
+):
+    import discord
+
+    spotify = MagicMock(spec=discord.Spotify)
+    spotify.title = "Song"
+    spotify.artist = "Artist"
+
+    interaction.user.activities = [spotify]
+    interaction.client = MagicMock()
+    interaction.client.intents = MagicMock()
+    interaction.client.intents.presences = True
+    mock_container.voice_adapter.is_connected = MagicMock(return_value=False)
+    mock_container.voice_adapter.ensure_connected = AsyncMock(return_value=True)
+
+    await cog.playmine.callback(cog, interaction, action=_choice("on"))
+
+    mock_container.voice_adapter.ensure_connected.assert_awaited_once_with(111, 333)
+    mock_container.follow_mode.enable.assert_called_once()
+    mock_container.follow_mode.on_track_change.assert_awaited_once_with(
+        guild_id=111, user_id=222, query="Artist - Song"
+    )

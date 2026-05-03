@@ -107,13 +107,16 @@ class MusicBot(commands.Bot):
 
                 if session.state == PlaybackState.IDLE and not session.has_tracks:
                     logger.info(
-                        "Skipping idle session with no tracks for guild %s", session.guild_id
+                        "Skipping idle session with no tracks for guild %s",
+                        session.guild_id,
                     )
                     continue
 
                 guild = self.get_guild(session.guild_id)
                 if guild is None:
-                    logger.debug("Guild %s not found, resetting session", session.guild_id)
+                    logger.debug(
+                        "Guild %s not found, resetting session", session.guild_id
+                    )
                     await self._reset_session(session, session_repo)
                     reset_count += 1
                     continue
@@ -140,18 +143,23 @@ class MusicBot(commands.Bot):
             await self.container.message_state_manager.reset(session.guild_id)
 
             if not session.has_tracks:
-                logger.debug("Session %s has no tracks, skipping resume", session.guild_id)
+                logger.debug(
+                    "Session %s has no tracks, skipping resume", session.guild_id
+                )
                 return False
 
             voice_channel = self._find_resumable_voice_channel(guild)
             if voice_channel is None:
-                logger.debug("No suitable voice channel found for guild %s", session.guild_id)
+                logger.debug(
+                    "No suitable voice channel found for guild %s", session.guild_id
+                )
                 return False
 
             text_channel = self._find_text_channel(guild)
             if text_channel is None:
                 logger.debug(
-                    "No text channel found for guild %s, skipping resume", session.guild_id
+                    "No text channel found for guild %s, skipping resume",
+                    session.guild_id,
                 )
                 return False
 
@@ -166,7 +174,9 @@ class MusicBot(commands.Bot):
             return True
 
         except Exception as e:
-            logger.warning("Failed to resume session for guild %s: %s", session.guild_id, e)
+            logger.warning(
+                "Failed to resume session for guild %s: %s", session.guild_id, e
+            )
             return False
 
     async def _send_resume_prompt(
@@ -204,12 +214,16 @@ class MusicBot(commands.Bot):
         )
         view.set_message(message)
 
-        logger.info("Sent resume prompt for guild %s: %s", session.guild_id, track_title)
+        logger.info(
+            "Sent resume prompt for guild %s: %s", session.guild_id, track_title
+        )
 
     @staticmethod
     def _find_text_channel(guild: discord.Guild) -> discord.TextChannel | None:
         """Find a suitable text channel to post the resume prompt."""
-        if guild.system_channel and isinstance(guild.system_channel, discord.TextChannel):
+        if guild.system_channel and isinstance(
+            guild.system_channel, discord.TextChannel
+        ):
             return guild.system_channel
 
         for channel in guild.text_channels:
@@ -219,7 +233,9 @@ class MusicBot(commands.Bot):
         return None
 
     @staticmethod
-    def _find_resumable_voice_channel(guild: discord.Guild) -> discord.VoiceChannel | None:
+    def _find_resumable_voice_channel(
+        guild: discord.Guild,
+    ) -> discord.VoiceChannel | None:
         """Find a voice channel with at least one non-bot member."""
         for channel in guild.voice_channels:
             if any(not m.bot for m in channel.members):
@@ -246,6 +262,7 @@ class MusicBot(commands.Bot):
             f"{_COG_PKG}.queue_cog",
             f"{_COG_PKG}.skip_cog",
             f"{_COG_PKG}.now_playing_cog",
+            f"{_COG_PKG}.diagnostics_cog",
             f"{_COG_PKG}.admin_cog",
             f"{_COG_PKG}.health_cog",
             f"{_COG_PKG}.info_cog",
@@ -283,7 +300,9 @@ class MusicBot(commands.Bot):
     ) -> None:
         """Global slash-command error handler; sends ephemeral messages to avoid channel spam."""
         original = (
-            error.original if isinstance(error, discord.app_commands.CommandInvokeError) else error
+            error.original
+            if isinstance(error, discord.app_commands.CommandInvokeError)
+            else error
         )
 
         logger.error(
@@ -374,7 +393,9 @@ class MusicBot(commands.Bot):
         self._shutdown_event.set()
         logger.info("Bot shutdown complete")
 
-    def run_with_graceful_shutdown(self, token: str, *, shutdown_timeout: float = 30.0) -> None:
+    def run_with_graceful_shutdown(
+        self, token: str, *, shutdown_timeout: float = 30.0
+    ) -> None:
         async def runner() -> None:
             async with self:
                 loop = asyncio.get_running_loop()
@@ -394,7 +415,9 @@ class MusicBot(commands.Bot):
                         )
 
                 for sig in (signal.SIGINT, signal.SIGTERM):
-                    loop.add_signal_handler(sig, lambda: asyncio.create_task(_graceful_close()))
+                    loop.add_signal_handler(
+                        sig, lambda: asyncio.create_task(_graceful_close())
+                    )
                 await self.start(token)
 
         asyncio.run(runner())

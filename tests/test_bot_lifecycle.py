@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Unit Tests for Bot Lifecycle
 
@@ -144,7 +146,9 @@ class TestBotInitialization:
         assert bot.help_command is None
 
     @pytest.mark.asyncio
-    async def test_init_stores_container_and_settings(self, mock_container, mock_settings):
+    async def test_init_stores_container_and_settings(
+        self, mock_container, mock_settings
+    ):
         """Should store container and settings references."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -182,7 +186,9 @@ class TestSetupHook:
     """Tests for MusicBot.setup_hook method."""
 
     @pytest.mark.asyncio
-    async def test_setup_hook_initializes_container(self, mock_container, mock_settings):
+    async def test_setup_hook_initializes_container(
+        self, mock_container, mock_settings
+    ):
         """Should initialize container during setup."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -203,7 +209,9 @@ class TestSetupHook:
         bot._connection._guilds = {}  # simulate empty guild cache for user property
         bot._connection.user = MagicMock()
 
-        with patch.object(bot, "_resume_sessions", new_callable=AsyncMock) as mock_resume:
+        with patch.object(
+            bot, "_resume_sessions", new_callable=AsyncMock
+        ) as mock_resume:
             with patch.object(bot, "change_presence", new_callable=AsyncMock):
                 await bot.on_ready()
 
@@ -258,13 +266,17 @@ class TestSetupHook:
 
         with patch.object(bot, "_load_cogs", new_callable=AsyncMock):
             with patch.object(bot, "_resume_sessions", new_callable=AsyncMock):
-                with patch.object(bot, "_sync_commands", new_callable=AsyncMock) as mock_sync:
+                with patch.object(
+                    bot, "_sync_commands", new_callable=AsyncMock
+                ) as mock_sync:
                     await bot.setup_hook()
 
         mock_sync.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_setup_hook_skips_sync_when_disabled(self, mock_container, mock_settings):
+    async def test_setup_hook_skips_sync_when_disabled(
+        self, mock_container, mock_settings
+    ):
         """Should not sync commands when sync_on_startup is False."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -273,13 +285,17 @@ class TestSetupHook:
 
         with patch.object(bot, "_load_cogs", new_callable=AsyncMock):
             with patch.object(bot, "_resume_sessions", new_callable=AsyncMock):
-                with patch.object(bot, "_sync_commands", new_callable=AsyncMock) as mock_sync:
+                with patch.object(
+                    bot, "_sync_commands", new_callable=AsyncMock
+                ) as mock_sync:
                     await bot.setup_hook()
 
         mock_sync.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_setup_hook_handles_container_init_error(self, mock_container, mock_settings):
+    async def test_setup_hook_handles_container_init_error(
+        self, mock_container, mock_settings
+    ):
         """Should raise error when container initialization fails."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -290,7 +306,9 @@ class TestSetupHook:
             await bot.setup_hook()
 
     @pytest.mark.asyncio
-    async def test_setup_hook_handles_cleanup_start_error(self, mock_container, mock_settings):
+    async def test_setup_hook_handles_cleanup_start_error(
+        self, mock_container, mock_settings
+    ):
         """Should handle cleanup job start errors gracefully."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -343,9 +361,14 @@ class TestResumeSessions:
         mock_container.session_repository.get_all_active.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_resume_sessions_resets_when_guild_not_found(self, mock_container, mock_settings):
+    async def test_resume_sessions_resets_when_guild_not_found(
+        self, mock_container, mock_settings
+    ):
         """Should reset sessions when guild is not found."""
-        from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
+        from discord_music_player.domain.music.entities import (
+            GuildPlaybackSession,
+            Track,
+        )
         from discord_music_player.domain.music.enums import PlaybackState
         from discord_music_player.domain.music.wrappers import TrackId
         from discord_music_player.infrastructure.discord.bot import MusicBot
@@ -371,7 +394,9 @@ class TestResumeSessions:
         mock_container.session_repository.save.assert_called_once_with(session)
 
     @pytest.mark.asyncio
-    async def test_resume_sessions_skips_idle_sessions(self, mock_container, mock_settings):
+    async def test_resume_sessions_skips_idle_sessions(
+        self, mock_container, mock_settings
+    ):
         """Should skip sessions that are already idle with no tracks."""
         from discord_music_player.domain.music.entities import GuildPlaybackSession
         from discord_music_player.domain.music.enums import PlaybackState
@@ -394,7 +419,9 @@ class TestResumeSessions:
         """Should handle errors during session resume gracefully."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
-        mock_container.session_repository.get_all_active.side_effect = Exception("DB error")
+        mock_container.session_repository.get_all_active.side_effect = Exception(
+            "DB error"
+        )
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         # Should not raise
@@ -425,6 +452,7 @@ class TestLoadCogs:
             "discord_music_player.infrastructure.discord.cogs.skip_cog",
             "discord_music_player.infrastructure.discord.cogs.radio_cog",
             "discord_music_player.infrastructure.discord.cogs.now_playing_cog",
+            "discord_music_player.infrastructure.discord.cogs.diagnostics_cog",
             "discord_music_player.infrastructure.discord.cogs.admin_cog",
             "discord_music_player.infrastructure.discord.cogs.health_cog",
             "discord_music_player.infrastructure.discord.cogs.info_cog",
@@ -439,7 +467,9 @@ class TestLoadCogs:
             mock_load.assert_any_call(cog)
 
     @pytest.mark.asyncio
-    async def test_load_cogs_handles_individual_failure(self, mock_container, mock_settings):
+    async def test_load_cogs_handles_individual_failure(
+        self, mock_container, mock_settings
+    ):
         """Should continue loading other cogs when one fails."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -455,7 +485,7 @@ class TestLoadCogs:
             await bot._load_cogs()
 
         # Should still attempt to load all cogs
-        assert mock_load.call_count == 12
+        assert mock_load.call_count == 13
 
 
 # =============================================================================
@@ -474,7 +504,10 @@ class TestSyncCommands:
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         with patch.object(
-            bot.tree, "sync", new_callable=AsyncMock, return_value=[MagicMock(), MagicMock()]
+            bot.tree,
+            "sync",
+            new_callable=AsyncMock,
+            return_value=[MagicMock(), MagicMock()],
         ) as mock_sync:
             await bot._sync_commands()
 
@@ -497,7 +530,9 @@ class TestSyncCommands:
             assert mock_sync.call_count == 3  # 2 guilds + 1 global
 
     @pytest.mark.asyncio
-    async def test_sync_commands_handles_guild_error(self, mock_container, mock_settings):
+    async def test_sync_commands_handles_guild_error(
+        self, mock_container, mock_settings
+    ):
         """Should handle individual guild sync errors gracefully."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -519,14 +554,19 @@ class TestSyncCommands:
             mock_sync.assert_any_call()
 
     @pytest.mark.asyncio
-    async def test_sync_commands_handles_global_error(self, mock_container, mock_settings):
+    async def test_sync_commands_handles_global_error(
+        self, mock_container, mock_settings
+    ):
         """Should handle global sync errors gracefully."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         with patch.object(
-            bot.tree, "sync", new_callable=AsyncMock, side_effect=Exception("Global sync failed")
+            bot.tree,
+            "sync",
+            new_callable=AsyncMock,
+            side_effect=Exception("Global sync failed"),
         ):
             # Should not raise
             await bot._sync_commands()
@@ -543,15 +583,15 @@ class TestSyncCommands:
         bot = MusicBot(container=mock_container, settings=mock_settings)
 
         with (
-            patch.object(
-                bot.tree, "sync", new_callable=AsyncMock, return_value=[]
-            ),
+            patch.object(bot.tree, "sync", new_callable=AsyncMock, return_value=[]),
             patch.object(bot.tree, "clear_commands") as mock_clear,
         ):
             await bot._sync_commands()
 
             assert mock_clear.call_count == 2
-            cleared_ids = {call.kwargs["guild"].id for call in mock_clear.call_args_list}
+            cleared_ids = {
+                call.kwargs["guild"].id for call in mock_clear.call_args_list
+            }
             assert cleared_ids == {111111, 222222}
 
 
@@ -564,7 +604,9 @@ class TestAppCommandErrorHandler:
     """Tests for MusicBot._on_app_command_error method."""
 
     @pytest.mark.asyncio
-    async def test_error_handler_sends_ephemeral_response(self, mock_container, mock_settings):
+    async def test_error_handler_sends_ephemeral_response(
+        self, mock_container, mock_settings
+    ):
         """Should send ephemeral error message."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -585,7 +627,9 @@ class TestAppCommandErrorHandler:
         assert "Test error" in call_args.args[0]
 
     @pytest.mark.asyncio
-    async def test_error_handler_uses_followup_when_responded(self, mock_container, mock_settings):
+    async def test_error_handler_uses_followup_when_responded(
+        self, mock_container, mock_settings
+    ):
         """Should use followup when interaction already responded."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -605,7 +649,9 @@ class TestAppCommandErrorHandler:
         assert call_args.kwargs["ephemeral"] is True
 
     @pytest.mark.asyncio
-    async def test_error_handler_extracts_original_error(self, mock_container, mock_settings):
+    async def test_error_handler_extracts_original_error(
+        self, mock_container, mock_settings
+    ):
         """Should extract original error from wrapper."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -627,7 +673,9 @@ class TestAppCommandErrorHandler:
         assert "Original error" in call_args.args[0]
 
     @pytest.mark.asyncio
-    async def test_error_handler_handles_send_failure(self, mock_container, mock_settings):
+    async def test_error_handler_handles_send_failure(
+        self, mock_container, mock_settings
+    ):
         """Should handle failure to send error message gracefully."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -667,9 +715,13 @@ class TestOnReady:
 
         with patch.object(type(bot), "user", PropertyMock(return_value=mock_user)):
             with patch.object(
-                type(bot), "guilds", PropertyMock(return_value=[MagicMock(), MagicMock()])
+                type(bot),
+                "guilds",
+                PropertyMock(return_value=[MagicMock(), MagicMock()]),
             ):
-                with patch.object(bot, "change_presence", new_callable=AsyncMock) as mock_change:
+                with patch.object(
+                    bot, "change_presence", new_callable=AsyncMock
+                ) as mock_change:
                     await bot.on_ready()
 
                     mock_change.assert_called_once()
@@ -709,14 +761,18 @@ class TestBotClose:
         vc1 = AsyncMock()
         vc2 = AsyncMock()
 
-        with patch.object(type(bot), "voice_clients", PropertyMock(return_value=[vc1, vc2])):
+        with patch.object(
+            type(bot), "voice_clients", PropertyMock(return_value=[vc1, vc2])
+        ):
             await bot.close()
 
         vc1.disconnect.assert_called_once_with(force=True)
         vc2.disconnect.assert_called_once_with(force=True)
 
     @pytest.mark.asyncio
-    async def test_close_handles_voice_disconnect_error(self, mock_container, mock_settings):
+    async def test_close_handles_voice_disconnect_error(
+        self, mock_container, mock_settings
+    ):
         """Should handle voice disconnect errors gracefully."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -742,7 +798,9 @@ class TestBotClose:
         mock_container.shutdown.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_close_handles_container_shutdown_error(self, mock_container, mock_settings):
+    async def test_close_handles_container_shutdown_error(
+        self, mock_container, mock_settings
+    ):
         """Should handle container shutdown errors gracefully."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -754,7 +812,9 @@ class TestBotClose:
             await bot.close()
 
     @pytest.mark.asyncio
-    async def test_close_handles_cleanup_stop_error(self, mock_container, mock_settings):
+    async def test_close_handles_cleanup_stop_error(
+        self, mock_container, mock_settings
+    ):
         """Should handle cleanup job stop errors gracefully."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -814,7 +874,7 @@ def _make_session(
     state: str = "playing",
     with_track: bool = True,
     queue_count: int = 0,
-) -> "GuildPlaybackSession":
+) -> object:
     """Helper to build a GuildPlaybackSession for testing."""
     from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
     from discord_music_player.domain.music.enums import PlaybackState
@@ -921,7 +981,9 @@ class TestFindTextChannel:
         result = MusicBot._find_text_channel(guild)
         assert result is None
 
-    def test_returns_none_when_no_sendable_channels(self, mock_container, mock_settings):
+    def test_returns_none_when_no_sendable_channels(
+        self, mock_container, mock_settings
+    ):
         """Should return None when all channels lack send permissions."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -1027,7 +1089,9 @@ class TestTryResumeSession:
 
         await bot._try_resume_session(session, guild)
 
-        mock_container.message_state_manager.reset.assert_called_once_with(session.guild_id)
+        mock_container.message_state_manager.reset.assert_called_once_with(
+            session.guild_id
+        )
 
     @pytest.mark.asyncio
     async def test_returns_false_when_no_tracks(self, mock_container, mock_settings):
@@ -1045,7 +1109,9 @@ class TestTryResumeSession:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_returns_false_when_no_voice_channel(self, mock_container, mock_settings):
+    async def test_returns_false_when_no_voice_channel(
+        self, mock_container, mock_settings
+    ):
         """Should return False when no voice channel has human members."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -1060,7 +1126,9 @@ class TestTryResumeSession:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_returns_false_when_no_text_channel(self, mock_container, mock_settings):
+    async def test_returns_false_when_no_text_channel(
+        self, mock_container, mock_settings
+    ):
         """Should return False when no suitable text channel found."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -1070,13 +1138,17 @@ class TestTryResumeSession:
 
         session = _make_session(with_track=True)
         vc = _make_voice_channel([False])
-        guild = _make_guild_mock(voice_channels=[vc], text_channels=[], system_channel=None)
+        guild = _make_guild_mock(
+            voice_channels=[vc], text_channels=[], system_channel=None
+        )
 
         result = await bot._try_resume_session(session, guild)
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_returns_false_when_voice_connect_fails(self, mock_container, mock_settings):
+    async def test_returns_false_when_voice_connect_fails(
+        self, mock_container, mock_settings
+    ):
         """Should return False when voice adapter fails to connect."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -1090,14 +1162,18 @@ class TestTryResumeSession:
         vc = _make_voice_channel([False])
         tc = _make_text_channel()
         guild = _make_guild_mock(
-            voice_channels=[vc], text_channels=[tc], system_channel=tc,
+            voice_channels=[vc],
+            text_channels=[tc],
+            system_channel=tc,
         )
 
         result = await bot._try_resume_session(session, guild)
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_returns_true_on_successful_resume(self, mock_container, mock_settings):
+    async def test_returns_true_on_successful_resume(
+        self, mock_container, mock_settings
+    ):
         """Should return True when all steps succeed."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -1113,7 +1189,9 @@ class TestTryResumeSession:
         tc = _make_text_channel()
         tc.send = AsyncMock(return_value=MagicMock())
         guild = _make_guild_mock(
-            voice_channels=[vc], text_channels=[tc], system_channel=tc,
+            voice_channels=[vc],
+            text_channels=[tc],
+            system_channel=tc,
         )
 
         with patch(
@@ -1173,7 +1251,9 @@ class TestSendResumePrompt:
     """Tests for MusicBot._send_resume_prompt method."""
 
     @pytest.mark.asyncio
-    async def test_calls_prepare_for_resume_and_saves(self, mock_container, mock_settings):
+    async def test_calls_prepare_for_resume_and_saves(
+        self, mock_container, mock_settings
+    ):
         """Should call prepare_for_resume on session and save it."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -1193,7 +1273,9 @@ class TestSendResumePrompt:
         mock_container.session_repository.save.assert_called_once_with(session)
 
     @pytest.mark.asyncio
-    async def test_creates_resume_view_with_correct_args(self, mock_container, mock_settings):
+    async def test_creates_resume_view_with_correct_args(
+        self, mock_container, mock_settings
+    ):
         """Should create ResumePlaybackView with guild_id, channel_id, and track title."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -1264,7 +1346,9 @@ class TestSendResumePrompt:
         assert "2:05" in sent_text
 
     @pytest.mark.asyncio
-    async def test_uses_queue_title_when_no_current_track(self, mock_container, mock_settings):
+    async def test_uses_queue_title_when_no_current_track(
+        self, mock_container, mock_settings
+    ):
         """Should fall back to first queue track title when current_track is None."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -1288,7 +1372,9 @@ class TestSendResumePrompt:
         assert "Queue Track 0" in sent_text
 
     @pytest.mark.asyncio
-    async def test_uses_unknown_when_no_tracks_at_all(self, mock_container, mock_settings):
+    async def test_uses_unknown_when_no_tracks_at_all(
+        self, mock_container, mock_settings
+    ):
         """Should use 'Unknown' when neither current_track nor queue has tracks."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -1374,7 +1460,9 @@ class TestResumeSessionsIntegration:
         mock_container.session_repository.save.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_does_not_skip_idle_session_with_queue(self, mock_container, mock_settings):
+    async def test_does_not_skip_idle_session_with_queue(
+        self, mock_container, mock_settings
+    ):
         """Should NOT skip idle sessions that still have tracks in queue."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
@@ -1399,7 +1487,10 @@ class TestResumeSessionsIntegration:
 
         session1 = _make_session(guild_id=111, state="playing", with_track=True)
         session2 = _make_session(guild_id=222, state="playing", with_track=True)
-        mock_container.session_repository.get_all_active.return_value = [session1, session2]
+        mock_container.session_repository.get_all_active.return_value = [
+            session1,
+            session2,
+        ]
 
         bot = MusicBot(container=mock_container, settings=mock_settings)
 

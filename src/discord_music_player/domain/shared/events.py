@@ -12,6 +12,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field
 
 from ...utils.logging import get_logger
+from ..music.entities import Track
 from ..music.wrappers import TrackId
 from .datetime_utils import utcnow
 from .types import (
@@ -61,6 +62,13 @@ class QueueExhausted(DomainEvent):
     last_track_title: NonEmptyStr | None = None
 
 
+class FollowModeTrackQueued(DomainEvent):
+    guild_id: DiscordSnowflake
+    channel_id: ChannelIdField
+    track: Track
+    source_label: NonEmptyStr | None = None
+
+
 # === Radio Events ===
 
 
@@ -98,7 +106,9 @@ class EventBus:
     """
 
     def __init__(self) -> None:
-        self._handlers: dict[type[DomainEvent], list[EventHandler[Any]]] = defaultdict(list)
+        self._handlers: dict[type[DomainEvent], list[EventHandler[Any]]] = defaultdict(
+            list
+        )
 
     def subscribe(self, event_type: type[T], handler: EventHandler[T]) -> None:
         self._handlers[event_type].append(handler)

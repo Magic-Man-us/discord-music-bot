@@ -60,7 +60,9 @@ class DatabaseSettings(BaseModel):
     @classmethod
     def validate_url(cls, v: str) -> str:
         if not v.startswith(("sqlite://", "postgresql://", "mysql://")):
-            raise ValueError("Database URL must start with sqlite://, postgresql://, or mysql://")
+            raise ValueError(
+                "Database URL must start with sqlite://, postgresql://, or mysql://"
+            )
         return v
 
 
@@ -68,7 +70,8 @@ class DiscordSettings(BaseModel):
     model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
 
     token: SecretStr = Field(
-        default=SecretStr(""), validation_alias=AliasChoices("token", "bot_token", "discord_token")
+        default=SecretStr(""),
+        validation_alias=AliasChoices("token", "bot_token", "discord_token"),
     )
 
     @field_validator("token")
@@ -89,7 +92,8 @@ class DiscordSettings(BaseModel):
         default_factory=tuple, validation_alias=AliasChoices("guild_ids", "guilds")
     )
     test_guild_ids: tuple[DiscordSnowflake, ...] = Field(
-        default_factory=tuple, validation_alias=AliasChoices("test_guild_ids", "test_guilds")
+        default_factory=tuple,
+        validation_alias=AliasChoices("test_guild_ids", "test_guilds"),
     )
     sync_on_startup: bool = True
     dj_role_id: DiscordSnowflake | None = Field(
@@ -181,7 +185,9 @@ class AISettings(BaseModel):
         if ":" not in v:
             msg = (
                 "AI model must be in 'provider:model' format "
-                "(e.g. 'openai:gpt-5-mini', 'anthropic:claude-sonnet-4-5-20250929', 'google-gla:gemini-2.0-flash')"
+                "(e.g. 'openai:gpt-5-mini', "
+                "'anthropic:claude-sonnet-4-5-20250929', "
+                "'google-gla:gemini-2.0-flash')"
             )
             raise ValueError(msg)
         return v
@@ -239,6 +245,18 @@ class Settings(BaseSettings):
     log_level: LogLevel = LogLevel.INFO
 
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def _normalize_debug(cls, v: bool | str) -> bool | str:
+        """Coerce common boolean env strings and tolerate shell ``DEBUG=release``."""
+        if isinstance(v, str):
+            normalized = v.strip().casefold()
+            if normalized in {"1", "true", "t", "yes", "y", "on"}:
+                return True
+            if normalized in {"0", "false", "f", "no", "n", "off", "", "release"}:
+                return False
+        return v
 
     @field_validator("log_level", mode="before")
     @classmethod
