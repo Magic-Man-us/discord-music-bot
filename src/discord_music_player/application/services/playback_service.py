@@ -378,13 +378,17 @@ class PlaybackApplicationService:
             return False
 
         current = session.current_track
+        # Leave the flag SET: stopping the audio makes discord.py fire the
+        # "after" callback (_on_voice_track_end), which consumes the flag.
+        # Discarding it here would let that stale callback double-advance and
+        # kill the track we're about to start. Only clear it if stop() raised
+        # (no callback will come). Mirrors skip_track's flag handling.
         self._ignore_next_voice_track_end.add(guild_id)
         try:
             await self._voice_adapter.stop(guild_id)
         except Exception:
-            logger.exception("Error stopping voice during mirror cut")
-        finally:
             self._ignore_next_voice_track_end.discard(guild_id)
+            logger.exception("Error stopping voice during mirror cut")
 
         await self.handle_track_finished(guild_id, current)
         return True

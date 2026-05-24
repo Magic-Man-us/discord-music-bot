@@ -898,6 +898,49 @@ class TestPlaybackApplicationServiceCutToNextTrack:
         mock_voice_adapter.stop.assert_awaited_once_with(123456)
         service.handle_track_finished.assert_awaited_once_with(123456, sample_track)
 
+    @pytest.mark.asyncio
+    async def test_cut_leaves_ignore_flag_for_voice_callback(
+        self, service, mock_session_repo, mock_voice_adapter, sample_track
+    ):
+        """Regression: the stop()-induced voice callback must be suppressed.
+
+        Discarding the flag too early let _on_voice_track_end double-advance,
+        killing the just-started track (mirror stopped after one song).
+        """
+        session = GuildPlaybackSession(guild_id=123456)
+        session.current_track = sample_track
+        mock_session_repo.get.return_value = session
+        service.handle_track_finished = AsyncMock()  # type: ignore[attr-defined]
+
+        await service.cut_to_next_track(guild_id=123456)
+
+        # Flag stays set so the async after-callback can consume it.
+        assert 123456 in service._ignore_next_voice_track_end
+
+        # The stale voice callback is now a no-op (consumes the flag, no
+        # second finish).
+        service.handle_track_finished.reset_mock()
+        await service._on_voice_track_end(123456)
+        service.handle_track_finished.assert_not_awaited()
+        assert 123456 not in service._ignore_next_voice_track_end
+
+    @pytest.mark.asyncio
+    async def test_cut_discards_flag_when_stop_raises(
+        self, service, mock_session_repo, mock_voice_adapter, sample_track
+    ):
+        session = GuildPlaybackSession(guild_id=123456)
+        session.current_track = sample_track
+        mock_session_repo.get.return_value = session
+        mock_voice_adapter.stop.side_effect = RuntimeError("boom")
+        service.handle_track_finished = AsyncMock()  # type: ignore[attr-defined]
+
+        result = await service.cut_to_next_track(guild_id=123456)
+
+        assert result is True
+        # No callback will fire after a failed stop, so don't leak the flag.
+        assert 123456 not in service._ignore_next_voice_track_end
+        service.handle_track_finished.assert_awaited_once_with(123456, sample_track)
+
 
 class TestPlaybackApplicationServiceCleanup:
     """Unit tests for PlaybackApplicationService.cleanup_guild method."""
