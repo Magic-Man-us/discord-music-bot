@@ -106,6 +106,14 @@ class TimeConstants:
     # Empty channel disconnect — leave voice after all users leave the channel
     EMPTY_CHANNEL_DISCONNECT_SECONDS = 30
 
+    # Live mirror — disconnect this many seconds after the followed user's
+    # listening activity disappears (cancelled if they start playing again)
+    FOLLOW_STOP_GRACE_SECONDS = 60  # 1 minute
+
+    # Now-playing reservation self-heals after this many seconds so a failed
+    # send can never permanently suppress the auto-posted now-playing embed
+    NOW_PLAYING_RESERVATION_TTL_SECONDS = 15
+
     # Busy timeout for SQLite
     DEFAULT_BUSY_TIMEOUT_MS = 5000
 
@@ -150,8 +158,10 @@ class LimitConstants:
     LONG_TRACK_THRESHOLD_SECONDS = 360  # 6 minutes
     LONG_TRACK_VOTE_BYPASS_LISTENERS = 4  # skip vote when <= this many listeners
 
-    # /dj follow — auto-stop after this many distinct tracks have been mirrored
+    # /dj follow — default number of distinct tracks to mirror before auto-stop
     MAX_FOLLOW_TRACKS = 5
+    # Upper bound a user may request via the /playmine count option
+    FOLLOW_TRACKS_HARD_CAP = 25
 
     # Discord limits
     MAX_DISCORD_SNOWFLAKE = 2**64

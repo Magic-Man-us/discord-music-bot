@@ -111,6 +111,55 @@ class TestStateManagement:
 
 
 # ============================================================================
+# Now-Playing Reservation (self-healing TTL)
+# ============================================================================
+
+
+class TestReservation:
+    def test_reserve_marks_active(self, manager: MessageStateManager) -> None:
+        manager.reserve_now_playing(GUILD_ID)
+        assert manager.reservation_active(GUILD_ID) is True
+
+    def test_not_active_when_never_reserved(self, manager: MessageStateManager) -> None:
+        assert manager.reservation_active(GUILD_ID) is False
+
+    def test_track_now_playing_clears_reservation(
+        self, manager: MessageStateManager, track_a: Track
+    ) -> None:
+        manager.reserve_now_playing(GUILD_ID)
+        manager.track_now_playing(
+            guild_id=GUILD_ID,
+            track=track_a,
+            channel_id=CHANNEL_ID,
+            message_id=MESSAGE_ID_1,
+        )
+        assert manager.reservation_active(GUILD_ID) is False
+
+    def test_clear_reservation(self, manager: MessageStateManager) -> None:
+        manager.reserve_now_playing(GUILD_ID)
+        manager.clear_now_playing_reservation(GUILD_ID)
+        assert manager.reservation_active(GUILD_ID) is False
+
+    def test_reservation_self_expires_after_ttl(
+        self, manager: MessageStateManager
+    ) -> None:
+        from datetime import timedelta
+
+        from discord_music_player.domain.shared.constants import TimeConstants
+        from discord_music_player.domain.shared.datetime_utils import utcnow
+
+        manager.reserve_now_playing(GUILD_ID)
+        state = manager.get_state(GUILD_ID)
+        state.now_playing_reserved_at = utcnow() - timedelta(
+            seconds=TimeConstants.NOW_PLAYING_RESERVATION_TTL_SECONDS + 1
+        )
+
+        assert manager.reservation_active(GUILD_ID) is False
+        # expiry clears the stamp so it can't linger
+        assert state.now_playing_reserved_at is None
+
+
+# ============================================================================
 # Track Now Playing / Track Queued
 # ============================================================================
 

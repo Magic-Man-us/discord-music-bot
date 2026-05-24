@@ -17,12 +17,20 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
+from conftest import (  # noqa: E402  -- pytest adds tests/ to sys.path
+    FakeContainer,
+    FakeVoiceAdapter,
+    FakeVoiceWarmupTracker,
+    make_interaction,
+    make_member,
+    make_voice_channel,
+    make_voice_state,
+)
 
 from discord_music_player.application.services.queue_models import (
     BatchEnqueueResult,
     QueueSnapshot,
 )
-from discord_music_player.domain.shared.events import FollowModeTrackQueued
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.wrappers import StartSeconds, TrackId
 from discord_music_player.infrastructure.discord.cogs.playback_cog import (
@@ -35,17 +43,6 @@ from discord_music_player.infrastructure.discord.services.activity import (
     SPOTIFY_APP_ID,
     extract_listening_query,
 )
-
-from conftest import (  # noqa: E402  -- pytest adds tests/ to sys.path
-    FakeContainer,
-    FakeVoiceAdapter,
-    FakeVoiceWarmupTracker,
-    make_interaction,
-    make_member,
-    make_voice_channel,
-    make_voice_state,
-)
-
 
 # =============================================================================
 # Helper functions
@@ -138,10 +135,12 @@ def _container(**overrides) -> FakeContainer:
     msm = MagicMock()
     state = MagicMock()
     state.now_playing = None
-    state.now_playing_reserved = False
+    state.now_playing_reserved_at = None
     msm.get_state = MagicMock(return_value=state)
+    msm.reservation_active = MagicMock(return_value=False)
     msm.clear_all = MagicMock()
     msm.reserve_now_playing = MagicMock()
+    msm.clear_now_playing_reservation = MagicMock()
     msm.track_now_playing = MagicMock()
     msm.on_track_finished = AsyncMock()
     msm.promote_next_track = AsyncMock()
@@ -383,21 +382,21 @@ class TestOnTrackStartedAutoPost:
     def _event(self, **overrides):
         from discord_music_player.domain.shared.events import TrackStartedPlaying
 
-        defaults = dict(
-            guild_id=42,
-            track_id=TrackId(value="abc"),
-            track_title="Title",
-            track_url="https://yt/abc",
-            duration_seconds=180,
-        )
+        defaults = {
+            "guild_id": 42,
+            "track_id": TrackId(value="abc"),
+            "track_title": "Title",
+            "track_url": "https://yt/abc",
+            "duration_seconds": 180,
+        }
         defaults.update(overrides)
         return TrackStartedPlaying(**defaults)
 
     @pytest.mark.asyncio
     async def test_skips_when_now_playing_reserved(self):
         container = _container()
-        container.message_state_manager.get_state.return_value.now_playing_reserved = (
-            True
+        container.message_state_manager.reservation_active = MagicMock(
+            return_value=True
         )
         cog = _make_cog(container)
         await cog._on_track_started_auto_post(self._event())
@@ -860,94 +859,7 @@ class TestExecutePlayBranches:
         container.queue_service.enqueue.assert_not_awaited()
 
 
-class TestPlayMineUsesCurrentActivityQuery:
-    @pytest.mark.asyncio
-    async def test_prefers_cached_guild_member_for_activity(self):
-        member, interaction = _interaction_in_voice()
-        container = _container()
-        cog = _make_cog(container)
-        cog._execute_play = AsyncMock(return_value=True)
-
-        interaction.user.activities = []
-        interaction.client = MagicMock()
-        interaction.client.intents = MagicMock()
-        interaction.client.intents.presences = True
-
-        spotify = MagicMock(spec=discord.Activity)
-        spotify.type = discord.ActivityType.listening
-        spotify.application_id = None
-        spotify.name = "Spotify"
-        spotify.details = "Song Title"
-        spotify.state = "Artist Name"
-
-        cached_member = make_member(member_id=member.id)
-        cached_member.activities = [spotify]
-        interaction.guild.get_member = MagicMock(return_value=cached_member)
-
-        await cog.play.callback(cog, interaction, mine=True)
-
-        cog._execute_play.assert_awaited_once()
-        assert cog._execute_play.await_args.args[1] == "Artist Name - Song Title"
-        container.follow_mode.enable.assert_called_once_with(
-            guild_id=interaction.guild.id,
-            user_id=interaction.user.id,
-            user_name=interaction.user.display_name,
-            channel_id=interaction.channel_id,
-            source_label="Spotify",
-            last_key="Artist Name - Song Title",
-            enqueued_count=1,
-        )
-
-    @pytest.mark.asyncio
-    async def test_query_wins_over_mine_shortcut(self):
-        member, interaction = _interaction_in_voice()
-        container = _container()
-        cog = _make_cog(container)
-        cog._execute_play = AsyncMock(return_value=True)
-        interaction.client = MagicMock()
-        interaction.client.intents = MagicMock()
-        interaction.client.intents.presences = True
-
-        await cog.play.callback(
-            cog,
-            interaction,
-            query="manual query",
-            mine=True,
-        )
-
-        cog._execute_play.assert_awaited_once()
-        assert cog._execute_play.await_args.args[1] == "manual query"
-        container.follow_mode.enable.assert_not_called()
-        interaction.followup.send.assert_awaited()
-
-    @pytest.mark.asyncio
-    async def test_does_not_enable_follow_mode_when_execute_play_fails(self):
-        member, interaction = _interaction_in_voice()
-        container = _container()
-        cog = _make_cog(container)
-        cog._execute_play = AsyncMock(return_value=False)
-
-        interaction.user.activities = []
-        interaction.client = MagicMock()
-        interaction.client.intents = MagicMock()
-        interaction.client.intents.presences = True
-
-        spotify = MagicMock(spec=discord.Activity)
-        spotify.type = discord.ActivityType.listening
-        spotify.application_id = None
-        spotify.name = "Spotify"
-        spotify.details = "Song Title"
-        spotify.state = "Artist Name"
-
-        cached_member = make_member(member_id=member.id)
-        cached_member.activities = [spotify]
-        interaction.guild.get_member = MagicMock(return_value=cached_member)
-
-        await cog.play.callback(cog, interaction, mine=True)
-
-        cog._execute_play.assert_awaited_once()
-        container.follow_mode.enable.assert_not_called()
-
+class TestExecutePlayWarmup:
     @pytest.mark.asyncio
     async def test_warmup_remaining_shows_retry_view(self):
         # Two members in channel so warmup applies
@@ -1399,46 +1311,6 @@ class TestSendQueued:
         cog = _make_cog(container)
         await cog._send_queued(interaction, _track("q"))
 
-        msm.track_queued.assert_called_once()
-        msm.update_next_up.assert_awaited_once()
-
-
-class TestFollowModeQueuedAnnouncement:
-    @pytest.mark.asyncio
-    async def test_posts_channel_update_for_follow_mode_queue(self):
-        container = _container()
-        msm = container.message_state_manager
-        msm.track_queued = MagicMock()
-        msm.update_next_up = AsyncMock()
-
-        session = MagicMock()
-        session.peek = MagicMock(return_value=_track("next"))
-        container.session_repository.get = AsyncMock(return_value=session)
-
-        sent = MagicMock()
-        sent.id = 8123
-        sent.delete = AsyncMock()
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.send = AsyncMock(return_value=sent)
-
-        bot = MagicMock()
-        bot.get_channel = MagicMock(return_value=channel)
-        cog = _make_cog(container, bot=bot)
-
-        event = FollowModeTrackQueued(
-            guild_id=42,
-            channel_id=555,
-            track=_track("f1"),
-            source_label="Spotify",
-        )
-
-        await cog._on_follow_mode_track_queued(event)
-
-        channel.send.assert_awaited_once()
-        content = channel.send.await_args.kwargs["content"]
-        assert "Queued for play" in content
-        assert "Spotify" in content
-        sent.delete.assert_awaited_once()
         msm.track_queued.assert_called_once()
         msm.update_next_up.assert_awaited_once()
 

@@ -17,7 +17,11 @@ from .base_cog import BaseCog
 
 if TYPE_CHECKING:
     from ....config.container import Container
-    from ....domain.shared.events import QueueExhausted, TrackStartedPlaying
+    from ....domain.shared.events import (
+        FollowModeStopped,
+        QueueExhausted,
+        TrackStartedPlaying,
+    )
 
 
 class EventCog(BaseCog):
@@ -38,16 +42,26 @@ class EventCog(BaseCog):
         self._reaction_logging = self._env_flag(ConfigKeys.LOG_EVENT_REACTIONS)
 
         # Subscribe to events for idle disconnect
-        from ....domain.shared.events import QueueExhausted, TrackStartedPlaying
+        from ....domain.shared.events import (
+            FollowModeStopped,
+            QueueExhausted,
+            TrackStartedPlaying,
+        )
 
         self._event_bus.subscribe(QueueExhausted, self._on_queue_exhausted)
         self._event_bus.subscribe(TrackStartedPlaying, self._on_track_started)
+        self._event_bus.subscribe(FollowModeStopped, self._on_follow_mode_stopped)
 
     async def cog_unload(self) -> None:
-        from ....domain.shared.events import QueueExhausted, TrackStartedPlaying
+        from ....domain.shared.events import (
+            FollowModeStopped,
+            QueueExhausted,
+            TrackStartedPlaying,
+        )
 
         self._event_bus.unsubscribe(QueueExhausted, self._on_queue_exhausted)
         self._event_bus.unsubscribe(TrackStartedPlaying, self._on_track_started)
+        self._event_bus.unsubscribe(FollowModeStopped, self._on_follow_mode_stopped)
 
         for guild_id in list(self._idle_timers):
             self._cancel_idle_timer(guild_id)
@@ -349,6 +363,8 @@ class EventCog(BaseCog):
 
         query = extract_listening_query(after)
         if query is None:
+            # Activity vanished — arm the stop-disconnect grace timer.
+            await follow_mode.on_activity_cleared(after.guild.id, after.id)
             return
 
         try:
@@ -357,6 +373,19 @@ class EventCog(BaseCog):
             )
         except Exception:
             self.logger.exception("FollowMode on_track_change failed for guild %s", after.guild.id)
+
+    async def _on_follow_mode_stopped(self, event: FollowModeStopped) -> None:
+        """The followed user stopped listening — run the disconnect sequence."""
+        guild = self.bot.get_guild(event.guild_id)
+        if guild is None:
+            return
+
+        self.logger.info(
+            "Live mirror target stopped, disconnecting from guild %s", event.guild_id
+        )
+        self._cancel_idle_timer(event.guild_id)
+        self._cancel_empty_channel_timer(event.guild_id)
+        await self._disconnect_and_cleanup(guild)
 
     # ─────────────────────────────────────────────────────────────────
     # Message Events

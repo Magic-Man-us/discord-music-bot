@@ -29,11 +29,6 @@ from ..guards.voice_guards import (
     is_solo_in_channel,
     send_ephemeral,
 )
-from ..services.activity import (
-    extract_listening_query,
-    extract_listening_source,
-    resolve_activity_member,
-)
 from ..services.embed_builder import (
     build_now_playing_embed,
     format_queued_line,
@@ -43,7 +38,7 @@ from .base_cog import BaseCog
 if TYPE_CHECKING:
     from ....config.container import Container
     from ....domain.music.wrappers import StartSeconds
-    from ....domain.shared.events import FollowModeTrackQueued, TrackStartedPlaying
+    from ....domain.shared.events import TrackStartedPlaying
     from ....utils.playlist_select import PlaylistSlice
     from ..views.requester_left_view import RequesterLeftView
 
@@ -91,17 +86,10 @@ class PlaybackCog(BaseCog):
         auto_skip = self.container.auto_skip_on_requester_leave
         auto_skip.set_on_requester_left_callback(self._on_requester_left)
         auto_skip.set_on_requester_rejoined_callback(self._on_requester_rejoined)
-        from ....domain.shared.events import (
-            FollowModeTrackQueued,
-            TrackStartedPlaying,
-            get_event_bus,
-        )
+        from ....domain.shared.events import TrackStartedPlaying, get_event_bus
 
         self._event_bus = get_event_bus()
         self._event_bus.subscribe(TrackStartedPlaying, self._on_track_started_auto_post)
-        self._event_bus.subscribe(
-            FollowModeTrackQueued, self._on_follow_mode_track_queued
-        )
 
     async def cog_unload(self) -> None:
         self.container.playback_service.set_track_finished_callback(None)
@@ -110,16 +98,10 @@ class PlaybackCog(BaseCog):
         auto_skip.set_on_requester_rejoined_callback(None)
         self.container.message_state_manager.clear_all()
         if hasattr(self, "_event_bus"):
-            from ....domain.shared.events import (
-                FollowModeTrackQueued,
-                TrackStartedPlaying,
-            )
+            from ....domain.shared.events import TrackStartedPlaying
 
             self._event_bus.unsubscribe(
                 TrackStartedPlaying, self._on_track_started_auto_post
-            )
-            self._event_bus.unsubscribe(
-                FollowModeTrackQueued, self._on_follow_mode_track_queued
             )
 
     # ─────────────────────────────────────────────────────────────────
@@ -128,11 +110,11 @@ class PlaybackCog(BaseCog):
 
     @app_commands.command(
         name="play",
-        description="Play a song — paste a YouTube link, type a song, or use mine.",
+        description="Play a song — paste a YouTube link or type a song.",
     )
     @app_commands.guild_only()
     @app_commands.describe(
-        query="YouTube URL or search query (omit when using mine)",
+        query="YouTube URL or search query",
         timestamp='Start position within a single track (e.g. "1:30" or "90")',
         count=(
             "How many tracks to import from a playlist "
@@ -141,60 +123,19 @@ class PlaybackCog(BaseCog):
         ),
         start="1-based position in the playlist to start importing from",
         shuffle="Randomise the selected tracks before queuing",
-        mine="Play whatever you're currently listening to (Spotify / Apple Music)",
     )
     async def play(
         self,
         interaction: discord.Interaction,
-        query: str | None = None,
+        query: str,
         timestamp: str | None = None,
         count: (
             app_commands.Range[int, 1, PlaylistConstants.MAX_PLAYLIST_TRACKS] | None
         ) = None,
         start: app_commands.Range[int, 1, 1000] | None = None,
         shuffle: bool = False,
-        mine: bool = False,
     ) -> None:
         from ....domain.music.wrappers import StartSeconds
-
-        notices: list[str] = []
-        mine_query: str | None = None
-        mine_source: str | None = None
-
-        # Resolve mine vs query — never both, never neither.
-        if mine and query:
-            notices.append("Both `query` and `mine` were set — using your typed query.")
-            mine = False
-
-        if mine:
-            if count is not None or start is not None or shuffle:
-                notices.append("`count` / `start` / `shuffle` ignored with `mine`.")
-                count = None
-                start = None
-                shuffle = False
-            activity_member = resolve_activity_member(
-                interaction.guild, interaction.user
-            )
-            resolved = extract_listening_query(activity_member)
-            if resolved is None:
-                await interaction.response.send_message(
-                    "I don't see a music activity for you. Make sure Spotify "
-                    "or Apple Music is open and your **Activity Privacy → "
-                    "Display current activity as a status message** is on.",
-                    ephemeral=True,
-                )
-                return
-            query = resolved
-            mine_query = resolved
-            mine_source = extract_listening_source(activity_member) or "Spotify"
-
-        if not query:
-            await interaction.response.send_message(
-                "Give me a song to play — paste a URL/name, or set `mine: True` "
-                "to play your current listening activity.",
-                ephemeral=True,
-            )
-            return
 
         raw_seconds: int | None = None
         if timestamp is not None:
@@ -212,10 +153,7 @@ class PlaybackCog(BaseCog):
 
         await interaction.response.defer()
 
-        if notices:
-            await interaction.followup.send(" ".join(notices), ephemeral=True)
-
-        started = await self._execute_play(
+        await self._execute_play(
             interaction,
             query,
             start_seconds=seek,
@@ -223,19 +161,6 @@ class PlaybackCog(BaseCog):
             start=start,
             shuffle=shuffle,
         )
-
-        if started and mine_query is not None and interaction.guild is not None:
-            user = interaction.user
-            if isinstance(user, discord.Member):
-                self.container.follow_mode.enable(
-                    guild_id=interaction.guild.id,
-                    user_id=user.id,
-                    user_name=user.display_name,
-                    channel_id=interaction.channel_id,
-                    source_label=mine_source,
-                    last_key=mine_query,
-                    enqueued_count=1,
-                )
 
     async def _ensure_voice_ready(
         self,
@@ -638,6 +563,11 @@ class PlaybackCog(BaseCog):
 
         except Exception:
             self.logger.exception("Error in play command")
+            # Drop any reservation we set above so a failed now-playing send
+            # doesn't suppress the auto-poster for the rest of the session.
+            self.container.message_state_manager.clear_now_playing_reservation(
+                interaction.guild.id
+            )
             await interaction.followup.send("Command failed. See logs.", ephemeral=True)
             return False
 
@@ -739,6 +669,10 @@ class PlaybackCog(BaseCog):
                 channel_id=interaction.channel_id,
                 message_id=sent.id,
             )
+        else:
+            # No channel to track against — release the reservation so the
+            # auto-poster isn't left permanently suppressed.
+            msm.clear_now_playing_reservation(guild_id)
 
     async def _send_queued(
         self,
@@ -980,8 +914,9 @@ class PlaybackCog(BaseCog):
         state = msm.get_state(guild_id)
 
         # If there's already a tracked now-playing message (or one is about to be sent
-        # by the /play command), skip to avoid duplicate embeds
-        if state.now_playing is not None or state.now_playing_reserved:
+        # by the /play command), skip to avoid duplicate embeds. The reservation
+        # self-expires so a failed send can't permanently suppress this poster.
+        if state.now_playing is not None or msm.reservation_active(guild_id):
             return
 
         # Use event payload directly to avoid stale DB reads under rapid track changes
@@ -1027,35 +962,6 @@ class PlaybackCog(BaseCog):
             )
         except Exception:
             self.logger.debug("Failed to auto-post now-playing for guild %s", guild_id)
-
-    async def _on_follow_mode_track_queued(self, event: FollowModeTrackQueued) -> None:
-        channel = self.bot.get_channel(event.channel_id)
-        if channel is None or not isinstance(channel, discord.abc.Messageable):
-            return
-
-        suffix = f" via {event.source_label}" if event.source_label else ""
-        content = f"{format_queued_line(event.track)}{suffix}"
-
-        try:
-            sent = await channel.send(content=content)
-            await sent.delete(delay=UIConstants.QUEUED_DELETE_AFTER)
-            self.container.message_state_manager.track_queued(
-                guild_id=event.guild_id,
-                track=event.track,
-                channel_id=event.channel_id,
-                message_id=sent.id,
-            )
-
-            session = await self.container.session_repository.get(event.guild_id)
-            upcoming = session.peek() if session else None
-            await self.container.message_state_manager.update_next_up(
-                event.guild_id, upcoming
-            )
-        except Exception:
-            self.logger.debug(
-                "Failed to send follow-mode queued message for guild %s",
-                event.guild_id,
-            )
 
     def _find_auto_post_channel(
         self, guild_id: DiscordSnowflake

@@ -832,6 +832,73 @@ class TestPlaybackApplicationServiceSkipTrack:
         service.start_playback.assert_not_called()
 
 
+class TestPlaybackApplicationServiceCutToNextTrack:
+    """Unit tests for PlaybackApplicationService.cut_to_next_track (live mirror)."""
+
+    @pytest.fixture
+    def mock_session_repo(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_voice_adapter(self):
+        mock = AsyncMock()
+        mock.set_on_track_end_callback = MagicMock()
+        return mock
+
+    @pytest.fixture
+    def service(
+        self,
+        mock_session_repo,
+        mock_voice_adapter,
+        mock_history_repo,
+    ):
+        from discord_music_player.application.services.playback_service import (
+            PlaybackApplicationService,
+        )
+
+        return PlaybackApplicationService(
+            session_repository=mock_session_repo,
+            history_repository=mock_history_repo,
+            voice_adapter=mock_voice_adapter,
+            audio_resolver=AsyncMock(),
+        )
+
+    @pytest.fixture
+    def sample_track(self):
+        return Track(
+            id=TrackId(value="cur123"),
+            title="Current",
+            webpage_url="https://youtube.com/watch?v=cur123",
+            stream_url="https://stream.example.com/audio",
+        )
+
+    @pytest.mark.asyncio
+    async def test_cut_no_session_returns_false(self, service, mock_session_repo):
+        mock_session_repo.get.return_value = None
+        assert await service.cut_to_next_track(guild_id=123456) is False
+
+    @pytest.mark.asyncio
+    async def test_cut_nothing_playing_returns_false(self, service, mock_session_repo):
+        session = GuildPlaybackSession(guild_id=123456)
+        mock_session_repo.get.return_value = session
+        assert await service.cut_to_next_track(guild_id=123456) is False
+
+    @pytest.mark.asyncio
+    async def test_cut_stops_voice_and_runs_finish_pipeline(
+        self, service, mock_session_repo, mock_voice_adapter, sample_track
+    ):
+        session = GuildPlaybackSession(guild_id=123456)
+        session.current_track = sample_track
+        mock_session_repo.get.return_value = session
+        service.handle_track_finished = AsyncMock()  # type: ignore[attr-defined]
+
+        result = await service.cut_to_next_track(guild_id=123456)
+
+        assert result is True
+        mock_voice_adapter.stop.assert_awaited_once_with(123456)
+        service.handle_track_finished.assert_awaited_once_with(123456, sample_track)
+
+
 class TestPlaybackApplicationServiceCleanup:
     """Unit tests for PlaybackApplicationService.cleanup_guild method."""
 
@@ -2169,7 +2236,6 @@ class TestEnqueueBatch:
 
     @pytest.mark.asyncio
     async def test_should_start_false_when_count_zero(self):
-        from discord_music_player.domain.music.entities import GuildPlaybackSession
 
         repo = StubSessionRepo()
         _seed_session_with_full_queue(repo)

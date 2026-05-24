@@ -1,4 +1,4 @@
-"""Tests for FollowMode — live music-activity mirror for /dj follow."""
+"""Tests for FollowMode — live music-activity mirror for /playmine."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ import pytest
 from discord_music_player.application.services.follow_mode import FollowMode
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.wrappers import TrackId
-from discord_music_player.domain.shared.constants import LimitConstants
+from discord_music_player.domain.shared.constants import LimitConstants, TimeConstants
 from discord_music_player.domain.shared.events import (
-    FollowModeTrackQueued,
+    FollowModeStopped,
     VoiceMemberLeftVoiceChannel,
     get_event_bus,
     reset_event_bus,
@@ -49,6 +49,7 @@ def audio_resolver() -> MagicMock:
 @pytest.fixture
 def queue_service() -> MagicMock:
     qs = MagicMock()
+    qs.clear = AsyncMock(return_value=0)
     qs.enqueue = AsyncMock(
         return_value=MagicMock(
             success=True, should_start=False, message="ok", track=_track()
@@ -61,6 +62,7 @@ def queue_service() -> MagicMock:
 def playback_service() -> MagicMock:
     ps = MagicMock()
     ps.start_playback = AsyncMock()
+    ps.cut_to_next_track = AsyncMock(return_value=True)
     return ps
 
 
@@ -92,19 +94,28 @@ class TestLifecycle:
         assert follow_mode.is_enabled(GUILD_ID) is True
         assert follow_mode.followed_user_id(GUILD_ID) == USER_ID
 
+    def test_enable_defaults_to_max_follow_tracks(self, follow_mode: FollowMode) -> None:
+        follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
+        assert (
+            follow_mode._states[GUILD_ID].max_tracks
+            == LimitConstants.MAX_FOLLOW_TRACKS
+        )
+
+    def test_enable_accepts_custom_max_tracks(self, follow_mode: FollowMode) -> None:
+        follow_mode.enable(
+            guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME, max_tracks=3
+        )
+        assert follow_mode._states[GUILD_ID].max_tracks == 3
+
     def test_enable_can_prime_last_key_and_count(self, follow_mode: FollowMode) -> None:
         follow_mode.enable(
             guild_id=GUILD_ID,
             user_id=USER_ID,
             user_name=USER_NAME,
-            channel_id=777,
-            source_label="Spotify",
             last_key="Artist - Track",
             enqueued_count=1,
         )
         state = follow_mode._states[GUILD_ID]
-        assert state.channel_id == 777
-        assert state.source_label == "Spotify"
         assert state.last_key == "Artist - Track"
         assert state.enqueued_count == 1
 
@@ -140,7 +151,7 @@ class TestLifecycle:
 
 
 # ============================================================================
-# on_track_change — dedup + cap + enqueue
+# on_track_change — dedup + mirror + cap
 # ============================================================================
 
 
@@ -167,7 +178,7 @@ class TestOnTrackChange:
         queue_service.enqueue.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_enqueues_on_new_track(
+    async def test_clears_queue_then_enqueues_on_new_track(
         self, follow_mode: FollowMode, queue_service: MagicMock
     ) -> None:
         follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
@@ -175,25 +186,25 @@ class TestOnTrackChange:
             guild_id=GUILD_ID, user_id=USER_ID, query="Artist - Track"
         )
         assert result is True
+        queue_service.clear.assert_awaited_once_with(GUILD_ID)
         queue_service.enqueue.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_dedup_skips_repeat_of_same_query(
-        self, follow_mode: FollowMode, queue_service: MagicMock
+    async def test_cuts_to_next_when_already_playing(
+        self,
+        follow_mode: FollowMode,
+        playback_service: MagicMock,
     ) -> None:
+        # default enqueue → should_start=False (something already playing)
         follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
         await follow_mode.on_track_change(
             guild_id=GUILD_ID, user_id=USER_ID, query="Artist - Track"
         )
-        result = await follow_mode.on_track_change(
-            guild_id=GUILD_ID, user_id=USER_ID, query="Artist - Track"
-        )
-        assert result is False
-        # enqueue called only for the first one
-        assert queue_service.enqueue.await_count == 1
+        playback_service.cut_to_next_track.assert_awaited_once_with(GUILD_ID)
+        playback_service.start_playback.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_starts_playback_when_should_start(
+    async def test_starts_playback_when_idle(
         self,
         follow_mode: FollowMode,
         queue_service: MagicMock,
@@ -209,33 +220,21 @@ class TestOnTrackChange:
             guild_id=GUILD_ID, user_id=USER_ID, query="A - T"
         )
         playback_service.start_playback.assert_awaited_once_with(GUILD_ID)
+        playback_service.cut_to_next_track.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_publishes_queue_event_for_later_followed_tracks(
-        self, follow_mode: FollowMode
+    async def test_dedup_skips_repeat_of_same_query(
+        self, follow_mode: FollowMode, queue_service: MagicMock
     ) -> None:
-        seen: list[FollowModeTrackQueued] = []
-
-        async def _capture(event: FollowModeTrackQueued) -> None:
-            seen.append(event)
-
-        bus = get_event_bus()
-        bus.subscribe(FollowModeTrackQueued, _capture)
-        follow_mode.enable(
-            guild_id=GUILD_ID,
-            user_id=USER_ID,
-            user_name=USER_NAME,
-            channel_id=555,
-            source_label="Spotify",
-        )
-
+        follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
         await follow_mode.on_track_change(
             guild_id=GUILD_ID, user_id=USER_ID, query="Artist - Track"
         )
-
-        assert len(seen) == 1
-        assert seen[0].channel_id == 555
-        assert seen[0].source_label == "Spotify"
+        result = await follow_mode.on_track_change(
+            guild_id=GUILD_ID, user_id=USER_ID, query="Artist - Track"
+        )
+        assert result is False
+        assert queue_service.enqueue.await_count == 1
 
     @pytest.mark.asyncio
     async def test_resolve_failure_returns_false_and_keeps_following(
@@ -250,8 +249,8 @@ class TestOnTrackChange:
             guild_id=GUILD_ID, user_id=USER_ID, query="Bogus - Query"
         )
         assert result is False
+        queue_service.clear.assert_not_awaited()
         queue_service.enqueue.assert_not_awaited()
-        # state preserved → next valid track will still enqueue
         assert follow_mode.is_enabled(GUILD_ID) is True
 
     @pytest.mark.asyncio
@@ -268,18 +267,95 @@ class TestOnTrackChange:
             guild_id=GUILD_ID, user_id=USER_ID, query="A - T"
         )
         assert result is False
-        # still enabled, count untouched
         assert follow_mode.is_enabled(GUILD_ID) is True
         assert follow_mode._states[GUILD_ID].enqueued_count == 0
 
     @pytest.mark.asyncio
-    async def test_auto_disables_after_cap(self, follow_mode: FollowMode) -> None:
+    async def test_auto_disables_after_default_cap(
+        self, follow_mode: FollowMode
+    ) -> None:
         follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
         for i in range(LimitConstants.MAX_FOLLOW_TRACKS):
             await follow_mode.on_track_change(
                 guild_id=GUILD_ID, user_id=USER_ID, query=f"Artist - Track{i}"
             )
         assert follow_mode.is_enabled(GUILD_ID) is False
+
+    @pytest.mark.asyncio
+    async def test_auto_disables_after_custom_cap(self, follow_mode: FollowMode) -> None:
+        follow_mode.enable(
+            guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME, max_tracks=2
+        )
+        await follow_mode.on_track_change(
+            guild_id=GUILD_ID, user_id=USER_ID, query="A - 1"
+        )
+        assert follow_mode.is_enabled(GUILD_ID) is True
+        await follow_mode.on_track_change(
+            guild_id=GUILD_ID, user_id=USER_ID, query="A - 2"
+        )
+        assert follow_mode.is_enabled(GUILD_ID) is False
+
+
+# ============================================================================
+# Stop detection — activity cleared → grace timer → disconnect
+# ============================================================================
+
+
+class TestStopDetection:
+    @pytest.mark.asyncio
+    async def test_activity_cleared_arms_grace_timer(
+        self, follow_mode: FollowMode
+    ) -> None:
+        follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
+        await follow_mode.on_activity_cleared(GUILD_ID, USER_ID)
+        assert GUILD_ID in follow_mode._idle_timers
+        follow_mode._cancel_idle_timer(GUILD_ID)
+
+    @pytest.mark.asyncio
+    async def test_activity_cleared_ignored_for_other_user(
+        self, follow_mode: FollowMode
+    ) -> None:
+        follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
+        await follow_mode.on_activity_cleared(GUILD_ID, OTHER_USER_ID)
+        assert GUILD_ID not in follow_mode._idle_timers
+
+    @pytest.mark.asyncio
+    async def test_track_change_cancels_pending_grace_timer(
+        self, follow_mode: FollowMode
+    ) -> None:
+        follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
+        await follow_mode.on_activity_cleared(GUILD_ID, USER_ID)
+        assert GUILD_ID in follow_mode._idle_timers
+        await follow_mode.on_track_change(
+            guild_id=GUILD_ID, user_id=USER_ID, query="Artist - Track"
+        )
+        assert GUILD_ID not in follow_mode._idle_timers
+
+    @pytest.mark.asyncio
+    async def test_grace_expiry_disconnects_and_publishes(
+        self, follow_mode: FollowMode, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(TimeConstants, "FOLLOW_STOP_GRACE_SECONDS", 0)
+        seen: list[FollowModeStopped] = []
+
+        async def _capture(event: FollowModeStopped) -> None:
+            seen.append(event)
+
+        get_event_bus().subscribe(FollowModeStopped, _capture)
+
+        follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
+        await follow_mode._grace_then_disconnect(GUILD_ID)
+
+        assert follow_mode.is_enabled(GUILD_ID) is False
+        assert len(seen) == 1
+        assert seen[0].guild_id == GUILD_ID
+
+    @pytest.mark.asyncio
+    async def test_disable_cancels_grace_timer(self, follow_mode: FollowMode) -> None:
+        follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
+        await follow_mode.on_activity_cleared(GUILD_ID, USER_ID)
+        follow_mode.disable(GUILD_ID)
+        assert GUILD_ID not in follow_mode._idle_timers
 
 
 # ============================================================================

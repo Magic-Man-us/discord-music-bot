@@ -551,6 +551,52 @@ async def test_playmine_on_with_activity_enables_and_seeds(
 
 
 @pytest.mark.asyncio
+async def test_playmine_on_with_count_sets_max_tracks(
+    cog, interaction, mock_container
+):
+    import discord
+
+    spotify = MagicMock(spec=discord.Spotify)
+    spotify.title = "Song"
+    spotify.artist = "Artist"
+
+    interaction.user.activities = [spotify]
+    interaction.client = MagicMock()
+    interaction.client.intents = MagicMock()
+    interaction.client.intents.presences = True
+
+    await cog.playmine.callback(cog, interaction, action=_choice("on"), count=3)
+
+    mock_container.follow_mode.enable.assert_called_once()
+    assert mock_container.follow_mode.enable.call_args.kwargs["max_tracks"] == 3
+
+
+@pytest.mark.asyncio
+async def test_playmine_on_without_count_defaults_max_tracks(
+    cog, interaction, mock_container
+):
+    import discord
+
+    from discord_music_player.domain.shared.constants import LimitConstants
+
+    spotify = MagicMock(spec=discord.Spotify)
+    spotify.title = "Song"
+    spotify.artist = "Artist"
+
+    interaction.user.activities = [spotify]
+    interaction.client = MagicMock()
+    interaction.client.intents = MagicMock()
+    interaction.client.intents.presences = True
+
+    await cog.playmine.callback(cog, interaction, action=_choice("on"))
+
+    assert (
+        mock_container.follow_mode.enable.call_args.kwargs["max_tracks"]
+        == LimitConstants.MAX_FOLLOW_TRACKS
+    )
+
+
+@pytest.mark.asyncio
 async def test_playmine_on_with_generic_spotify_activity_enables_and_seeds(
     cog, interaction, mock_container
 ):

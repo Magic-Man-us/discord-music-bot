@@ -111,6 +111,9 @@ PlaylistImportCount = Annotated[int, Field(ge=1, le=50)]
 PlaylistStartIndex = Annotated[int, Field(ge=1, le=1000)]
 """1-based start offset into a playlist: 1 … 1 000."""
 
+FollowTrackCount = Annotated[int, Field(ge=1, le=25)]
+"""Tracks to mirror before /playmine auto-stops: 1 … FOLLOW_TRACKS_HARD_CAP (25)."""
+
 
 # ── Settings-specific constraints ──────────────────────────────────
 

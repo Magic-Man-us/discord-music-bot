@@ -8,8 +8,10 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from ....domain.shared.constants import LimitConstants
 from ....domain.shared.enums import AutoDJAction, PlaymineAction, RadioAction
 from ....domain.shared.events import RadioPoolExhausted, get_event_bus
+from ....domain.shared.types import FollowTrackCount
 from ..guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     ensure_voice,
@@ -272,7 +274,10 @@ class RadioCog(BaseCog):
         description="Mirror your live Spotify/Apple Music activity into the queue.",
     )
     @app_commands.guild_only()
-    @app_commands.describe(action="Turn live mirror on or off")
+    @app_commands.describe(
+        action="Turn live mirror on or off",
+        count="How many songs to follow before auto-stopping (default: 5)",
+    )
     @app_commands.choices(
         action=[
             app_commands.Choice(name=PlaymineAction.ON.value, value=PlaymineAction.ON),
@@ -285,6 +290,9 @@ class RadioCog(BaseCog):
         self,
         interaction: discord.Interaction,
         action: app_commands.Choice[str],
+        count: (
+            app_commands.Range[int, 1, LimitConstants.FOLLOW_TRACKS_HARD_CAP] | None
+        ) = None,
     ) -> None:
         follow_mode = self.container.follow_mode
 
@@ -304,16 +312,20 @@ class RadioCog(BaseCog):
         ):
             return
 
-        await self._handle_playmine_on(interaction, follow_mode)
+        await self._handle_playmine_on(interaction, follow_mode, count)
 
     async def _handle_playmine_on(
         self,
         interaction: discord.Interaction,
         follow_mode: FollowMode,
+        count: FollowTrackCount | None,
     ) -> None:
         from ..services.activity import enable_live_mirror
 
-        await enable_live_mirror(interaction, follow_mode=follow_mode)
+        max_tracks = count if count is not None else LimitConstants.MAX_FOLLOW_TRACKS
+        await enable_live_mirror(
+            interaction, follow_mode=follow_mode, max_tracks=max_tracks
+        )
 
     async def _send_radio_enabled(
         self,

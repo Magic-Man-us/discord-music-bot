@@ -732,6 +732,75 @@ class TestVoiceStateUpdate:
 
 
 # =============================================================================
+# Follow-mode (live mirror) Tests
+# =============================================================================
+
+
+class TestFollowModeStop:
+    @pytest.mark.asyncio
+    async def test_follow_mode_stopped_disconnects(
+        self, event_cog, mock_guild, mock_container
+    ):
+        from discord_music_player.domain.shared.events import FollowModeStopped
+
+        event_cog.bot.get_guild = MagicMock(return_value=mock_guild)
+        mock_container.playback_service = MagicMock()
+        mock_container.playback_service.cleanup_guild = AsyncMock()
+        mock_container.message_state_manager = MagicMock()
+        mock_container.message_state_manager.reset = AsyncMock()
+
+        await event_cog._on_follow_mode_stopped(FollowModeStopped(guild_id=mock_guild.id))
+
+        mock_container.playback_service.cleanup_guild.assert_awaited_once_with(mock_guild.id)
+        mock_container.message_state_manager.reset.assert_awaited_once_with(mock_guild.id)
+
+    @pytest.mark.asyncio
+    async def test_follow_mode_stopped_noop_when_guild_missing(
+        self, event_cog, mock_container
+    ):
+        from discord_music_player.domain.shared.events import FollowModeStopped
+
+        event_cog.bot.get_guild = MagicMock(return_value=None)
+        mock_container.playback_service = MagicMock()
+        mock_container.playback_service.cleanup_guild = AsyncMock()
+
+        await event_cog._on_follow_mode_stopped(FollowModeStopped(guild_id=999))
+
+        mock_container.playback_service.cleanup_guild.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_presence_cleared_activity_arms_grace_timer(
+        self, event_cog, mock_member, mock_container
+    ):
+        mock_member.activities = []
+        follow_mode = mock_container.follow_mode
+        follow_mode.followed_user_id = MagicMock(return_value=mock_member.id)
+        follow_mode.on_activity_cleared = AsyncMock()
+        follow_mode.on_track_change = AsyncMock()
+
+        await event_cog.on_presence_update(mock_member, mock_member)
+
+        follow_mode.on_activity_cleared.assert_awaited_once_with(
+            mock_member.guild.id, mock_member.id
+        )
+        follow_mode.on_track_change.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_presence_ignored_for_unfollowed_user(
+        self, event_cog, mock_member, mock_container
+    ):
+        follow_mode = mock_container.follow_mode
+        follow_mode.followed_user_id = MagicMock(return_value=999)
+        follow_mode.on_activity_cleared = AsyncMock()
+        follow_mode.on_track_change = AsyncMock()
+
+        await event_cog.on_presence_update(mock_member, mock_member)
+
+        follow_mode.on_activity_cleared.assert_not_awaited()
+        follow_mode.on_track_change.assert_not_awaited()
+
+
+# =============================================================================
 # Message Event Tests
 # =============================================================================
 

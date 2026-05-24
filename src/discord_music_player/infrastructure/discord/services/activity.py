@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Final
 import discord
 
 from ....domain.shared.constants import LimitConstants
-from ....domain.shared.types import NonEmptyStr
+from ....domain.shared.types import FollowTrackCount, NonEmptyStr
 
 if TYPE_CHECKING:
     from ....application.services.follow_mode import FollowMode
@@ -76,14 +76,6 @@ def extract_listening_query(
     return payload[1] if payload is not None else None
 
 
-def extract_listening_source(
-    member: discord.Member | discord.User,
-) -> str | None:
-    """Return the supported listening source label for the current activity."""
-    payload = _extract_listening_payload(member)
-    return payload[0] if payload is not None else None
-
-
 def _extract_generic_music_payload(
     act: discord.Activity,
 ) -> tuple[str, NonEmptyStr] | None:
@@ -110,6 +102,7 @@ async def enable_live_mirror(
     interaction: discord.Interaction,
     *,
     follow_mode: FollowMode,
+    max_tracks: FollowTrackCount = LimitConstants.MAX_FOLLOW_TRACKS,
     notice: str | None = None,
 ) -> None:
     """Enable follow mode for the invoking member and seed it from current activity."""
@@ -124,11 +117,8 @@ async def enable_live_mirror(
 
     activity_member = resolve_activity_member(interaction.guild, user)
     seed_query = extract_listening_query(activity_member)
-    source_label = extract_listening_source(activity_member) or "Spotify"
     if seed_query is None:
-        client = interaction.client
-        intents = getattr(client, "intents", None)
-        presences_enabled = getattr(intents, "presences", True)
+        presences_enabled = interaction.client.intents.presences
         hint = ""
         if not presences_enabled:
             hint = (
@@ -147,8 +137,7 @@ async def enable_live_mirror(
         guild_id=interaction.guild.id,
         user_id=user.id,
         user_name=user.display_name,
-        channel_id=interaction.channel_id,
-        source_label=source_label,
+        max_tracks=max_tracks,
     )
     await interaction.response.defer(ephemeral=True)
 
@@ -159,8 +148,8 @@ async def enable_live_mirror(
     )
     if enqueued:
         message = (
-            f"Mirroring your listening. Up to **{LimitConstants.MAX_FOLLOW_TRACKS}** "
-            "tracks will queue, then I'll auto-stop."
+            f"Mirroring your listening — I'll follow up to **{max_tracks}** "
+            "track(s), then auto-stop."
         )
     else:
         message = (

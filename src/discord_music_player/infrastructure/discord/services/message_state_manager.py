@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from ....domain.shared.constants import UIConstants
+from ....domain.shared.constants import TimeConstants, UIConstants
+from ....domain.shared.datetime_utils import utcnow
 from ....domain.shared.types import ChannelIdField, DiscordSnowflake
 from ....utils.logging import get_logger
 from ....utils.reply import truncate
@@ -43,9 +44,35 @@ class MessageStateManager:
     # ── State mutation ─────────────────────────────────────────────
 
     def reserve_now_playing(self, guild_id: DiscordSnowflake) -> None:
-        """Mark now-playing as pending so the auto-poster doesn't duplicate it."""
+        """Mark now-playing as pending so the auto-poster doesn't duplicate it.
+
+        The reservation carries a timestamp and self-expires after
+        ``NOW_PLAYING_RESERVATION_TTL_SECONDS`` so a failed/abandoned send can
+        never permanently suppress auto-posting (see ``reservation_active``).
+        """
         state = self.get_state(guild_id)
-        state.now_playing_reserved = True
+        state.now_playing_reserved_at = utcnow()
+
+    def clear_now_playing_reservation(self, guild_id: DiscordSnowflake) -> None:
+        """Drop a pending reservation without tracking a message (error paths)."""
+        state = self._state_by_guild.get(guild_id)
+        if state is not None:
+            state.now_playing_reserved_at = None
+
+    def reservation_active(self, guild_id: DiscordSnowflake) -> bool:
+        """Return whether an unexpired now-playing reservation is in effect.
+
+        Expired reservations are cleared as a side effect so the next track
+        starts fresh.
+        """
+        state = self._state_by_guild.get(guild_id)
+        if state is None or state.now_playing_reserved_at is None:
+            return False
+        age = (utcnow() - state.now_playing_reserved_at).total_seconds()
+        if age >= TimeConstants.NOW_PLAYING_RESERVATION_TTL_SECONDS:
+            state.now_playing_reserved_at = None
+            return False
+        return True
 
     def track_now_playing(
         self,
@@ -56,7 +83,7 @@ class MessageStateManager:
         message_id: DiscordSnowflake,
     ) -> None:
         state = self.get_state(guild_id)
-        state.now_playing_reserved = False
+        state.now_playing_reserved_at = None
         state.now_playing = TrackedMessage.for_track(
             track,
             channel_id=channel_id,
