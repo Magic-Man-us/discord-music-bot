@@ -11,14 +11,14 @@ from ....domain.shared.constants import UIConstants
 
 if TYPE_CHECKING:
     from ....domain.music.entities import Track
-from .base_cog import BaseCog
+from ....utils.reply import deduplicate_tracks, format_duration, paginate, truncate
 from ..guards.voice_guards import (
     ensure_dj_role,
     ensure_user_in_voice_and_warm,
     ensure_voice,
 )
 from ..services.embed_builder import format_requester
-from ....utils.reply import deduplicate_tracks, format_duration, paginate, truncate
+from .base_cog import BaseCog
 
 
 class QueueCog(BaseCog):

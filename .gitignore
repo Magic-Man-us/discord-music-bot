@@ -26,3 +26,8 @@ tools/
 .wily/
 bot.pid
 pyrightconfig.json
+
+# DB migration / backup artifacts — never commit to a public repo
+migration-*.tar
+migration-*.tar.sha256
+restore_migration.sh

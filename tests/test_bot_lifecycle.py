@@ -1183,6 +1183,7 @@ class TestTryResumeSession:
         mock_container.voice_adapter = MagicMock()
         mock_container.voice_adapter.ensure_connected = AsyncMock(return_value=True)
         mock_container.playback_service = MagicMock()
+        mock_container.playback_service.start_playback = AsyncMock(return_value=True)
 
         session = _make_session(with_track=True)
         vc = _make_voice_channel([False])
@@ -1194,14 +1195,10 @@ class TestTryResumeSession:
             system_channel=tc,
         )
 
-        with patch(
-            "discord_music_player.infrastructure.discord.bot.ResumePlaybackView"
-        ) as mock_view_cls:
-            mock_view = MagicMock()
-            mock_view_cls.return_value = mock_view
-            result = await bot._try_resume_session(session, guild)
+        result = await bot._try_resume_session(session, guild)
 
         assert result is True
+        mock_container.playback_service.start_playback.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_returns_false_on_exception(self, mock_container, mock_settings):
@@ -1227,7 +1224,7 @@ def _make_mock_session(
     queue_titles: list[str] | None = None,
     prepare_for_resume_return: int = 0,
 ) -> MagicMock:
-    """Build a MagicMock session for _send_resume_prompt tests (avoids Pydantic __setattr__)."""
+    """Build a MagicMock session for restart-resume tests (avoids Pydantic __setattr__)."""
     session = MagicMock()
     session.guild_id = guild_id
     session.prepare_for_resume = MagicMock(return_value=prepare_for_resume_return)
@@ -1247,8 +1244,8 @@ def _make_mock_session(
     return session
 
 
-class TestSendResumePrompt:
-    """Tests for MusicBot._send_resume_prompt method."""
+class TestResumeSessionPlayback:
+    """Tests for MusicBot._resume_session_playback method."""
 
     @pytest.mark.asyncio
     async def test_calls_prepare_for_resume_and_saves(
@@ -1259,45 +1256,38 @@ class TestSendResumePrompt:
 
         bot = MusicBot(container=mock_container, settings=mock_settings)
         mock_container.playback_service = MagicMock()
+        mock_container.playback_service.start_playback = AsyncMock(return_value=True)
 
         session = _make_mock_session()
         tc = _make_text_channel()
         tc.send = AsyncMock(return_value=MagicMock())
 
-        with patch(
-            "discord_music_player.infrastructure.discord.bot.ResumePlaybackView"
-        ):
-            await bot._send_resume_prompt(session, tc)
+        await bot._resume_session_playback(session, tc)
 
         session.prepare_for_resume.assert_called_once()
         mock_container.session_repository.save.assert_called_once_with(session)
 
     @pytest.mark.asyncio
-    async def test_creates_resume_view_with_correct_args(
+    async def test_starts_playback_with_saved_offset(
         self, mock_container, mock_settings
     ):
-        """Should create ResumePlaybackView with guild_id, channel_id, and track title."""
+        """Should start playback with the saved resume offset."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
         bot = MusicBot(container=mock_container, settings=mock_settings)
         mock_container.playback_service = MagicMock()
+        mock_container.playback_service.start_playback = AsyncMock(return_value=True)
 
-        session = _make_mock_session()
+        session = _make_mock_session(prepare_for_resume_return=125)
         tc = _make_text_channel()
         tc.send = AsyncMock(return_value=MagicMock())
 
-        with patch(
-            "discord_music_player.infrastructure.discord.bot.ResumePlaybackView"
-        ) as mock_view_cls:
-            mock_view_cls.return_value = MagicMock()
-            await bot._send_resume_prompt(session, tc)
+        await bot._resume_session_playback(session, tc)
 
-        mock_view_cls.assert_called_once()
-        call_kwargs = mock_view_cls.call_args.kwargs
-        assert call_kwargs["guild_id"] == session.guild_id
-        assert call_kwargs["channel_id"] == tc.id
-        assert call_kwargs["track_title"] == "Test Track"
-        assert call_kwargs["playback_service"] is mock_container.playback_service
+        mock_container.playback_service.start_playback.assert_awaited_once()
+        call_args = mock_container.playback_service.start_playback.await_args
+        assert call_args.args == (session.guild_id,)
+        assert call_args.kwargs["start_seconds"].value == 125
 
     @pytest.mark.asyncio
     async def test_sends_message_with_track_title(self, mock_container, mock_settings):
@@ -1306,23 +1296,17 @@ class TestSendResumePrompt:
 
         bot = MusicBot(container=mock_container, settings=mock_settings)
         mock_container.playback_service = MagicMock()
+        mock_container.playback_service.start_playback = AsyncMock(return_value=True)
 
         session = _make_mock_session()
         tc = _make_text_channel()
-        mock_message = MagicMock()
-        tc.send = AsyncMock(return_value=mock_message)
+        tc.send = AsyncMock(return_value=MagicMock())
 
-        with patch(
-            "discord_music_player.infrastructure.discord.bot.ResumePlaybackView"
-        ) as mock_view_cls:
-            mock_view = MagicMock()
-            mock_view_cls.return_value = mock_view
-            await bot._send_resume_prompt(session, tc)
+        await bot._resume_session_playback(session, tc)
 
         tc.send.assert_called_once()
         sent_text = tc.send.call_args.args[0]
         assert "Test Track" in sent_text
-        mock_view.set_message.assert_called_once_with(mock_message)
 
     @pytest.mark.asyncio
     async def test_includes_timestamp_when_elapsed(self, mock_container, mock_settings):
@@ -1331,16 +1315,13 @@ class TestSendResumePrompt:
 
         bot = MusicBot(container=mock_container, settings=mock_settings)
         mock_container.playback_service = MagicMock()
+        mock_container.playback_service.start_playback = AsyncMock(return_value=True)
 
         session = _make_mock_session(prepare_for_resume_return=125)
         tc = _make_text_channel()
         tc.send = AsyncMock(return_value=MagicMock())
 
-        with patch(
-            "discord_music_player.infrastructure.discord.bot.ResumePlaybackView"
-        ) as mock_view_cls:
-            mock_view_cls.return_value = MagicMock()
-            await bot._send_resume_prompt(session, tc)
+        await bot._resume_session_playback(session, tc)
 
         sent_text = tc.send.call_args.args[0]
         assert "2:05" in sent_text
@@ -1354,6 +1335,7 @@ class TestSendResumePrompt:
 
         bot = MusicBot(container=mock_container, settings=mock_settings)
         mock_container.playback_service = MagicMock()
+        mock_container.playback_service.start_playback = AsyncMock(return_value=True)
 
         session = _make_mock_session(
             current_track_title=None,
@@ -1362,11 +1344,7 @@ class TestSendResumePrompt:
         tc = _make_text_channel()
         tc.send = AsyncMock(return_value=MagicMock())
 
-        with patch(
-            "discord_music_player.infrastructure.discord.bot.ResumePlaybackView"
-        ) as mock_view_cls:
-            mock_view_cls.return_value = MagicMock()
-            await bot._send_resume_prompt(session, tc)
+        await bot._resume_session_playback(session, tc)
 
         sent_text = tc.send.call_args.args[0]
         assert "Queue Track 0" in sent_text
@@ -1380,19 +1358,36 @@ class TestSendResumePrompt:
 
         bot = MusicBot(container=mock_container, settings=mock_settings)
         mock_container.playback_service = MagicMock()
+        mock_container.playback_service.start_playback = AsyncMock(return_value=True)
 
         session = _make_mock_session(current_track_title=None, queue_titles=None)
         tc = _make_text_channel()
         tc.send = AsyncMock(return_value=MagicMock())
 
-        with patch(
-            "discord_music_player.infrastructure.discord.bot.ResumePlaybackView"
-        ) as mock_view_cls:
-            mock_view_cls.return_value = MagicMock()
-            await bot._send_resume_prompt(session, tc)
+        await bot._resume_session_playback(session, tc)
 
         sent_text = tc.send.call_args.args[0]
         assert "Unknown" in sent_text
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_auto_resume_fails(
+        self, mock_container, mock_settings
+    ):
+        """Should return False and avoid sending a channel message when playback fails."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+        mock_container.playback_service = MagicMock()
+        mock_container.playback_service.start_playback = AsyncMock(return_value=False)
+
+        session = _make_mock_session()
+        tc = _make_text_channel()
+        tc.send = AsyncMock(return_value=MagicMock())
+
+        result = await bot._resume_session_playback(session, tc)
+
+        assert result is False
+        tc.send.assert_not_called()
 
 
 class TestResumeSessionsIntegration:

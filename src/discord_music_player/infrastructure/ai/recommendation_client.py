@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 from typing import Final
 
-from ...utils.logging import get_logger
-
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
@@ -17,6 +15,7 @@ from ...domain.recommendations.entities import (
     RecommendationRequest,
 )
 from ...domain.shared.types import NonEmptyStr, PositiveInt
+from ...utils.logging import get_logger
 from .models import (
     AI_TIMEOUT,
     AICacheEntry,

@@ -13,7 +13,6 @@ from ...domain.music.enums import PlaybackState
 from ...domain.music.wrappers import StartSeconds
 from ...utils.logging import get_logger
 from ...utils.reply import format_duration
-from .views.resume_playback_view import ResumePlaybackView
 
 if TYPE_CHECKING:
     from ...config.container import Container
@@ -170,8 +169,7 @@ class MusicBot(commands.Bot):
                 logger.debug("Failed to connect to voice in guild %s", session.guild_id)
                 return False
 
-            await self._send_resume_prompt(session, text_channel)
-            return True
+            return await self._resume_session_playback(session, text_channel)
 
         except Exception as e:
             logger.warning(
@@ -179,12 +177,12 @@ class MusicBot(commands.Bot):
             )
             return False
 
-    async def _send_resume_prompt(
+    async def _resume_session_playback(
         self,
         session: GuildPlaybackSession,
         text_channel: discord.TextChannel,
-    ) -> None:
-        """Prepare session state and send the resume prompt to the channel."""
+    ) -> bool:
+        """Prepare session state and automatically resume playback in the channel."""
         elapsed = session.prepare_for_resume()
         await self.container.session_repository.save(session)
 
@@ -200,23 +198,28 @@ class MusicBot(commands.Bot):
         if resume_start is not None:
             timestamp_label = f" at {format_duration(resume_start.value)}"
 
-        view = ResumePlaybackView(
-            guild_id=session.guild_id,
-            channel_id=text_channel.id,
-            playback_service=self.container.playback_service,
-            track_title=track_title,
-            resume_start_seconds=resume_start,
+        resumed = await self.container.playback_service.start_playback(
+            session.guild_id,
+            start_seconds=resume_start,
         )
+        if not resumed:
+            logger.warning(
+                "Automatic resume failed for guild %s: %s",
+                session.guild_id,
+                track_title,
+            )
+            return False
 
-        message = await text_channel.send(
-            f"I was playing **{track_title}**{timestamp_label} before restarting. Resume playback?",
-            view=view,
+        await text_channel.send(
+            f"Automatically resumed playback: **{track_title}**{timestamp_label}"
         )
-        view.set_message(message)
 
         logger.info(
-            "Sent resume prompt for guild %s: %s", session.guild_id, track_title
+            "Automatically resumed playback for guild %s: %s",
+            session.guild_id,
+            track_title,
         )
+        return True
 
     @staticmethod
     def _find_text_channel(guild: discord.Guild) -> discord.TextChannel | None:

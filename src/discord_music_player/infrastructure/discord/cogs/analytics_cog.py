@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import discord
 from discord import app_commands
 
+from ....domain.music.repository import TrackForClassification, TrackGenreMap
 from ....domain.shared.constants import AnalyticsConstants, UIConstants
 from ....domain.shared.enums import (
     ActivityPeriod,
@@ -15,17 +16,16 @@ from ....domain.shared.enums import (
     LeaderboardTimeRange,
     Weekday,
 )
-from ....domain.music.repository import TrackForClassification, TrackGenreMap
 from ....domain.shared.types import (
     DiscordSnowflake,
     UserIdField,
 )
-from .base_cog import BaseCog
 from ....utils.reply import format_duration
+from .base_cog import BaseCog
 
 if TYPE_CHECKING:
-    from ...charts.chart_generator import ChartGenerator
     from ....domain.music.repository import GenreTrackInfo
+    from ...charts.chart_generator import ChartGenerator
 
 _LEADERBOARD_CHART_FILENAME: str = "leaderboard.png"
 
