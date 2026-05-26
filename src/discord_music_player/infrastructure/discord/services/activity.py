@@ -141,12 +141,12 @@ async def enable_live_mirror(
     )
     await interaction.response.defer(ephemeral=True)
 
-    enqueued = await follow_mode.on_track_change(
+    seeded = await follow_mode.seed_current(
         guild_id=interaction.guild.id,
         user_id=user.id,
         query=seed_query,
     )
-    if enqueued:
+    if seeded:
         message = (
             f"Mirroring your listening — I'll follow up to **{max_tracks}** "
             "track(s), then auto-stop."

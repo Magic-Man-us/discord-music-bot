@@ -46,7 +46,7 @@ def mock_container():
     container.follow_mode = MagicMock()
     container.follow_mode.enable = MagicMock()
     container.follow_mode.disable = MagicMock()
-    container.follow_mode.on_track_change = AsyncMock(return_value=True)
+    container.follow_mode.seed_current = AsyncMock(return_value=True)
 
     container.ai_client = MagicMock()
     container.ai_client.is_available = AsyncMock(return_value=True)
@@ -546,7 +546,7 @@ async def test_playmine_on_with_activity_enables_and_seeds(
     await cog.playmine.callback(cog, interaction, action=_choice("on"))
 
     mock_container.follow_mode.enable.assert_called_once()
-    mock_container.follow_mode.on_track_change.assert_awaited_once()
+    mock_container.follow_mode.seed_current.assert_awaited_once()
     interaction.followup.send.assert_awaited()
 
 
@@ -617,7 +617,7 @@ async def test_playmine_on_with_generic_spotify_activity_enables_and_seeds(
     await cog.playmine.callback(cog, interaction, action=_choice("on"))
 
     mock_container.follow_mode.enable.assert_called_once()
-    mock_container.follow_mode.on_track_change.assert_awaited_once_with(
+    mock_container.follow_mode.seed_current.assert_awaited_once_with(
         guild_id=111, user_id=222, query="Artist - Song"
     )
     interaction.followup.send.assert_awaited()
@@ -649,7 +649,7 @@ async def test_playmine_on_prefers_cached_guild_member_for_activity(
     await cog.playmine.callback(cog, interaction, action=_choice("on"))
 
     mock_container.follow_mode.enable.assert_called_once()
-    mock_container.follow_mode.on_track_change.assert_awaited_once_with(
+    mock_container.follow_mode.seed_current.assert_awaited_once_with(
         guild_id=111, user_id=222, query="Artist - Song"
     )
     interaction.followup.send.assert_awaited()
@@ -676,6 +676,6 @@ async def test_playmine_on_connects_voice_before_seeding(
 
     mock_container.voice_adapter.ensure_connected.assert_awaited_once_with(111, 333)
     mock_container.follow_mode.enable.assert_called_once()
-    mock_container.follow_mode.on_track_change.assert_awaited_once_with(
+    mock_container.follow_mode.seed_current.assert_awaited_once_with(
         guild_id=111, user_id=222, query="Artist - Song"
     )

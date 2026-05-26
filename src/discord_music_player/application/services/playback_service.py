@@ -365,34 +365,6 @@ class PlaybackApplicationService:
         logger.info("Skipped track: %s in guild %s", skipped_track.title, guild_id)
         return skipped_track
 
-    async def cut_to_next_track(self, guild_id: DiscordSnowflake) -> bool:
-        """Stop the current track and immediately play the next queued track.
-
-        Used by the live mirror to jump straight to the followed user's new
-        track. Stops the current audio (suppressing the natural end-callback),
-        then runs the finish pipeline so the now-playing embed promotes to the
-        next track. No-op (returns ``False``) if nothing is playing.
-        """
-        session = await self._session_repo.get(guild_id)
-        if session is None or session.current_track is None:
-            return False
-
-        current = session.current_track
-        # Leave the flag SET: stopping the audio makes discord.py fire the
-        # "after" callback (_on_voice_track_end), which consumes the flag.
-        # Discarding it here would let that stale callback double-advance and
-        # kill the track we're about to start. Only clear it if stop() raised
-        # (no callback will come). Mirrors skip_track's flag handling.
-        self._ignore_next_voice_track_end.add(guild_id)
-        try:
-            await self._voice_adapter.stop(guild_id)
-        except Exception:
-            self._ignore_next_voice_track_end.discard(guild_id)
-            logger.exception("Error stopping voice during mirror cut")
-
-        await self.handle_track_finished(guild_id, current)
-        return True
-
     async def handle_track_finished(self, guild_id: DiscordSnowflake, track: Track) -> None:
         logger.debug("Track finished: %s in guild %s", track.title, guild_id)
 

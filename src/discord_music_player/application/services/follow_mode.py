@@ -1,13 +1,13 @@
 """Live music-activity mirror for /playmine.
 
-A guild can follow exactly one user at a time. While following, every
-distinct track that user broadcasts via Discord activity (Spotify, Apple
-Music) is resolved on YouTube and played *immediately* — the bot mirrors
-the followed user in real time, dropping whatever was queued so a local
-"next" press is reflected straight away. Caps at the per-follow
-``max_tracks`` then auto-disables. Auto-disables when the followed user
-leaves the bot's voice channel, and disconnects after a grace period once
-their listening activity disappears.
+A guild follows exactly one user at a time. The song they are listening to
+when they invoke /playmine plays immediately — and because they may be deep
+into that track, the bot lags behind, which is the *buffer* this mode relies
+on. Every subsequent track they broadcast is appended to the queue behind a
+dwell gate: it is only queued once it has stayed their current song for
+``FOLLOW_DWELL_SECONDS``, so songs they skip past quickly never reach the
+queue. Caps at the per-follow ``max_tracks`` then auto-disables; disconnects
+after a grace period once their listening activity disappears.
 """
 
 from __future__ import annotations
@@ -46,7 +46,8 @@ class FollowState(BaseModel):
     user_id: DiscordSnowflake
     user_name: NonEmptyStr
     max_tracks: FollowTrackCount = LimitConstants.MAX_FOLLOW_TRACKS
-    last_key: str | None = None
+    last_enqueued_key: str | None = None
+    pending_key: str | None = None
     enqueued_count: int = 0
 
 
@@ -64,6 +65,7 @@ class FollowMode:
         self._bus = get_event_bus()
         self._started = False
         self._states: dict[DiscordSnowflake, FollowState] = {}
+        self._dwell_timers: dict[DiscordSnowflake, asyncio.Task[None]] = {}
         self._idle_timers: dict[DiscordSnowflake, asyncio.Task[None]] = {}
 
     def start(self) -> None:
@@ -77,10 +79,9 @@ class FollowMode:
         if not self._started:
             return
         self._bus.unsubscribe(VoiceMemberLeftVoiceChannel, self._on_member_left)
-        for timer in self._idle_timers.values():
-            if not timer.done():
-                timer.cancel()
-        self._idle_timers.clear()
+        for guild_id in list(self._states):
+            self._cancel_dwell_timer(guild_id)
+            self._cancel_idle_timer(guild_id)
         self._states.clear()
         self._started = False
 
@@ -91,15 +92,16 @@ class FollowMode:
         user_name: NonEmptyStr,
         *,
         max_tracks: FollowTrackCount = LimitConstants.MAX_FOLLOW_TRACKS,
-        last_key: str | None = None,
+        last_enqueued_key: str | None = None,
         enqueued_count: int = 0,
     ) -> None:
+        self._cancel_dwell_timer(guild_id)
         self._cancel_idle_timer(guild_id)
         self._states[guild_id] = FollowState(
             user_id=user_id,
             user_name=user_name,
             max_tracks=max_tracks,
-            last_key=last_key,
+            last_enqueued_key=last_enqueued_key,
             enqueued_count=enqueued_count,
         )
         logger.info(
@@ -110,6 +112,7 @@ class FollowMode:
         )
 
     def disable(self, guild_id: DiscordSnowflake) -> None:
+        self._cancel_dwell_timer(guild_id)
         self._cancel_idle_timer(guild_id)
         if self._states.pop(guild_id, None) is not None:
             logger.info("FollowMode disabled in guild %s", guild_id)
@@ -121,20 +124,36 @@ class FollowMode:
         state = self._states.get(guild_id)
         return state.user_id if state is not None else None
 
+    async def seed_current(
+        self,
+        guild_id: DiscordSnowflake,
+        user_id: DiscordSnowflake,
+        query: NonEmptyStr,
+    ) -> bool:
+        """Play the song the user is on right now, immediately and ungated.
+
+        This is the deliberate /playmine starting point, so it bypasses the
+        dwell gate. Returns ``True`` if it was queued/started.
+        """
+        state = self._states.get(guild_id)
+        if state is None or state.user_id != user_id:
+            return False
+        if query == state.last_enqueued_key:
+            return False
+        return await self._enqueue(state, guild_id, query)
+
     async def on_track_change(
         self,
         guild_id: DiscordSnowflake,
         user_id: DiscordSnowflake,
         query: NonEmptyStr,
     ) -> bool:
-        """Process a presence change for the followed user.
+        """Arm the dwell gate for a presence change from the followed user.
 
-        Mirrors in real time: a new track replaces the queue and plays
-        immediately (so a local "next" press is reflected). Returns ``True``
-        if a new track was played, ``False`` for any no-op (not followed,
-        dedup hit, resolution failure). The dedup key is the resolved query
-        string itself — stable for the same artist/title across noisy
-        presence pings.
+        Nothing is queued here. A new distinct song (re)starts the dwell
+        timer; only if it survives ``FOLLOW_DWELL_SECONDS`` does it get
+        appended (see ``_dwell_then_enqueue``). Returns ``True`` when a fresh
+        dwell timer was armed.
         """
         state = self._states.get(guild_id)
         if state is None or state.user_id != user_id:
@@ -143,49 +162,16 @@ class FollowMode:
         # The user is actively listening — cancel any pending stop-disconnect.
         self._cancel_idle_timer(guild_id)
 
-        if query == state.last_key:
+        if query in (state.last_enqueued_key, state.pending_key):
             return False
 
-        state.last_key = query
-
-        track = await self._audio_resolver.resolve(query)
-        if track is None:
-            logger.debug(
-                "FollowMode resolve failed for query=%r in guild %s", query, guild_id
-            )
-            return False
-
-        # True mirror: drop the existing backlog and make this the live track.
-        await self._queue_service.clear(guild_id)
-        result = await self._queue_service.enqueue(
-            guild_id=guild_id,
-            track=track.model_copy(update={"is_direct_request": True}),
-            user_id=state.user_id,
-            user_name=state.user_name,
+        # A different song than what's queued/pending — restart the gate so a
+        # quick skip past the previous candidate drops it.
+        self._cancel_dwell_timer(guild_id)
+        state.pending_key = query
+        self._dwell_timers[guild_id] = asyncio.create_task(
+            self._dwell_then_enqueue(guild_id, query)
         )
-        if not result.success:
-            logger.debug(
-                "FollowMode enqueue rejected in guild %s: %s", guild_id, result.message
-            )
-            return False
-
-        state.enqueued_count += 1
-        logger.info(
-            "FollowMode mirrored '%s' (%d/%d) in guild %s",
-            track.title,
-            state.enqueued_count,
-            state.max_tracks,
-            guild_id,
-        )
-
-        if result.should_start:
-            await self._playback_service.start_playback(guild_id)
-        else:
-            await self._playback_service.cut_to_next_track(guild_id)
-
-        if state.enqueued_count >= state.max_tracks:
-            self.disable(guild_id)
-
         return True
 
     async def on_activity_cleared(
@@ -193,13 +179,16 @@ class FollowMode:
     ) -> None:
         """The followed user's music activity vanished — start a grace timer.
 
-        If they don't resume within ``FOLLOW_STOP_GRACE_SECONDS`` the bot
-        disconnects. A timer already counting down is left untouched so
-        repeated "no music" presence pings don't keep extending it.
+        Also abandons any song still in its dwell window (they stopped before
+        it qualified). If they don't resume within ``FOLLOW_STOP_GRACE_SECONDS``
+        the bot disconnects.
         """
         state = self._states.get(guild_id)
         if state is None or state.user_id != user_id:
             return
+
+        self._cancel_dwell_timer(guild_id)
+        state.pending_key = None
 
         existing = self._idle_timers.get(guild_id)
         if existing is not None and not existing.done():
@@ -214,6 +203,70 @@ class FollowMode:
             self._grace_then_disconnect(guild_id)
         )
 
+    async def _dwell_then_enqueue(
+        self, guild_id: DiscordSnowflake, query: NonEmptyStr
+    ) -> None:
+        try:
+            await asyncio.sleep(TimeConstants.FOLLOW_DWELL_SECONDS)
+        except asyncio.CancelledError:
+            return
+
+        self._dwell_timers.pop(guild_id, None)
+        state = self._states.get(guild_id)
+        if state is None or state.pending_key != query:
+            return  # disabled or superseded by a newer song
+
+        state.pending_key = None
+        await self._enqueue(state, guild_id, query)
+
+    async def _enqueue(
+        self, state: FollowState, guild_id: DiscordSnowflake, query: NonEmptyStr
+    ) -> bool:
+        """Resolve and append the track; start playback only if idle (buffer)."""
+        track = await self._audio_resolver.resolve(query)
+        if track is None:
+            logger.debug(
+                "FollowMode resolve failed for query=%r in guild %s", query, guild_id
+            )
+            return False
+
+        result = await self._queue_service.enqueue(
+            guild_id=guild_id,
+            track=track.model_copy(update={"is_direct_request": True}),
+            user_id=state.user_id,
+            user_name=state.user_name,
+        )
+        if not result.success:
+            logger.debug(
+                "FollowMode enqueue rejected in guild %s: %s", guild_id, result.message
+            )
+            return False
+
+        state.enqueued_count += 1
+        state.last_enqueued_key = query
+        logger.info(
+            "FollowMode queued '%s' (%d/%d) in guild %s",
+            track.title,
+            state.enqueued_count,
+            state.max_tracks,
+            guild_id,
+        )
+
+        # Only start when nothing is playing; otherwise it rides the buffer and
+        # plays when the current track finishes (continuous, no skip).
+        if result.should_start:
+            await self._playback_service.start_playback(guild_id)
+
+        if state.enqueued_count >= state.max_tracks:
+            self.disable(guild_id)
+
+        return True
+
+    def _cancel_dwell_timer(self, guild_id: DiscordSnowflake) -> None:
+        timer = self._dwell_timers.pop(guild_id, None)
+        if timer is not None and not timer.done():
+            timer.cancel()
+
     def _cancel_idle_timer(self, guild_id: DiscordSnowflake) -> None:
         timer = self._idle_timers.pop(guild_id, None)
         if timer is not None and not timer.done():
@@ -227,6 +280,7 @@ class FollowMode:
 
         # Own our slot before mutating state so disable() can't cancel us.
         self._idle_timers.pop(guild_id, None)
+        self._cancel_dwell_timer(guild_id)
         if self._states.pop(guild_id, None) is None:
             return
 

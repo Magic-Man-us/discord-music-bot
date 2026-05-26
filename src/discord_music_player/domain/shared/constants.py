@@ -110,6 +110,11 @@ class TimeConstants:
     # listening activity disappears (cancelled if they start playing again)
     FOLLOW_STOP_GRACE_SECONDS = 60  # 1 minute
 
+    # Live mirror — a newly-detected track must remain the followed user's
+    # current song for this long before it is appended to the queue. Rapid
+    # skips (shorter than this) never reach the queue, keeping it clean.
+    FOLLOW_DWELL_SECONDS = 10
+
     # Now-playing reservation self-heals after this many seconds so a failed
     # send can never permanently suppress the auto-posted now-playing embed
     NOW_PLAYING_RESERVATION_TTL_SECONDS = 15
