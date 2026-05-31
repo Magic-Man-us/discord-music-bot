@@ -98,11 +98,12 @@ class TestLifecycle:
         assert follow_mode.is_enabled(GUILD_ID) is True
         assert follow_mode.followed_user_id(GUILD_ID) == USER_ID
 
-    def test_enable_defaults_to_max_follow_tracks(self, follow_mode: FollowMode) -> None:
+    def test_enable_defaults_to_max_follow_tracks(
+        self, follow_mode: FollowMode
+    ) -> None:
         follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
         assert (
-            follow_mode._states[GUILD_ID].max_tracks
-            == LimitConstants.MAX_FOLLOW_TRACKS
+            follow_mode._states[GUILD_ID].max_tracks == LimitConstants.MAX_FOLLOW_TRACKS
         )
 
     def test_enable_accepts_custom_max_tracks(self, follow_mode: FollowMode) -> None:
@@ -230,9 +231,7 @@ class TestDwellGate:
         queue_service.enqueue.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_dedup_against_last_enqueued(
-        self, follow_mode: FollowMode
-    ) -> None:
+    async def test_dedup_against_last_enqueued(self, follow_mode: FollowMode) -> None:
         follow_mode.enable(
             guild_id=GUILD_ID,
             user_id=USER_ID,
@@ -274,6 +273,51 @@ class TestDwellGate:
         assert state.last_enqueued_key == "A - T"
         assert state.pending_key is None
         assert state.enqueued_count == 1
+
+    @pytest.mark.asyncio
+    async def test_dwell_commit_notifies_when_track_becomes_next_up(
+        self, follow_mode: FollowMode, queue_service: MagicMock
+    ) -> None:
+        next_track = _track("next", "Next Song")
+        queue_service.enqueue = AsyncMock(
+            return_value=MagicMock(
+                success=True,
+                should_start=False,
+                position=0,
+                track=next_track,
+                message="ok",
+            )
+        )
+        callback = AsyncMock()
+        follow_mode.set_next_track_queued_callback(callback)
+        follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
+        follow_mode._states[GUILD_ID].pending_key = "A - T"
+
+        await follow_mode._dwell_then_enqueue(GUILD_ID, "A - T")
+
+        callback.assert_awaited_once_with(GUILD_ID, next_track)
+
+    @pytest.mark.asyncio
+    async def test_dwell_commit_does_not_notify_when_added_later_in_queue(
+        self, follow_mode: FollowMode, queue_service: MagicMock
+    ) -> None:
+        queue_service.enqueue = AsyncMock(
+            return_value=MagicMock(
+                success=True,
+                should_start=False,
+                position=2,
+                track=_track("later", "Later Song"),
+                message="ok",
+            )
+        )
+        callback = AsyncMock()
+        follow_mode.set_next_track_queued_callback(callback)
+        follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
+        follow_mode._states[GUILD_ID].pending_key = "A - T"
+
+        await follow_mode._dwell_then_enqueue(GUILD_ID, "A - T")
+
+        callback.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_dwell_commit_skipped_when_superseded(

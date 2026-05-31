@@ -83,6 +83,9 @@ class PlaybackCog(BaseCog):
         self.container.playback_service.set_track_finished_callback(
             self._on_track_finished
         )
+        self.container.follow_mode.set_next_track_queued_callback(
+            self._on_follow_mode_next_track_queued
+        )
         auto_skip = self.container.auto_skip_on_requester_leave
         auto_skip.set_on_requester_left_callback(self._on_requester_left)
         auto_skip.set_on_requester_rejoined_callback(self._on_requester_rejoined)
@@ -93,6 +96,7 @@ class PlaybackCog(BaseCog):
 
     async def cog_unload(self) -> None:
         self.container.playback_service.set_track_finished_callback(None)
+        self.container.follow_mode.set_next_track_queued_callback(None)
         auto_skip = self.container.auto_skip_on_requester_leave
         auto_skip.set_on_requester_left_callback(None)
         auto_skip.set_on_requester_rejoined_callback(None)
@@ -1043,6 +1047,12 @@ class PlaybackCog(BaseCog):
         view = self._requester_left_views.pop(guild_id, None)
         if view is not None:
             await view.dismiss()
+
+    async def _on_follow_mode_next_track_queued(
+        self, guild_id: DiscordSnowflake, track: Track
+    ) -> None:
+        """Refresh the visible Next Up field after /playmine queues behind current."""
+        await self.container.message_state_manager.update_next_up(guild_id, track)
 
     async def _on_track_finished(
         self, guild_id: DiscordSnowflake, track: Track

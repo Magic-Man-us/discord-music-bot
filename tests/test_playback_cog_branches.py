@@ -144,6 +144,7 @@ def _container(**overrides) -> FakeContainer:
     msm.track_now_playing = MagicMock()
     msm.on_track_finished = AsyncMock()
     msm.promote_next_track = AsyncMock()
+    msm.update_next_up = AsyncMock()
     msm.reset = AsyncMock()
 
     queue_service = MagicMock()
@@ -189,6 +190,7 @@ def _container(**overrides) -> FakeContainer:
     follow_mode.enable = MagicMock()
     follow_mode.disable = MagicMock()
     follow_mode.on_track_change = AsyncMock(return_value=True)
+    follow_mode.set_next_track_queued_callback = MagicMock()
 
     container = FakeContainer(
         playback_service=playback_service,
@@ -234,11 +236,14 @@ class TestCogLifecycle:
     async def test_cog_load_subscribes_to_track_started(self):
         cog = _make_cog()
         await cog.cog_load()
-        # Three callbacks set, plus event subscription stored
+        # Four callbacks set, plus event subscription stored
         cog.container.playback_service.set_track_finished_callback.assert_called_once()
         leave_callbacks = cog.container.auto_skip_on_requester_leave
         leave_callbacks.set_on_requester_left_callback.assert_called_once()
         leave_callbacks.set_on_requester_rejoined_callback.assert_called_once()
+        cog.container.follow_mode.set_next_track_queued_callback.assert_called_once_with(
+            cog._on_follow_mode_next_track_queued
+        )
         assert hasattr(cog, "_event_bus")
 
     @pytest.mark.asyncio
@@ -251,6 +256,9 @@ class TestCogLifecycle:
         )
         leave_callbacks = cog.container.auto_skip_on_requester_leave
         leave_callbacks.set_on_requester_left_callback.assert_called_with(None)
+        cog.container.follow_mode.set_next_track_queued_callback.assert_called_with(
+            None
+        )
         cog.container.message_state_manager.clear_all.assert_called_once()
 
     @pytest.mark.asyncio
@@ -258,6 +266,17 @@ class TestCogLifecycle:
         cog = _make_cog()
         await cog.cog_unload()
         cog.container.message_state_manager.clear_all.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_follow_mode_next_track_callback_updates_embed(self):
+        cog = _make_cog()
+        track = _track("next")
+
+        await cog._on_follow_mode_next_track_queued(42, track)
+
+        cog.container.message_state_manager.update_next_up.assert_awaited_once_with(
+            42, track
+        )
 
 
 # =============================================================================

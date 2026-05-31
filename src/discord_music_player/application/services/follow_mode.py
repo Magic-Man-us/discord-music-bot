@@ -13,6 +13,7 @@ after a grace period once their listening activity disappears.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
@@ -31,6 +32,7 @@ from ...domain.shared.types import (
 from ...utils.logging import get_logger
 
 if TYPE_CHECKING:
+    from ...domain.music.entities import Track
     from ..interfaces.audio_resolver import AudioResolver
     from .playback_service import PlaybackApplicationService
     from .queue_service import QueueApplicationService
@@ -67,6 +69,15 @@ class FollowMode:
         self._states: dict[DiscordSnowflake, FollowState] = {}
         self._dwell_timers: dict[DiscordSnowflake, asyncio.Task[None]] = {}
         self._idle_timers: dict[DiscordSnowflake, asyncio.Task[None]] = {}
+        self._on_next_track_queued: (
+            Callable[[DiscordSnowflake, Track], Awaitable[None]] | None
+        ) = None
+
+    def set_next_track_queued_callback(
+        self, callback: Callable[[DiscordSnowflake, Track], Awaitable[None]] | None
+    ) -> None:
+        """Set a callback fired when follow mode fills an empty upcoming slot."""
+        self._on_next_track_queued = callback
 
     def start(self) -> None:
         if self._started:
@@ -256,11 +267,25 @@ class FollowMode:
         # plays when the current track finishes (continuous, no skip).
         if result.should_start:
             await self._playback_service.start_playback(guild_id)
+        elif result.position == 0 and result.track is not None:
+            await self._notify_next_track_queued(guild_id, result.track)
 
         if state.enqueued_count >= state.max_tracks:
             self.disable(guild_id)
 
         return True
+
+    async def _notify_next_track_queued(
+        self, guild_id: DiscordSnowflake, track: Track
+    ) -> None:
+        """Notify infrastructure that the visible upcoming track changed."""
+        if self._on_next_track_queued is None:
+            return
+
+        try:
+            await self._on_next_track_queued(guild_id, track)
+        except Exception:
+            logger.debug("FollowMode next-track callback failed in guild %s", guild_id)
 
     def _cancel_dwell_timer(self, guild_id: DiscordSnowflake) -> None:
         timer = self._dwell_timers.pop(guild_id, None)
