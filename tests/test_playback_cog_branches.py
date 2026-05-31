@@ -86,15 +86,11 @@ class TestFormatSliceStatus:
         assert "starting at #3" in status
 
     def test_includes_shuffled_marker(self):
-        status = _format_slice_status(
-            "YT", self._slice(shuffled=True), count_override=None
-        )
+        status = _format_slice_status("YT", self._slice(shuffled=True), count_override=None)
         assert "shuffled" in status.lower()
 
     def test_truncation_hint_when_default_count_truncates(self):
-        status = _format_slice_status(
-            "YT", self._slice(truncated=2), count_override=None
-        )
+        status = _format_slice_status("YT", self._slice(truncated=2), count_override=None)
         assert "Default" in status
 
     def test_no_truncation_hint_when_count_override_set(self):
@@ -156,9 +152,7 @@ def _container(**overrides) -> FakeContainer:
             total_duration=180,
         )
     )
-    queue_service.enqueue = AsyncMock(
-        return_value=MagicMock(success=True, should_start=False)
-    )
+    queue_service.enqueue = AsyncMock(return_value=MagicMock(success=True, should_start=False))
     queue_service.enqueue_next = AsyncMock(return_value=MagicMock(success=True))
     queue_service.enqueue_batch = AsyncMock(
         return_value=BatchEnqueueResult(enqueued=0, should_start=False)
@@ -219,9 +213,7 @@ def _make_cog(container=None, *, bot=None) -> PlaybackCog:
 
 def _interaction_in_voice(*, guild_id=42):
     member = make_member(member_id=1)
-    member.voice = make_voice_state(
-        channel=make_voice_channel(channel_id=10, members=[member])
-    )
+    member.voice = make_voice_state(channel=make_voice_channel(channel_id=10, members=[member]))
     interaction = make_interaction(user=member, guild_id=guild_id)
     return member, interaction
 
@@ -251,14 +243,10 @@ class TestCogLifecycle:
         cog = _make_cog()
         await cog.cog_load()
         await cog.cog_unload()
-        cog.container.playback_service.set_track_finished_callback.assert_called_with(
-            None
-        )
+        cog.container.playback_service.set_track_finished_callback.assert_called_with(None)
         leave_callbacks = cog.container.auto_skip_on_requester_leave
         leave_callbacks.set_on_requester_left_callback.assert_called_with(None)
-        cog.container.follow_mode.set_next_track_queued_callback.assert_called_with(
-            None
-        )
+        cog.container.follow_mode.set_next_track_queued_callback.assert_called_with(None)
         cog.container.message_state_manager.clear_all.assert_called_once()
 
     @pytest.mark.asyncio
@@ -271,11 +259,17 @@ class TestCogLifecycle:
     async def test_follow_mode_next_track_callback_updates_embed(self):
         cog = _make_cog()
         track = _track("next")
+        current = _track("cur")
+
+        session = MagicMock()
+        session.current_track = current
+        session.peek = MagicMock(return_value=track)
+        cog.container.session_repository.get = AsyncMock(return_value=session)
 
         await cog._on_follow_mode_next_track_queued(42, track)
 
         cog.container.message_state_manager.update_next_up.assert_awaited_once_with(
-            42, track
+            42, current_track=current, next_track=track
         )
 
 
@@ -318,9 +312,7 @@ class TestEnsureVoiceReady:
     async def test_returns_none_when_voice_connect_fails(self):
         member, interaction = _interaction_in_voice()
         container = _container()
-        container.voice_adapter = FakeVoiceAdapter(
-            connected=False, connect_succeeds=False
-        )
+        container.voice_adapter = FakeVoiceAdapter(connected=False, connect_succeeds=False)
         cog = _make_cog(container)
         result = await cog._ensure_voice_ready(interaction)
         assert result is None
@@ -383,9 +375,7 @@ class TestFindAutoPostChannel:
         guild.voice_client = None
         guild.system_channel = None
         unwritable = MagicMock(spec=discord.TextChannel)
-        unwritable.permissions_for = MagicMock(
-            return_value=MagicMock(send_messages=False)
-        )
+        unwritable.permissions_for = MagicMock(return_value=MagicMock(send_messages=False))
         guild.text_channels = [unwritable]
         bot.get_guild = MagicMock(return_value=guild)
         cog = _make_cog(bot=bot)
@@ -414,9 +404,7 @@ class TestOnTrackStartedAutoPost:
     @pytest.mark.asyncio
     async def test_skips_when_now_playing_reserved(self):
         container = _container()
-        container.message_state_manager.reservation_active = MagicMock(
-            return_value=True
-        )
+        container.message_state_manager.reservation_active = MagicMock(return_value=True)
         cog = _make_cog(container)
         await cog._on_track_started_auto_post(self._event())
         # Should never reach session_repository
@@ -826,9 +814,7 @@ class TestPlayCommandTimestamp:
     async def test_invalid_timestamp_rejects(self):
         member, interaction = _interaction_in_voice()
         cog = _make_cog()
-        await cog.play.callback(
-            cog, interaction, query="some song", timestamp="garbage"
-        )
+        await cog.play.callback(cog, interaction, query="some song", timestamp="garbage")
         msg = interaction.response.send_message.call_args.args[0]
         assert "Invalid timestamp" in msg
 
@@ -869,9 +855,7 @@ class TestExecutePlayBranches:
     async def test_voice_connect_failure_returns(self):
         member, interaction = _interaction_in_voice()
         container = _container()
-        container.voice_adapter = FakeVoiceAdapter(
-            connected=False, connect_succeeds=False
-        )
+        container.voice_adapter = FakeVoiceAdapter(connected=False, connect_succeeds=False)
         cog = _make_cog(container)
         await cog._execute_play(interaction, "any query")
         # Must not have attempted enqueue
@@ -989,9 +973,7 @@ class TestPlayTrack:
         resolved = _track("rsvd")
         container.audio_resolver.resolve = AsyncMock(return_value=resolved)
         container.queue_service.enqueue = AsyncMock(
-            return_value=MagicMock(
-                success=True, should_start=True, track=resolved, position=0
-            )
+            return_value=MagicMock(success=True, should_start=True, track=resolved, position=0)
         )
         cog = _make_cog(container)
         cog._start_long_track_vote = AsyncMock(return_value=False)
@@ -1009,9 +991,7 @@ class TestPlayTrack:
         resolved = _track("rsvd")
         container.audio_resolver.resolve = AsyncMock(return_value=resolved)
         container.queue_service.enqueue = AsyncMock(
-            return_value=MagicMock(
-                success=True, should_start=False, track=resolved, position=2
-            )
+            return_value=MagicMock(success=True, should_start=False, track=resolved, position=2)
         )
         cog = _make_cog(container)
         cog._start_long_track_vote = AsyncMock(return_value=False)
@@ -1089,9 +1069,7 @@ class TestStartLongTrackVote:
         member, interaction = _interaction_in_voice()
         interaction.channel_id = None
         container = _container()
-        container.voice_adapter.get_listeners = AsyncMock(
-            return_value=[1, 2, 3, 4, 5, 6, 7, 8]
-        )
+        container.voice_adapter.get_listeners = AsyncMock(return_value=[1, 2, 3, 4, 5, 6, 7, 8])
         cog = _make_cog(container)
         long_track = Track(
             id=TrackId(value="lt"),
@@ -1109,9 +1087,7 @@ class TestStartLongTrackVote:
         member, interaction = _interaction_in_voice()
         interaction.channel_id = 555
         container = _container()
-        container.voice_adapter.get_listeners = AsyncMock(
-            return_value=[1, 2, 3, 4, 5, 6, 7, 8]
-        )
+        container.voice_adapter.get_listeners = AsyncMock(return_value=[1, 2, 3, 4, 5, 6, 7, 8])
         bot = MagicMock()
         channel = MagicMock(spec=discord.TextChannel)
         channel.send = AsyncMock(return_value=MagicMock())
@@ -1132,9 +1108,7 @@ class TestStartLongTrackVote:
         member, interaction = _interaction_in_voice()
         interaction.channel_id = 555
         container = _container()
-        container.voice_adapter.get_listeners = AsyncMock(
-            return_value=[1, 2, 3, 4, 5, 6, 7, 8]
-        )
+        container.voice_adapter.get_listeners = AsyncMock(return_value=[1, 2, 3, 4, 5, 6, 7, 8])
         bot = MagicMock()
         bot.get_channel = MagicMock(return_value=object())  # not Messageable
         cog = _make_cog(container, bot=bot)
@@ -1181,10 +1155,7 @@ class TestHandlePlaylist:
         container = _container()
         container.audio_resolver.preview_playlist = AsyncMock(
             return_value=PlaylistPreview(
-                entries=[
-                    PlaylistEntry(title=f"E{i}", url=f"https://yt/e{i}")
-                    for i in range(5)
-                ],
+                entries=[PlaylistEntry(title=f"E{i}", url=f"https://yt/e{i}") for i in range(5)],
                 title="My Playlist",
             )
         )
@@ -1233,9 +1204,7 @@ class TestAutoEnqueueYouTubePlaylist:
         cog._finalize_playlist_import = AsyncMock()
 
         preview = PlaylistPreview(
-            entries=[
-                PlaylistEntry(title=f"E{i}", url=f"https://yt/e{i}") for i in range(3)
-            ],
+            entries=[PlaylistEntry(title=f"E{i}", url=f"https://yt/e{i}") for i in range(3)],
             title="Mix",
         )
         await cog._auto_enqueue_youtube_playlist(

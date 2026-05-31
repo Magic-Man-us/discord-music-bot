@@ -140,9 +140,7 @@ class TestReservation:
         manager.clear_now_playing_reservation(GUILD_ID)
         assert manager.reservation_active(GUILD_ID) is False
 
-    def test_reservation_self_expires_after_ttl(
-        self, manager: MessageStateManager
-    ) -> None:
+    def test_reservation_self_expires_after_ttl(self, manager: MessageStateManager) -> None:
         from datetime import timedelta
 
         from discord_music_player.domain.shared.constants import TimeConstants
@@ -210,100 +208,6 @@ class TestTrackMutation:
 
 
 # ============================================================================
-# Message Fetching
-# ============================================================================
-
-
-class TestFetchMessage:
-    @pytest.mark.asyncio
-    async def test_fetch_via_get_channel(
-        self, manager: MessageStateManager, mock_bot: MagicMock
-    ) -> None:
-        mock_message = MagicMock(spec=discord.Message)
-        mock_channel = MagicMock(spec=discord.TextChannel)
-        mock_channel.fetch_message = AsyncMock(return_value=mock_message)
-        mock_bot.get_channel.return_value = mock_channel
-
-        tracked = TrackedMessage(
-            channel_id=CHANNEL_ID,
-            message_id=MESSAGE_ID_1,
-            track_key=TrackKey(track_id="t1"),
-        )
-        result = await manager._fetch_message(tracked)
-        assert result is mock_message
-
-    @pytest.mark.asyncio
-    async def test_fetch_falls_back_to_fetch_channel(
-        self, manager: MessageStateManager, mock_bot: MagicMock
-    ) -> None:
-        mock_message = MagicMock(spec=discord.Message)
-        mock_channel = MagicMock(spec=discord.TextChannel)
-        mock_channel.fetch_message = AsyncMock(return_value=mock_message)
-
-        mock_bot.get_channel.return_value = None
-        mock_bot.fetch_channel = AsyncMock(return_value=mock_channel)
-
-        tracked = TrackedMessage(
-            channel_id=CHANNEL_ID,
-            message_id=MESSAGE_ID_1,
-            track_key=TrackKey(track_id="t1"),
-        )
-        result = await manager._fetch_message(tracked)
-        assert result is mock_message
-
-    @pytest.mark.asyncio
-    async def test_fetch_returns_none_when_channel_not_found(
-        self, manager: MessageStateManager, mock_bot: MagicMock
-    ) -> None:
-        mock_bot.get_channel.return_value = None
-        mock_bot.fetch_channel = AsyncMock(
-            side_effect=discord.HTTPException(MagicMock(), "Not found")
-        )
-
-        tracked = TrackedMessage(
-            channel_id=CHANNEL_ID,
-            message_id=MESSAGE_ID_1,
-            track_key=TrackKey(track_id="t1"),
-        )
-        result = await manager._fetch_message(tracked)
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_fetch_returns_none_when_not_messageable(
-        self, manager: MessageStateManager, mock_bot: MagicMock
-    ) -> None:
-        # Return a channel that isn't Messageable (e.g., CategoryChannel)
-        mock_channel = MagicMock(spec=discord.CategoryChannel)
-        mock_bot.get_channel.return_value = mock_channel
-
-        tracked = TrackedMessage(
-            channel_id=CHANNEL_ID,
-            message_id=MESSAGE_ID_1,
-            track_key=TrackKey(track_id="t1"),
-        )
-        result = await manager._fetch_message(tracked)
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_fetch_returns_none_when_message_not_found(
-        self, manager: MessageStateManager, mock_bot: MagicMock
-    ) -> None:
-        mock_channel = MagicMock(spec=discord.TextChannel)
-        mock_channel.fetch_message = AsyncMock(
-            side_effect=discord.HTTPException(MagicMock(), "Unknown Message")
-        )
-        mock_bot.get_channel.return_value = mock_channel
-
-        tracked = TrackedMessage(
-            channel_id=CHANNEL_ID,
-            message_id=MESSAGE_ID_1,
-            track_key=TrackKey(track_id="t1"),
-        )
-        result = await manager._fetch_message(tracked)
-        assert result is None
-
-
-# ============================================================================
 # Edit Message Methods
 # ============================================================================
 
@@ -311,14 +215,19 @@ class TestFetchMessage:
 class TestEditMessage:
     @staticmethod
     def _setup_partial_channel(
-        mock_bot: MagicMock, *, edit_return: MagicMock | None = None, edit_side_effect: Exception | None = None
+        mock_bot: MagicMock,
+        *,
+        edit_return: MagicMock | None = None,
+        edit_side_effect: Exception | None = None,
     ) -> MagicMock:
         """Set up a mock channel with get_partial_message returning a partial with async edit."""
         mock_partial = MagicMock()
         if edit_side_effect:
             mock_partial.edit = AsyncMock(side_effect=edit_side_effect)
         else:
-            mock_partial.edit = AsyncMock(return_value=edit_return or MagicMock(spec=discord.Message))
+            mock_partial.edit = AsyncMock(
+                return_value=edit_return or MagicMock(spec=discord.Message)
+            )
         mock_channel = MagicMock(spec=discord.TextChannel)
         mock_channel.get_partial_message = MagicMock(return_value=mock_partial)
         mock_bot.get_channel.return_value = mock_channel
@@ -410,72 +319,80 @@ class TestEditMessage:
 
 
 class TestUpdateNextUp:
+    @staticmethod
+    def _partial_for(mock_bot: MagicMock) -> MagicMock:
+        """Wire a channel whose get_partial_message returns an editable partial."""
+        partial = MagicMock()
+        partial.edit = AsyncMock()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.get_partial_message = MagicMock(return_value=partial)
+        mock_bot.get_channel.return_value = channel
+        return partial
+
     @pytest.mark.asyncio
-    async def test_updates_next_up_field_to_track_title(
+    async def test_rebuilds_embed_with_next_track_title(
         self, manager: MessageStateManager, mock_bot: MagicMock, track_a: Track, track_b: Track
     ) -> None:
-        # Set up now-playing state
         manager.track_now_playing(
             guild_id=GUILD_ID, track=track_a, channel_id=CHANNEL_ID, message_id=MESSAGE_ID_1
         )
+        partial = self._partial_for(mock_bot)
 
-        # Create a message with a "Next Up" field in its embed
-        embed = discord.Embed(title="Now Playing")
-        embed.add_field(name="⏭️ Next Up", value="Nothing", inline=False)
-        mock_message = MagicMock(spec=discord.Message)
-        mock_message.embeds = [embed]
-        mock_message.edit = AsyncMock()
+        await manager.update_next_up(GUILD_ID, current_track=track_a, next_track=track_b)
 
-        mock_channel = MagicMock(spec=discord.TextChannel)
-        mock_channel.fetch_message = AsyncMock(return_value=mock_message)
-        mock_bot.get_channel.return_value = mock_channel
-
-        await manager.update_next_up(GUILD_ID, track_b)
-
-        mock_message.edit.assert_awaited_once()
-        # Verify the field value was actually updated to the track title
-        updated_embed = mock_message.edit.call_args.kwargs["embed"]
-        next_field = [f for f in updated_embed.fields if "Next Up" in (f.name or "")][0]
+        partial.edit.assert_awaited_once()
+        embed = partial.edit.call_args.kwargs["embed"]
+        next_field = [f for f in embed.fields if "Next Up" in (f.name or "")][0]
         assert track_b.title in next_field.value
 
     @pytest.mark.asyncio
-    async def test_noop_when_no_state(self, manager: MessageStateManager) -> None:
-        # No state set — should not raise
-        await manager.update_next_up(GUILD_ID, None)
-
-    @pytest.mark.asyncio
-    async def test_noop_when_no_now_playing(self, manager: MessageStateManager) -> None:
-        manager.get_state(GUILD_ID)  # create state but no now_playing
-        await manager.update_next_up(GUILD_ID, None)
-
-    @pytest.mark.asyncio
-    async def test_noop_when_message_has_no_embeds(
+    async def test_noop_when_current_track_is_none(
         self, manager: MessageStateManager, mock_bot: MagicMock, track_a: Track
     ) -> None:
         manager.track_now_playing(
             guild_id=GUILD_ID, track=track_a, channel_id=CHANNEL_ID, message_id=MESSAGE_ID_1
         )
+        partial = self._partial_for(mock_bot)
 
-        mock_message = MagicMock(spec=discord.Message)
-        mock_message.embeds = []
-        mock_channel = MagicMock(spec=discord.TextChannel)
-        mock_channel.fetch_message = AsyncMock(return_value=mock_message)
-        mock_bot.get_channel.return_value = mock_channel
+        await manager.update_next_up(GUILD_ID, current_track=None, next_track=track_a)
 
-        # Should not raise or try to edit
-        await manager.update_next_up(GUILD_ID, None)
+        partial.edit.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_noop_when_fetch_returns_none(
-        self, manager: MessageStateManager, mock_bot: MagicMock, track_a: Track
+    async def test_noop_when_no_state(self, manager: MessageStateManager, track_a: Track) -> None:
+        await manager.update_next_up(GUILD_ID, current_track=track_a, next_track=None)
+
+    @pytest.mark.asyncio
+    async def test_noop_when_no_now_playing(
+        self, manager: MessageStateManager, track_a: Track
+    ) -> None:
+        manager.get_state(GUILD_ID)  # create state but no now_playing
+        await manager.update_next_up(GUILD_ID, current_track=track_a, next_track=None)
+
+    @pytest.mark.asyncio
+    async def test_noop_when_current_track_mismatches_tracked(
+        self, manager: MessageStateManager, mock_bot: MagicMock, track_a: Track, track_b: Track
+    ) -> None:
+        # The now-playing message is for track_a; a stale update claiming track_b
+        # is current must not clobber it (a track-advance already moved on).
+        manager.track_now_playing(
+            guild_id=GUILD_ID, track=track_a, channel_id=CHANNEL_ID, message_id=MESSAGE_ID_1
+        )
+        partial = self._partial_for(mock_bot)
+
+        await manager.update_next_up(GUILD_ID, current_track=track_b, next_track=track_a)
+
+        partial.edit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_noop_when_channel_missing(
+        self, manager: MessageStateManager, mock_bot: MagicMock, track_a: Track, track_b: Track
     ) -> None:
         manager.track_now_playing(
             guild_id=GUILD_ID, track=track_a, channel_id=CHANNEL_ID, message_id=MESSAGE_ID_1
         )
         mock_bot.get_channel.return_value = None
-        mock_bot.fetch_channel = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "err"))
-
-        await manager.update_next_up(GUILD_ID, None)  # should not raise
+        await manager.update_next_up(GUILD_ID, current_track=track_a, next_track=track_b)
 
     @pytest.mark.asyncio
     async def test_swallows_edit_exception(
@@ -484,19 +401,11 @@ class TestUpdateNextUp:
         manager.track_now_playing(
             guild_id=GUILD_ID, track=track_a, channel_id=CHANNEL_ID, message_id=MESSAGE_ID_1
         )
-
-        embed = discord.Embed(title="Now Playing")
-        embed.add_field(name="⏭️ Next Up", value="Nothing", inline=False)
-        mock_message = MagicMock(spec=discord.Message)
-        mock_message.embeds = [embed]
-        mock_message.edit = AsyncMock(side_effect=Exception("edit failed"))
-
-        mock_channel = MagicMock(spec=discord.TextChannel)
-        mock_channel.fetch_message = AsyncMock(return_value=mock_message)
-        mock_bot.get_channel.return_value = mock_channel
+        partial = self._partial_for(mock_bot)
+        partial.edit = AsyncMock(side_effect=Exception("edit failed"))
 
         # Should not raise — exception is caught
-        await manager.update_next_up(GUILD_ID, track_b)
+        await manager.update_next_up(GUILD_ID, current_track=track_a, next_track=track_b)
 
     @pytest.mark.asyncio
     async def test_shows_none_text_when_next_track_is_none(
@@ -507,24 +416,35 @@ class TestUpdateNextUp:
         manager.track_now_playing(
             guild_id=GUILD_ID, track=track_a, channel_id=CHANNEL_ID, message_id=MESSAGE_ID_1
         )
+        partial = self._partial_for(mock_bot)
 
-        embed = discord.Embed(title="Now Playing")
-        embed.add_field(name="⏭️ Next Up", value="Some Track", inline=False)
-        mock_message = MagicMock(spec=discord.Message)
-        mock_message.embeds = [embed]
-        mock_message.edit = AsyncMock()
+        await manager.update_next_up(GUILD_ID, current_track=track_a, next_track=None)
 
-        mock_channel = MagicMock(spec=discord.TextChannel)
-        mock_channel.fetch_message = AsyncMock(return_value=mock_message)
-        mock_bot.get_channel.return_value = mock_channel
-
-        await manager.update_next_up(GUILD_ID, None)
-
-        mock_message.edit.assert_awaited_once()
-        # The embed field should now show the "no next" text
-        updated_embed = mock_message.edit.call_args.kwargs["embed"]
-        next_field = [f for f in updated_embed.fields if "Next Up" in (f.name or "")][0]
+        partial.edit.assert_awaited_once()
+        embed = partial.edit.call_args.kwargs["embed"]
+        next_field = [f for f in embed.fields if "Next Up" in (f.name or "")][0]
         assert next_field.value == UIConstants.NEXT_UP_NONE
+
+    @pytest.mark.asyncio
+    async def test_applies_after_promote_advances_track(
+        self, manager: MessageStateManager, mock_bot: MagicMock, track_a: Track, track_b: Track
+    ) -> None:
+        # The regression this whole change targets: track_a is playing, the track
+        # advances to track_b (promote re-points the key), then a follow-mode
+        # update for the new current track must still apply — not be dropped as stale.
+        manager.track_now_playing(
+            guild_id=GUILD_ID, track=track_a, channel_id=CHANNEL_ID, message_id=MESSAGE_ID_1
+        )
+        partial = self._partial_for(mock_bot)
+        partial.edit = AsyncMock(return_value=MagicMock(spec=discord.Message))
+
+        await manager.promote_next_track(GUILD_ID, track_b)
+        await manager.update_next_up(GUILD_ID, current_track=track_b, next_track=track_a)
+
+        embed = partial.edit.call_args.kwargs["embed"]
+        assert track_b.title in embed.description
+        next_field = [f for f in embed.fields if "Next Up" in (f.name or "")][0]
+        assert track_a.title in next_field.value
 
 
 # ============================================================================
@@ -600,7 +520,11 @@ class TestOnTrackFinished:
 
 class TestPromoteNextTrack:
     def _setup_channel(
-        self, mock_bot: MagicMock, mock_message: MagicMock, *, edit_side_effect: Exception | None = None
+        self,
+        mock_bot: MagicMock,
+        mock_message: MagicMock,
+        *,
+        edit_side_effect: Exception | None = None,
     ) -> None:
         mock_partial = MagicMock()
         if edit_side_effect:
@@ -627,10 +551,10 @@ class TestPromoteNextTrack:
         # now_playing should still be the same TrackedMessage (reused, not replaced)
         state = manager.get_state(GUILD_ID)
         assert state.now_playing is not None
+        # Same message (channel/message IDs reused), but re-pointed at the promoted
+        # track so track_key matches what the embed now displays.
         assert state.now_playing.message_id == MESSAGE_ID_1
-        # Deliberate: track_key still references the original track, not the promoted one.
-        # The TrackedMessage is frozen and reused for its channel/message IDs only.
-        assert state.now_playing.track_key.track_id == "track-a"
+        assert state.now_playing.track_key.track_id == "track-b"
 
     @pytest.mark.asyncio
     async def test_falls_back_to_queued_message(
@@ -697,7 +621,8 @@ class TestPromoteNextTrack:
 
         mock_msg_fail = MagicMock(spec=discord.Message)
         self._setup_channel(
-            mock_bot, mock_msg_fail,
+            mock_bot,
+            mock_msg_fail,
             edit_side_effect=discord.HTTPException(MagicMock(), "err"),
         )
 
@@ -719,7 +644,8 @@ class TestPromoteNextTrack:
 
         mock_msg_fail = MagicMock(spec=discord.Message)
         self._setup_channel(
-            mock_bot, mock_msg_fail,
+            mock_bot,
+            mock_msg_fail,
             edit_side_effect=discord.HTTPException(MagicMock(), "err"),
         )
 

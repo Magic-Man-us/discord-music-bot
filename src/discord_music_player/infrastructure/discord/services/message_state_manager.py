@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import asyncio
+from typing import TYPE_CHECKING, ClassVar
 
 import discord
 
@@ -10,7 +11,6 @@ from ....domain.shared.constants import TimeConstants, UIConstants
 from ....domain.shared.datetime_utils import utcnow
 from ....domain.shared.types import ChannelIdField, DiscordSnowflake
 from ....utils.logging import get_logger
-from ....utils.reply import truncate
 from ..views.base_view import BaseInteractiveView
 from .embed_builder import build_now_playing_embed, format_finished_line
 from .models import GuildMessageState, TrackedMessage
@@ -30,9 +30,28 @@ logger = get_logger(__name__)
 class MessageStateManager:
     """Per-guild tracking of Discord messages posted for now-playing and queued tracks."""
 
+    _MAX_GUILD_LOCKS: ClassVar[int] = 256
+
     def __init__(self, bot: commands.Bot) -> None:
         self._bot = bot
         self._state_by_guild: dict[int, GuildMessageState] = {}
+        self._edit_locks: dict[DiscordSnowflake, asyncio.Lock] = {}
+
+    def _edit_lock(self, guild_id: DiscordSnowflake) -> asyncio.Lock:
+        """Per-guild lock serializing now-playing embed edits.
+
+        ``update_next_up`` and ``promote_next_track`` both mutate the single
+        now-playing message; without this they can interleave and a stale
+        write resurrects an already-advanced track.
+        """
+        lock = self._edit_locks.get(guild_id)
+        if lock is None:
+            if len(self._edit_locks) >= self._MAX_GUILD_LOCKS:
+                for gid in [g for g, lk in self._edit_locks.items() if not lk.locked()]:
+                    del self._edit_locks[gid]
+            lock = asyncio.Lock()
+            self._edit_locks[guild_id] = lock
+        return lock
 
     def get_state(self, guild_id: DiscordSnowflake) -> GuildMessageState:
         state = self._state_by_guild.get(guild_id)
@@ -128,6 +147,7 @@ class MessageStateManager:
 
     def clear_all(self) -> None:
         self._state_by_guild.clear()
+        self._edit_locks.clear()
 
     # ── Message editing ─────────────────────────────────────────────
 
@@ -169,49 +189,50 @@ class MessageStateManager:
             )
             return None
 
-    async def _fetch_message(self, tracked: TrackedMessage) -> discord.Message | None:
-        channel = self._bot.get_channel(tracked.channel_id)
-        if channel is None:
-            try:
-                channel = await self._bot.fetch_channel(tracked.channel_id)
-            except discord.HTTPException:
-                return None
-
-        if not isinstance(channel, discord.abc.Messageable):
-            return None
-
-        try:
-            return await channel.fetch_message(tracked.message_id)
-        except discord.HTTPException:
-            return None
-
     # ── Live "Next Up" update ──────────────────────────────────────
 
-    async def update_next_up(self, guild_id: DiscordSnowflake, next_track: Track | None) -> None:
-        """Update the 'Next Up' field on the current Now Playing embed."""
+    async def update_next_up(
+        self,
+        guild_id: DiscordSnowflake,
+        *,
+        current_track: Track | None,
+        next_track: Track | None,
+    ) -> None:
+        """Refresh the now-playing embed's 'Next Up' field from live truth.
+
+        Rebuilds the whole embed from the current/upcoming tracks (rather than
+        patching a fetched copy) and serializes with ``promote_next_track``
+        under the per-guild edit lock, so a concurrent track-advance cannot
+        interleave between read and write and resurrect a stale embed.
+        """
+        if current_track is None:
+            return
         state = self._state_by_guild.get(guild_id)
         if state is None or state.now_playing is None:
             return
 
-        message = await self._fetch_message(state.now_playing)
-        if message is None:
+        async with self._edit_lock(guild_id):
+            tracked = state.now_playing
+            if tracked is None:
+                return
+            # Only refresh while the tracked message still represents the track
+            # we were told is current; otherwise a track-advance already moved
+            # on and promote_next_track owns the embed.
+            if tracked.track_key.track_id != current_track.id.value:
+                return
+            embed = build_now_playing_embed(current_track, next_track=next_track)
+            try:
+                await self._edit_now_playing_embed(tracked, embed)
+            except Exception:
+                logger.debug("Failed to update Next Up for guild %s", guild_id)
+
+    async def _edit_now_playing_embed(self, tracked: TrackedMessage, embed: discord.Embed) -> None:
+        """Edit a tracked message's embed in place, leaving its view intact."""
+        channel = self._bot.get_channel(tracked.channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
             return
-
-        if not message.embeds:
-            return
-
-        embed = message.embeds[0]
-
-        next_up_value = truncate(next_track.title, 60) if next_track else UIConstants.NEXT_UP_NONE
-        for i, field in enumerate(embed.fields):
-            if field.name and "Next Up" in field.name:
-                embed.set_field_at(i, name=field.name, value=next_up_value, inline=False)
-                break
-
-        try:
-            await message.edit(embed=embed)
-        except Exception:
-            logger.debug("Failed to update Next Up for guild %s", guild_id)
+        partial = channel.get_partial_message(tracked.message_id)
+        await partial.edit(embed=embed)
 
     # ── Track-finished callback ─────────────────────────────────────
 
@@ -250,40 +271,48 @@ class MessageStateManager:
         if state is None:
             return
 
-        embed = build_now_playing_embed(next_track, next_track=upcoming_track)
+        async with self._edit_lock(guild_id):
+            embed = build_now_playing_embed(next_track, next_track=upcoming_track)
 
-        if container is not None:
-            from ..views.now_playing_view import NowPlayingView
+            if container is not None:
+                from ..views.now_playing_view import NowPlayingView
 
-            view: BaseInteractiveView = NowPlayingView(
-                webpage_url=next_track.webpage_url,
-                title=next_track.title,
-                guild_id=guild_id,
-                container=container,
-            )
-        else:
-            from ..views.download_view import DownloadView
+                view: BaseInteractiveView = NowPlayingView(
+                    webpage_url=next_track.webpage_url,
+                    title=next_track.title,
+                    guild_id=guild_id,
+                    container=container,
+                )
+            else:
+                from ..views.download_view import DownloadView
 
-            view = DownloadView(webpage_url=next_track.webpage_url, title=next_track.title)
+                view = DownloadView(webpage_url=next_track.webpage_url, title=next_track.title)
 
-        # Try reusing the existing now-playing message first
-        target = state.now_playing
-        if target is not None:
-            # Discard any queued message for this track since we're reusing now-playing
-            state.pop_matching_queued(next_track)
-            message = await self.edit_message_to_embed(target, embed=embed, view=view)
-            if message is not None:
-                view.set_message(message)
-                # now_playing stays pointed at the same TrackedMessage
-                return
-            # Edit failed (message deleted, permissions lost, etc.) — clear so
-            # the auto-poster can send a fresh embed on TrackStartedPlaying.
-            state.now_playing = None
+            # Try reusing the existing now-playing message first
+            target = state.now_playing
+            if target is not None:
+                # Discard any queued message for this track since we're reusing now-playing
+                state.pop_matching_queued(next_track)
+                message = await self.edit_message_to_embed(target, embed=embed, view=view)
+                if message is not None:
+                    view.set_message(message)
+                    # Re-point at the now-current track so the tracked key matches
+                    # what the message displays; update_next_up's consistency guard
+                    # relies on this to tell a fresh update from a stale one.
+                    state.now_playing = TrackedMessage.for_track(
+                        next_track,
+                        channel_id=target.channel_id,
+                        message_id=target.message_id,
+                    )
+                    return
+                # Edit failed (message deleted, permissions lost, etc.) — clear so
+                # the auto-poster can send a fresh embed on TrackStartedPlaying.
+                state.now_playing = None
 
-        # Fallback: promote the queued message for this track
-        queued_msg = state.pop_matching_queued(next_track)
-        if queued_msg is not None:
-            message = await self.edit_message_to_embed(queued_msg, embed=embed, view=view)
-            if message is not None:
-                view.set_message(message)
-                state.now_playing = queued_msg
+            # Fallback: promote the queued message for this track
+            queued_msg = state.pop_matching_queued(next_track)
+            if queued_msg is not None:
+                message = await self.edit_message_to_embed(queued_msg, embed=embed, view=view)
+                if message is not None:
+                    view.set_message(message)
+                    state.now_playing = queued_msg

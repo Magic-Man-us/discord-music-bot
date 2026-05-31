@@ -16,7 +16,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ...domain.shared.constants import LimitConstants, TimeConstants
 from ...domain.shared.events import (
@@ -51,6 +51,9 @@ class FollowState(BaseModel):
     last_enqueued_key: str | None = None
     pending_key: str | None = None
     enqueued_count: int = 0
+    # Dedup against every key mirrored this session, so a revisited song
+    # (A → B → A) isn't queued twice — not just the single most recent one.
+    enqueued_keys: set[str] = Field(default_factory=set)
 
 
 class FollowMode:
@@ -69,9 +72,9 @@ class FollowMode:
         self._states: dict[DiscordSnowflake, FollowState] = {}
         self._dwell_timers: dict[DiscordSnowflake, asyncio.Task[None]] = {}
         self._idle_timers: dict[DiscordSnowflake, asyncio.Task[None]] = {}
-        self._on_next_track_queued: (
-            Callable[[DiscordSnowflake, Track], Awaitable[None]] | None
-        ) = None
+        self._on_next_track_queued: Callable[[DiscordSnowflake, Track], Awaitable[None]] | None = (
+            None
+        )
 
     def set_next_track_queued_callback(
         self, callback: Callable[[DiscordSnowflake, Track], Awaitable[None]] | None
@@ -108,13 +111,16 @@ class FollowMode:
     ) -> None:
         self._cancel_dwell_timer(guild_id)
         self._cancel_idle_timer(guild_id)
-        self._states[guild_id] = FollowState(
+        state = FollowState(
             user_id=user_id,
             user_name=user_name,
             max_tracks=max_tracks,
             last_enqueued_key=last_enqueued_key,
             enqueued_count=enqueued_count,
         )
+        if last_enqueued_key:
+            state.enqueued_keys.add(last_enqueued_key)
+        self._states[guild_id] = state
         logger.info(
             "FollowMode enabled in guild %s for user %s (max %d tracks)",
             guild_id,
@@ -149,7 +155,7 @@ class FollowMode:
         state = self._states.get(guild_id)
         if state is None or state.user_id != user_id:
             return False
-        if query == state.last_enqueued_key:
+        if query in state.enqueued_keys:
             return False
         return await self._enqueue(state, guild_id, query)
 
@@ -173,7 +179,7 @@ class FollowMode:
         # The user is actively listening — cancel any pending stop-disconnect.
         self._cancel_idle_timer(guild_id)
 
-        if query in (state.last_enqueued_key, state.pending_key):
+        if query == state.pending_key or query in state.enqueued_keys:
             return False
 
         # A different song than what's queued/pending — restart the gate so a
@@ -210,13 +216,9 @@ class FollowMode:
             guild_id,
             TimeConstants.FOLLOW_STOP_GRACE_SECONDS,
         )
-        self._idle_timers[guild_id] = asyncio.create_task(
-            self._grace_then_disconnect(guild_id)
-        )
+        self._idle_timers[guild_id] = asyncio.create_task(self._grace_then_disconnect(guild_id))
 
-    async def _dwell_then_enqueue(
-        self, guild_id: DiscordSnowflake, query: NonEmptyStr
-    ) -> None:
+    async def _dwell_then_enqueue(self, guild_id: DiscordSnowflake, query: NonEmptyStr) -> None:
         try:
             await asyncio.sleep(TimeConstants.FOLLOW_DWELL_SECONDS)
         except asyncio.CancelledError:
@@ -236,9 +238,7 @@ class FollowMode:
         """Resolve and append the track; start playback only if idle (buffer)."""
         track = await self._audio_resolver.resolve(query)
         if track is None:
-            logger.debug(
-                "FollowMode resolve failed for query=%r in guild %s", query, guild_id
-            )
+            logger.debug("FollowMode resolve failed for query=%r in guild %s", query, guild_id)
             return False
 
         result = await self._queue_service.enqueue(
@@ -248,13 +248,12 @@ class FollowMode:
             user_name=state.user_name,
         )
         if not result.success:
-            logger.debug(
-                "FollowMode enqueue rejected in guild %s: %s", guild_id, result.message
-            )
+            logger.debug("FollowMode enqueue rejected in guild %s: %s", guild_id, result.message)
             return False
 
         state.enqueued_count += 1
         state.last_enqueued_key = query
+        state.enqueued_keys.add(query)
         logger.info(
             "FollowMode queued '%s' (%d/%d) in guild %s",
             track.title,
@@ -275,9 +274,7 @@ class FollowMode:
 
         return True
 
-    async def _notify_next_track_queued(
-        self, guild_id: DiscordSnowflake, track: Track
-    ) -> None:
+    async def _notify_next_track_queued(self, guild_id: DiscordSnowflake, track: Track) -> None:
         """Notify infrastructure that the visible upcoming track changed."""
         if self._on_next_track_queued is None:
             return

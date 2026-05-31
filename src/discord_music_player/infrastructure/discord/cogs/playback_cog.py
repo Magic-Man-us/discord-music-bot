@@ -80,9 +80,7 @@ class PlaybackCog(BaseCog):
         self._requester_left_views: dict[DiscordSnowflake, RequesterLeftView] = {}
 
     async def cog_load(self) -> None:
-        self.container.playback_service.set_track_finished_callback(
-            self._on_track_finished
-        )
+        self.container.playback_service.set_track_finished_callback(self._on_track_finished)
         self.container.follow_mode.set_next_track_queued_callback(
             self._on_follow_mode_next_track_queued
         )
@@ -104,9 +102,7 @@ class PlaybackCog(BaseCog):
         if hasattr(self, "_event_bus"):
             from ....domain.shared.events import TrackStartedPlaying
 
-            self._event_bus.unsubscribe(
-                TrackStartedPlaying, self._on_track_started_auto_post
-            )
+            self._event_bus.unsubscribe(TrackStartedPlaying, self._on_track_started_auto_post)
 
     # ─────────────────────────────────────────────────────────────────
     # Play
@@ -133,9 +129,7 @@ class PlaybackCog(BaseCog):
         interaction: discord.Interaction,
         query: str,
         timestamp: str | None = None,
-        count: (
-            app_commands.Range[int, 1, PlaylistConstants.MAX_PLAYLIST_TRACKS] | None
-        ) = None,
+        count: (app_commands.Range[int, 1, PlaylistConstants.MAX_PLAYLIST_TRACKS] | None) = None,
         start: app_commands.Range[int, 1, 1000] | None = None,
         shuffle: bool = False,
     ) -> None:
@@ -176,9 +170,7 @@ class PlaybackCog(BaseCog):
             return None
 
         if not member.voice or not member.voice.channel:
-            await send_ephemeral(
-                interaction, "You need to be in a voice channel first."
-            )
+            await send_ephemeral(interaction, "You need to be in a voice channel first.")
             return None
 
         if not interaction.guild:
@@ -233,9 +225,7 @@ class PlaybackCog(BaseCog):
             return False
 
         if not member.voice or not member.voice.channel:
-            await send_ephemeral(
-                interaction, "You need to be in a voice channel first."
-            )
+            await send_ephemeral(interaction, "You need to be in a voice channel first.")
             return False
 
         if not interaction.guild:
@@ -282,9 +272,7 @@ class PlaybackCog(BaseCog):
         channel_id = member.voice.channel.id
 
         if not voice_adapter.is_connected(interaction.guild.id):
-            success = await voice_adapter.ensure_connected(
-                interaction.guild.id, channel_id
-            )
+            success = await voice_adapter.ensure_connected(interaction.guild.id, channel_id)
             if not success:
                 await send_ephemeral(interaction, "I couldn't join your voice channel.")
                 return False
@@ -322,9 +310,7 @@ class PlaybackCog(BaseCog):
 
             search_query = await extract_search_query_from_url(query)
             if search_query:
-                self.logger.info(
-                    "Resolved external URL to search query: %s", search_query
-                )
+                self.logger.info("Resolved external URL to search query: %s", search_query)
                 query = search_query
             else:
                 await send_ephemeral(
@@ -547,12 +533,8 @@ class PlaybackCog(BaseCog):
                 result.should_start,
             )
             if result.should_start:
-                self.logger.info(
-                    "Calling start_playback for guild %s", interaction.guild.id
-                )
-                self.container.message_state_manager.reserve_now_playing(
-                    interaction.guild.id
-                )
+                self.logger.info("Calling start_playback for guild %s", interaction.guild.id)
+                self.container.message_state_manager.reserve_now_playing(interaction.guild.id)
                 await self.container.playback_service.start_playback(
                     interaction.guild.id, start_seconds=start_seconds
                 )
@@ -569,9 +551,7 @@ class PlaybackCog(BaseCog):
             self.logger.exception("Error in play command")
             # Drop any reservation we set above so a failed now-playing send
             # doesn't suppress the auto-poster for the rest of the session.
-            self.container.message_state_manager.clear_now_playing_reservation(
-                interaction.guild.id
-            )
+            self.container.message_state_manager.clear_now_playing_reservation(interaction.guild.id)
             await interaction.followup.send("Command failed. See logs.", ephemeral=True)
             return False
 
@@ -593,9 +573,7 @@ class PlaybackCog(BaseCog):
         ):
             return False
 
-        listeners = await self.container.voice_adapter.get_listeners(
-            interaction.guild.id
-        )
+        listeners = await self.container.voice_adapter.get_listeners(interaction.guild.id)
         if len(listeners) <= LimitConstants.LONG_TRACK_VOTE_BYPASS_LISTENERS:
             return False
 
@@ -706,7 +684,8 @@ class PlaybackCog(BaseCog):
 
         session = await self.container.session_repository.get(guild_id)
         upcoming = session.peek() if session else None
-        await msm.update_next_up(guild_id, upcoming)
+        current = session.current_track if session else None
+        await msm.update_next_up(guild_id, current_track=current, next_track=upcoming)
 
     # ─────────────────────────────────────────────────────────────────
     # Seek
@@ -717,9 +696,7 @@ class PlaybackCog(BaseCog):
         description="Jump to a specific time in the current track (e.g. 1:30).",
     )
     @app_commands.guild_only()
-    @app_commands.describe(
-        timestamp='Position (e.g. "1:30", "1:30:00", or seconds like "90")'
-    )
+    @app_commands.describe(timestamp='Position (e.g. "1:30", "1:30:00", or seconds like "90")')
     async def seek(self, interaction: discord.Interaction, timestamp: str) -> None:
         if not await ensure_user_in_voice_and_warm(
             interaction, self.container.voice_warmup_tracker
@@ -746,18 +723,14 @@ class PlaybackCog(BaseCog):
             return
 
         playback_service = self.container.playback_service
-        success = await playback_service.seek_playback(
-            interaction.guild.id, start_seconds=seek
-        )
+        success = await playback_service.seek_playback(interaction.guild.id, start_seconds=seek)
 
         if success:
             await interaction.response.send_message(
                 f"Seeked to **{format_duration(raw_seconds)}**.", ephemeral=True
             )
         else:
-            await interaction.response.send_message(
-                "Nothing is playing to seek.", ephemeral=True
-            )
+            await interaction.response.send_message("Nothing is playing to seek.", ephemeral=True)
 
     # ─────────────────────────────────────────────────────────────────
     # Play Next
@@ -773,9 +746,7 @@ class PlaybackCog(BaseCog):
         await interaction.response.defer()
         await self._execute_playnext(interaction, query)
 
-    async def _execute_playnext(
-        self, interaction: discord.Interaction, query: str
-    ) -> None:
+    async def _execute_playnext(self, interaction: discord.Interaction, query: str) -> None:
         member = await self._ensure_voice_ready(interaction)
         if member is None or interaction.guild is None:
             return
@@ -832,9 +803,7 @@ class PlaybackCog(BaseCog):
         preview = await resolver.preview_playlist(url)
 
         if not preview.entries:
-            await interaction.followup.send(
-                "That playlist appears to be empty.", ephemeral=True
-            )
+            await interaction.followup.send("That playlist appears to be empty.", ephemeral=True)
             return
 
         auto_enqueue = count is not None or start is not None or shuffle
@@ -967,9 +936,7 @@ class PlaybackCog(BaseCog):
         except Exception:
             self.logger.debug("Failed to auto-post now-playing for guild %s", guild_id)
 
-    def _find_auto_post_channel(
-        self, guild_id: DiscordSnowflake
-    ) -> discord.TextChannel | None:
+    def _find_auto_post_channel(self, guild_id: DiscordSnowflake) -> discord.TextChannel | None:
         guild = self.bot.get_guild(guild_id)
         if guild is None:
             return None
@@ -1011,9 +978,7 @@ class PlaybackCog(BaseCog):
 
         if channel is None:
             guild = self.bot.get_guild(guild_id)
-            if guild is not None and isinstance(
-                guild.system_channel, discord.abc.Messageable
-            ):
+            if guild is not None and isinstance(guild.system_channel, discord.abc.Messageable):
                 channel = guild.system_channel
 
         if channel is None:
@@ -1052,11 +1017,14 @@ class PlaybackCog(BaseCog):
         self, guild_id: DiscordSnowflake, track: Track
     ) -> None:
         """Refresh the visible Next Up field after /playmine queues behind current."""
-        await self.container.message_state_manager.update_next_up(guild_id, track)
+        session = await self.container.session_repository.get(guild_id)
+        current = session.current_track if session else None
+        upcoming = session.peek() if session else None
+        await self.container.message_state_manager.update_next_up(
+            guild_id, current_track=current, next_track=upcoming
+        )
 
-    async def _on_track_finished(
-        self, guild_id: DiscordSnowflake, track: Track
-    ) -> None:
+    async def _on_track_finished(self, guild_id: DiscordSnowflake, track: Track) -> None:
         msm = self.container.message_state_manager
         await msm.on_track_finished(guild_id, track)
 
@@ -1075,9 +1043,7 @@ class PlaybackCog(BaseCog):
     # Playback Controls
     # ─────────────────────────────────────────────────────────────────
 
-    @app_commands.command(
-        name="stop", description="Stop the music and clear the entire queue."
-    )
+    @app_commands.command(name="stop", description="Stop the music and clear the entire queue.")
     @app_commands.guild_only()
     async def stop(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
@@ -1085,9 +1051,7 @@ class PlaybackCog(BaseCog):
         ):
             return
 
-        if not await ensure_dj_role(
-            interaction, self.container.settings.discord.dj_role_id
-        ):
+        if not await ensure_dj_role(interaction, self.container.settings.discord.dj_role_id):
             return
 
         assert interaction.guild is not None
@@ -1107,9 +1071,7 @@ class PlaybackCog(BaseCog):
                 "Stopped playback and cleared the queue.", ephemeral=True
             )
         else:
-            await interaction.response.send_message(
-                "Nothing is playing.", ephemeral=True
-            )
+            await interaction.response.send_message("Nothing is playing.", ephemeral=True)
 
     @app_commands.command(name="pause", description="Pause the current track.")
     @app_commands.guild_only()
@@ -1147,17 +1109,13 @@ class PlaybackCog(BaseCog):
         if resumed:
             await interaction.response.send_message("Resumed playback.", ephemeral=True)
         else:
-            await interaction.response.send_message(
-                "Nothing is paused.", ephemeral=True
-            )
+            await interaction.response.send_message("Nothing is paused.", ephemeral=True)
 
     # ─────────────────────────────────────────────────────────────────
     # Leave
     # ─────────────────────────────────────────────────────────────────
 
-    @app_commands.command(
-        name="leave", description="Disconnect the bot from the voice channel."
-    )
+    @app_commands.command(name="leave", description="Disconnect the bot from the voice channel.")
     @app_commands.guild_only()
     async def leave(self, interaction: discord.Interaction) -> None:
         if not await ensure_user_in_voice_and_warm(
