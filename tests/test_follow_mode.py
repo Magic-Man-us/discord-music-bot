@@ -12,6 +12,7 @@ from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.shared.constants import LimitConstants, TimeConstants
 from discord_music_player.domain.shared.events import (
     FollowModeStopped,
+    TrackFinishedPlaying,
     VoiceMemberLeftVoiceChannel,
     get_event_bus,
     reset_event_bus,
@@ -42,6 +43,12 @@ def _track(track_id: str = "abc", title: str = "T") -> Track:
         title=title,
         webpage_url=f"https://yt/{track_id}",
         duration_seconds=180,
+    )
+
+
+def _finished(track_id: str, *, skipped: bool = False) -> TrackFinishedPlaying:
+    return TrackFinishedPlaying(
+        guild_id=GUILD_ID, track_id=TrackId(value=track_id), was_skipped=skipped
     )
 
 
@@ -110,11 +117,11 @@ class TestLifecycle:
             user_id=USER_ID,
             user_name=USER_NAME,
             last_enqueued_key="Artist - Track",
-            enqueued_count=1,
+            kept_count=1,
         )
         state = follow_mode._states[GUILD_ID]
         assert state.last_enqueued_key == "Artist - Track"
-        assert state.enqueued_count == 1
+        assert state.kept_count == 1
 
     def test_disable_clears_state(self, follow_mode: FollowMode) -> None:
         follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
@@ -272,7 +279,9 @@ class TestDwellGate:
         state = follow_mode._states[GUILD_ID]
         assert state.last_enqueued_key == "A - T"
         assert state.pending_key is None
-        assert state.enqueued_count == 1
+        # Queued but not yet played: in flight, not yet counted toward the cap.
+        assert "abc" in state.pending_track_ids
+        assert state.kept_count == 0
 
     @pytest.mark.asyncio
     async def test_dwell_commit_notifies_when_track_becomes_next_up(
@@ -348,14 +357,57 @@ class TestDwellGate:
         assert follow_mode.is_enabled(GUILD_ID) is True
 
     @pytest.mark.asyncio
-    async def test_auto_disables_after_cap(self, follow_mode: FollowMode) -> None:
+    async def test_enqueue_does_not_disable_only_completions_do(
+        self, follow_mode: FollowMode, audio_resolver: MagicMock
+    ) -> None:
+        audio_resolver.resolve = AsyncMock(side_effect=lambda q: _track(track_id=q, title=q))
         follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME, max_tracks=2)
-        await follow_mode.seed_current(GUILD_ID, USER_ID, "A - 1")
-        assert follow_mode.is_enabled(GUILD_ID) is True
 
+        await follow_mode.seed_current(GUILD_ID, USER_ID, "A - 1")
         follow_mode._states[GUILD_ID].pending_key = "A - 2"
         await follow_mode._dwell_then_enqueue(GUILD_ID, "A - 2")
+        # Two tracks queued, but the cap counts plays, not enqueues.
+        assert follow_mode.is_enabled(GUILD_ID) is True
+        assert follow_mode._states[GUILD_ID].pending_track_ids == {"A - 1", "A - 2"}
+
+        await follow_mode._on_track_finished(_finished("A - 1"))
+        assert follow_mode.is_enabled(GUILD_ID) is True
+        assert follow_mode._states[GUILD_ID].kept_count == 1
+
+        await follow_mode._on_track_finished(_finished("A - 2"))
         assert follow_mode.is_enabled(GUILD_ID) is False
+
+    @pytest.mark.asyncio
+    async def test_skip_frees_a_slot_so_it_does_not_count(
+        self, follow_mode: FollowMode, audio_resolver: MagicMock, queue_service: MagicMock
+    ) -> None:
+        audio_resolver.resolve = AsyncMock(side_effect=lambda q: _track(track_id=q, title=q))
+        follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME, max_tracks=1)
+
+        await follow_mode.seed_current(GUILD_ID, USER_ID, "A - 1")
+        # Budget full (0 kept + 1 in flight == max): a new song is gated out.
+        follow_mode._states[GUILD_ID].pending_key = "A - 2"
+        await follow_mode._dwell_then_enqueue(GUILD_ID, "A - 2")
+        assert queue_service.enqueue.await_count == 1
+
+        # Skipping the in-flight track frees the slot without counting it.
+        await follow_mode._on_track_finished(_finished("A - 1", skipped=True))
+        state = follow_mode._states[GUILD_ID]
+        assert state.kept_count == 0
+        assert state.pending_track_ids == set()
+        assert follow_mode.is_enabled(GUILD_ID) is True
+
+        # Now a fresh song fits the freed slot.
+        follow_mode._states[GUILD_ID].pending_key = "A - 3"
+        await follow_mode._dwell_then_enqueue(GUILD_ID, "A - 3")
+        assert queue_service.enqueue.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_finished_event_ignores_non_mirror_tracks(self, follow_mode: FollowMode) -> None:
+        follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME, max_tracks=2)
+        # A track the mirror never queued (e.g. a /play track) must not count.
+        await follow_mode._on_track_finished(_finished("not-mine"))
+        assert follow_mode._states[GUILD_ID].kept_count == 0
 
 
 # ============================================================================

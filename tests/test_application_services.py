@@ -813,6 +813,37 @@ class TestPlaybackApplicationServiceSkipTrack:
         mock_session_repo.save.assert_called()
 
     @pytest.mark.asyncio
+    async def test_skip_publishes_finished_event_marked_skipped(
+        self, service, mock_session_repo, sample_track
+    ):
+        """skip_track announces the track via TrackFinishedPlaying(was_skipped=True)."""
+        from discord_music_player.domain.shared.events import (
+            TrackFinishedPlaying,
+            get_event_bus,
+            reset_event_bus,
+        )
+
+        session = GuildPlaybackSession(guild_id=123456)
+        session.current_track = sample_track
+        mock_session_repo.get.return_value = session
+
+        reset_event_bus()
+        captured: list[TrackFinishedPlaying] = []
+
+        async def _capture(event: TrackFinishedPlaying) -> None:
+            captured.append(event)
+
+        get_event_bus().subscribe(TrackFinishedPlaying, _capture)
+        try:
+            await service.skip_track(guild_id=123456)
+        finally:
+            reset_event_bus()
+
+        assert len(captured) == 1
+        assert captured[0].track_id == sample_track.id
+        assert captured[0].was_skipped is True
+
+    @pytest.mark.asyncio
     async def test_skip_queue_empty_does_not_start_next(
         self, service, mock_session_repo, mock_voice_adapter, sample_track
     ):
@@ -1125,6 +1156,36 @@ class TestPlaybackApplicationServiceHandleTrackFinished:
 
         mock_session_repo.get.assert_called_once_with(123456)
         mock_session_repo.save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_publishes_finished_event_not_skipped(
+        self, service, mock_session_repo, sample_track
+    ):
+        """A natural finish announces TrackFinishedPlaying(was_skipped=False)."""
+        from discord_music_player.domain.shared.events import (
+            TrackFinishedPlaying,
+            get_event_bus,
+            reset_event_bus,
+        )
+
+        session = GuildPlaybackSession(guild_id=123456)
+        mock_session_repo.get.return_value = session
+
+        reset_event_bus()
+        captured: list[TrackFinishedPlaying] = []
+
+        async def _capture(event: TrackFinishedPlaying) -> None:
+            captured.append(event)
+
+        get_event_bus().subscribe(TrackFinishedPlaying, _capture)
+        try:
+            await service.handle_track_finished(guild_id=123456, track=sample_track)
+        finally:
+            reset_event_bus()
+
+        assert len(captured) == 1
+        assert captured[0].track_id == sample_track.id
+        assert captured[0].was_skipped is False
 
     @pytest.mark.asyncio
     async def test_handle_track_finished_with_next_track(
@@ -2091,13 +2152,9 @@ class TestEnqueueNextFailure:
         repo = StubSessionRepo()
         _seed_session_with_full_queue(repo)
         svc = _make_queue_service(repo)
-        track = Track(
-            id=TrackId(value="new"), title="New", webpage_url="https://yt/new"
-        )
+        track = Track(id=TrackId(value="new"), title="New", webpage_url="https://yt/new")
 
-        result = await svc.enqueue_next(
-            guild_id=1, track=track, user_id=42, user_name="U"
-        )
+        result = await svc.enqueue_next(guild_id=1, track=track, user_id=42, user_name="U")
 
         assert result.success is False
         assert "full" in result.message.lower()
@@ -2118,9 +2175,7 @@ class TestEnqueueBatch:
             Track(id=TrackId(value=f"t{i}"), title=f"T{i}", webpage_url=f"https://yt/t{i}")
             for i in range(3)
         ]
-        result = await svc.enqueue_batch(
-            guild_id=1, tracks=tracks, user_id=1, user_name="U"
-        )
+        result = await svc.enqueue_batch(guild_id=1, tracks=tracks, user_id=1, user_name="U")
         assert result.enqueued == 3
         assert result.should_start is True
 
@@ -2137,9 +2192,7 @@ class TestEnqueueBatch:
         svc = _make_queue_service(repo)
 
         tracks = [Track(id=TrackId(value="t1"), title="T1", webpage_url="https://yt/t1")]
-        result = await svc.enqueue_batch(
-            guild_id=1, tracks=tracks, user_id=1, user_name="U"
-        )
+        result = await svc.enqueue_batch(guild_id=1, tracks=tracks, user_id=1, user_name="U")
         assert result.enqueued == 1
         assert result.should_start is False
 
@@ -2161,9 +2214,7 @@ class TestEnqueueBatch:
             Track(id=TrackId(value=f"n{i}"), title=f"N{i}", webpage_url=f"https://yt/n{i}")
             for i in range(5)
         ]
-        result = await svc.enqueue_batch(
-            guild_id=1, tracks=tracks, user_id=1, user_name="U"
-        )
+        result = await svc.enqueue_batch(guild_id=1, tracks=tracks, user_id=1, user_name="U")
         # Only one slot was free; remaining four hit the BusinessRuleViolationError
         assert result.enqueued == 1
 
@@ -2175,9 +2226,7 @@ class TestEnqueueBatch:
         svc = _make_queue_service(repo)
 
         tracks = [Track(id=TrackId(value="t1"), title="T1", webpage_url="https://yt/t1")]
-        result = await svc.enqueue_batch(
-            guild_id=1, tracks=tracks, user_id=1, user_name="U"
-        )
+        result = await svc.enqueue_batch(guild_id=1, tracks=tracks, user_id=1, user_name="U")
         assert result.enqueued == 0
         assert result.should_start is False
 

@@ -6,8 +6,10 @@ into that track, the bot lags behind, which is the *buffer* this mode relies
 on. Every subsequent track they broadcast is appended to the queue behind a
 dwell gate: it is only queued once it has stayed their current song for
 ``FOLLOW_DWELL_SECONDS``, so songs they skip past quickly never reach the
-queue. Caps at the per-follow ``max_tracks`` then auto-disables; disconnects
-after a grace period once their listening activity disappears.
+queue. The mirror runs until ``max_tracks`` songs have *played through* —
+a skipped mirror track frees its slot rather than counting — then
+auto-disables; it also disconnects after a grace period once their
+listening activity disappears.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ...domain.shared.constants import LimitConstants, TimeConstants
 from ...domain.shared.events import (
     FollowModeStopped,
+    TrackFinishedPlaying,
     VoiceMemberLeftVoiceChannel,
     get_event_bus,
 )
@@ -50,7 +53,12 @@ class FollowState(BaseModel):
     max_tracks: FollowTrackCount = LimitConstants.MAX_FOLLOW_TRACKS
     last_enqueued_key: str | None = None
     pending_key: str | None = None
-    enqueued_count: int = 0
+    # Mirror tracks that played through (the limit counts these); a skip never
+    # increments it, so skipping frees a slot for one more mirror.
+    kept_count: int = 0
+    # Track IDs queued by the mirror but not yet played/skipped. The enqueue
+    # budget is kept_count + len(pending_track_ids), capped at max_tracks.
+    pending_track_ids: set[str] = Field(default_factory=set)
     # Dedup against every key mirrored this session, so a revisited song
     # (A → B → A) isn't queued twice — not just the single most recent one.
     enqueued_keys: set[str] = Field(default_factory=set)
@@ -86,6 +94,7 @@ class FollowMode:
         if self._started:
             return
         self._bus.subscribe(VoiceMemberLeftVoiceChannel, self._on_member_left)
+        self._bus.subscribe(TrackFinishedPlaying, self._on_track_finished)
         self._started = True
         logger.info("FollowMode started")
 
@@ -93,6 +102,7 @@ class FollowMode:
         if not self._started:
             return
         self._bus.unsubscribe(VoiceMemberLeftVoiceChannel, self._on_member_left)
+        self._bus.unsubscribe(TrackFinishedPlaying, self._on_track_finished)
         for guild_id in list(self._states):
             self._cancel_dwell_timer(guild_id)
             self._cancel_idle_timer(guild_id)
@@ -107,7 +117,7 @@ class FollowMode:
         *,
         max_tracks: FollowTrackCount = LimitConstants.MAX_FOLLOW_TRACKS,
         last_enqueued_key: str | None = None,
-        enqueued_count: int = 0,
+        kept_count: int = 0,
     ) -> None:
         self._cancel_dwell_timer(guild_id)
         self._cancel_idle_timer(guild_id)
@@ -116,7 +126,7 @@ class FollowMode:
             user_name=user_name,
             max_tracks=max_tracks,
             last_enqueued_key=last_enqueued_key,
-            enqueued_count=enqueued_count,
+            kept_count=kept_count,
         )
         if last_enqueued_key:
             state.enqueued_keys.add(last_enqueued_key)
@@ -236,6 +246,11 @@ class FollowMode:
         self, state: FollowState, guild_id: DiscordSnowflake, query: NonEmptyStr
     ) -> bool:
         """Resolve and append the track; start playback only if idle (buffer)."""
+        # Budget = tracks already kept + tracks still in flight. Skips drop out
+        # of pending without counting, which is what frees a slot.
+        if state.kept_count + len(state.pending_track_ids) >= state.max_tracks:
+            return False
+
         track = await self._audio_resolver.resolve(query)
         if track is None:
             logger.debug("FollowMode resolve failed for query=%r in guild %s", query, guild_id)
@@ -251,13 +266,14 @@ class FollowMode:
             logger.debug("FollowMode enqueue rejected in guild %s: %s", guild_id, result.message)
             return False
 
-        state.enqueued_count += 1
         state.last_enqueued_key = query
         state.enqueued_keys.add(query)
+        state.pending_track_ids.add(track.id.value)
         logger.info(
-            "FollowMode queued '%s' (%d/%d) in guild %s",
+            "FollowMode queued '%s' (%d kept + %d in flight / %d) in guild %s",
             track.title,
-            state.enqueued_count,
+            state.kept_count,
+            len(state.pending_track_ids),
             state.max_tracks,
             guild_id,
         )
@@ -268,9 +284,6 @@ class FollowMode:
             await self._playback_service.start_playback(guild_id)
         elif result.position == 0 and result.track is not None:
             await self._notify_next_track_queued(guild_id, result.track)
-
-        if state.enqueued_count >= state.max_tracks:
-            self.disable(guild_id)
 
         return True
 
@@ -283,6 +296,35 @@ class FollowMode:
             await self._on_next_track_queued(guild_id, track)
         except Exception:
             logger.debug("FollowMode next-track callback failed in guild %s", guild_id)
+
+    async def _on_track_finished(self, event: TrackFinishedPlaying) -> None:
+        """Settle a mirror track's slot once it finishes or is skipped.
+
+        A completed track counts toward ``max_tracks`` and auto-stops the
+        mirror at the cap; a skipped one is released without counting, so its
+        slot is freed for one more mirror.
+        """
+        state = self._states.get(event.guild_id)
+        if state is None:
+            return
+        track_id = event.track_id.value
+        if track_id not in state.pending_track_ids:
+            return
+
+        state.pending_track_ids.discard(track_id)
+        if event.was_skipped:
+            logger.debug("FollowMode mirror track skipped in guild %s; slot freed", event.guild_id)
+            return
+
+        state.kept_count += 1
+        logger.info(
+            "FollowMode kept %d/%d in guild %s",
+            state.kept_count,
+            state.max_tracks,
+            event.guild_id,
+        )
+        if state.kept_count >= state.max_tracks:
+            self.disable(event.guild_id)
 
     def _cancel_dwell_timer(self, guild_id: DiscordSnowflake) -> None:
         timer = self._dwell_timers.pop(guild_id, None)

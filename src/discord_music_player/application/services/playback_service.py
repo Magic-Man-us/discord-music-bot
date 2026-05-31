@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING
 from ...domain.music.entities import GuildPlaybackSession, Track
 from ...domain.music.enums import PlaybackState
 from ...domain.shared.datetime_utils import utcnow
-from ...domain.shared.events import QueueExhausted, TrackStartedPlaying, get_event_bus
+from ...domain.shared.events import (
+    QueueExhausted,
+    TrackFinishedPlaying,
+    TrackStartedPlaying,
+    get_event_bus,
+)
 from ...domain.shared.types import DiscordSnowflake
 from ...utils.logging import get_logger
 
@@ -359,6 +364,15 @@ class PlaybackApplicationService:
             skipped=True,
         )
 
+        await get_event_bus().publish(
+            TrackFinishedPlaying(
+                guild_id=guild_id,
+                track_id=skipped_track.id,
+                track_title=skipped_track.title,
+                was_skipped=True,
+            )
+        )
+
         if next_track:
             await self.start_playback(guild_id)
 
@@ -381,6 +395,15 @@ class PlaybackApplicationService:
             guild_id=guild_id,
             track_id=track.id,
             skipped=False,
+        )
+
+        await get_event_bus().publish(
+            TrackFinishedPlaying(
+                guild_id=guild_id,
+                track_id=track.id,
+                track_title=track.title,
+                was_skipped=False,
+            )
         )
 
         # Update the now-playing embed BEFORE starting the next track.
