@@ -881,16 +881,14 @@ class PlaybackCog(BaseCog):
     # ─────────────────────────────────────────────────────────────────
 
     async def _on_track_started_auto_post(self, event: TrackStartedPlaying) -> None:
-        """Auto-post a now-playing embed when no existing message is being tracked."""
+        """Single source of truth for the now-playing embed.
+
+        Posts it the first time a track plays and edits it in place on every
+        subsequent TrackStartedPlaying, so every transition (skip, follow-cut,
+        natural end) reflects the current track without each path re-implementing it.
+        """
         guild_id = event.guild_id
         msm = self.container.message_state_manager
-        state = msm.get_state(guild_id)
-
-        # If there's already a tracked now-playing message (or one is about to be sent
-        # by the /play command), skip to avoid duplicate embeds. The reservation
-        # self-expires so a failed send can't permanently suppress this poster.
-        if state.now_playing is not None or msm.reservation_active(guild_id):
-            return
 
         # Use event payload directly to avoid stale DB reads under rapid track changes
         if event.track_title is None or event.track_url is None:
@@ -901,11 +899,23 @@ class PlaybackCog(BaseCog):
             return
 
         track = session.current_track
-        upcoming = session.peek() if session else None
-
-        # Verify the session's current track matches the event to avoid posting
-        # an embed for the wrong track under rapid skips
+        # Verify the session's current track matches the event to avoid acting on a
+        # stale event under rapid skips.
         if track.title != event.track_title:
+            return
+
+        upcoming = session.peek()
+        state = msm.get_state(guild_id)
+
+        # Existing message → update it in place (the centralized update path).
+        if state.now_playing is not None:
+            await msm.promote_next_track(
+                guild_id, track, container=self.container, upcoming_track=upcoming
+            )
+            return
+
+        # A reservation means the /play command is about to post its own embed.
+        if msm.reservation_active(guild_id):
             return
 
         # Find the best text channel to post in
@@ -1025,19 +1035,9 @@ class PlaybackCog(BaseCog):
         )
 
     async def _on_track_finished(self, guild_id: DiscordSnowflake, track: Track) -> None:
-        msm = self.container.message_state_manager
-        await msm.on_track_finished(guild_id, track)
-
-        session = await self.container.session_repository.get(guild_id)
-        next_track = session.current_track if session is not None else None
-        if next_track is not None:
-            upcoming = session.peek() if session else None
-            await msm.promote_next_track(
-                guild_id,
-                next_track,
-                container=self.container,
-                upcoming_track=upcoming,
-            )
+        # Post the auto-deleting "Finished playing" line. The now-playing embed itself
+        # is updated by the TrackStartedPlaying auto-poster when the next track starts.
+        await self.container.message_state_manager.on_track_finished(guild_id, track)
 
     # ─────────────────────────────────────────────────────────────────
     # Playback Controls

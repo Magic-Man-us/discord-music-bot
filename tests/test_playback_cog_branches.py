@@ -402,21 +402,32 @@ class TestOnTrackStartedAutoPost:
         return TrackStartedPlaying(**defaults)
 
     @pytest.mark.asyncio
-    async def test_skips_when_now_playing_reserved(self):
+    async def test_skips_post_when_reserved_and_no_existing_message(self):
         container = _container()
         container.message_state_manager.reservation_active = MagicMock(return_value=True)
+        session = MagicMock()
+        session.current_track = _track("abc")
+        session.peek = MagicMock(return_value=None)
+        container.session_repository.get = AsyncMock(return_value=session)
         cog = _make_cog(container)
-        await cog._on_track_started_auto_post(self._event())
-        # Should never reach session_repository
-        container.session_repository.get.assert_not_awaited()
+        await cog._on_track_started_auto_post(self._event(track_title="T-abc"))
+        # Reserved + no existing message → defer to /play; don't post or promote.
+        container.message_state_manager.track_now_playing.assert_not_called()
+        container.message_state_manager.promote_next_track.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_skips_when_existing_now_playing_message(self):
+    async def test_promotes_when_existing_now_playing_message(self):
         container = _container()
         container.message_state_manager.get_state.return_value.now_playing = MagicMock()
+        session = MagicMock()
+        session.current_track = _track("abc")
+        session.peek = MagicMock(return_value=None)
+        container.session_repository.get = AsyncMock(return_value=session)
         cog = _make_cog(container)
-        await cog._on_track_started_auto_post(self._event())
-        container.session_repository.get.assert_not_awaited()
+        await cog._on_track_started_auto_post(self._event(track_title="T-abc"))
+        # Existing message → update it in place rather than posting a duplicate.
+        container.message_state_manager.promote_next_track.assert_awaited_once()
+        container.message_state_manager.track_now_playing.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_skips_when_event_lacks_title_or_url(self):
@@ -518,15 +529,14 @@ class TestOnTrackFinished:
         container.message_state_manager.promote_next_track.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_promotes_when_next_track_present(self):
+    async def test_posts_finished_line_without_promoting(self):
+        # The embed update is now owned by the TrackStartedPlaying auto-poster;
+        # _on_track_finished only posts the auto-deleting "Finished playing" line.
         container = _container()
-        session = MagicMock()
-        session.current_track = _track("next")
-        session.peek = MagicMock(return_value=None)
-        container.session_repository.get = AsyncMock(return_value=session)
         cog = _make_cog(container)
         await cog._on_track_finished(42, _track("a"))
-        container.message_state_manager.promote_next_track.assert_awaited_once()
+        container.message_state_manager.on_track_finished.assert_awaited_once()
+        container.message_state_manager.promote_next_track.assert_not_awaited()
 
 
 # =============================================================================

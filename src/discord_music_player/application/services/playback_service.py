@@ -406,11 +406,9 @@ class PlaybackApplicationService:
             )
         )
 
-        # Update the now-playing embed BEFORE starting the next track.
-        # start_playback publishes TrackStartedPlaying which triggers the
-        # auto-poster; the auto-poster skips when it sees an existing
-        # now_playing message. If we promoted after start_playback, a failed
-        # promote would leave a stale embed with no second chance to update.
+        # Announce the finished track (auto-deleting line). The now-playing embed
+        # itself is updated by the TrackStartedPlaying auto-poster when start_playback
+        # runs below, so every transition path shares one update mechanism.
         if self._on_track_finished_callback:
             try:
                 await self._on_track_finished_callback(guild_id, track)
