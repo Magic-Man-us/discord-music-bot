@@ -9,7 +9,8 @@ services:
       - "127.0.0.1:4416:4416"
     # Optional env vars: VISITOR_DATA (POT visitor data), PORT (server port, default 4416)
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4416/"]
+      # root path returns 404; /ping is the provider's liveness endpoint
+      test: ["CMD", "curl", "-f", "http://localhost:4416/ping"]
       interval: 30s
       timeout: 10s
       retries: 3

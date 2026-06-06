@@ -17,6 +17,7 @@ A Discord music bot with AI-powered radio, built with clean architecture. Plays 
 
 - **Python 3.12+**
 - **FFmpeg** - [ffmpeg.org](https://ffmpeg.org/)
+- **Node.js 23.5+** *(or Deno)* - JS runtime yt-dlp uses to solve YouTube's nsig throttle challenge; point `AUDIO__JS_RUNTIME_PATH` at the binary
 - **Docker** and **Docker Compose** - For the YouTube POT provider ([Install Docker](https://docs.docker.com/get-docker/))
 - **Discord Bot Token** - [Developer Portal](https://discord.com/developers/applications) with Message Content and Server Members intents enabled
 - **tmux** *(optional)* - Only needed for `make run-tmux` / `scripts/music_start.py`
@@ -299,8 +300,23 @@ make pot-status
 # Restart it
 make pot-start
 
-# Update yt-dlp (fixes most extraction issues)
-pip install --upgrade yt-dlp bgutil-ytdlp-pot-provider
+# Update yt-dlp (fixes most extraction issues) — keep the [default] extra for the nsig JS solver
+pip install --upgrade "yt-dlp[default]" bgutil-ytdlp-pot-provider
+```
+
+### Stuttering / Choppy Audio
+
+yt-dlp needs a JavaScript runtime to solve YouTube's `n` throttle challenge. Without one, audio falls back to the heavy legacy itag-18 video format and FFmpeg underruns, causing periodic stutter. This is separate from the POT provider (which handles 403s).
+
+```bash
+# 1. install the nsig solver scripts (the [default] extra) — Node 23.5+ or Deno must also be installed
+pip install -U "yt-dlp[default]"
+
+# 2. point the bot at the runtime (systemd's PATH usually lacks nvm-managed node)
+echo 'AUDIO__JS_RUNTIME_PATH=/path/to/node' >> .env
+
+# 3. verify — should print "JS runtimes: node-..." (not "none") and select format 251
+yt-dlp -v --simulate -f bestaudio "https://youtu.be/dQw4w9WgXcQ" 2>&1 | grep "JS runtimes"
 ```
 
 ### Bot Won't Join Voice Channel
