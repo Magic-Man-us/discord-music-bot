@@ -179,9 +179,10 @@ class Container:
     @property
     def audio_resolver(self) -> AudioResolver:
         if self._audio_resolver is None:
+            from ..infrastructure.audio.stream_probe import HttpStreamProbe
             from ..infrastructure.audio.ytdlp_resolver import YtDlpResolver
 
-            self._audio_resolver = YtDlpResolver(self.settings.audio)
+            self._audio_resolver = YtDlpResolver(self.settings.audio, probe=HttpStreamProbe())
         return self._audio_resolver
 
     @property

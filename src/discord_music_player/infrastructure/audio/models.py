@@ -8,9 +8,11 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Final
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
+from ...domain.shared.enums import YtDlpJsRuntime
 from ...domain.shared.types import (
+    HttpHeaders,
     HttpUrlStr,
     NonEmptyStr,
     NonNegativeFloat,
@@ -69,6 +71,7 @@ class YtDlpTrackInfo(BaseModel):
     like_count: NonNegativeInt | None = None
     view_count: NonNegativeInt | None = None
     formats: list[AudioFormatInfo] = []
+    http_headers: HttpHeaders | None = None
 
     @field_validator(
         "webpage_url",
@@ -167,6 +170,14 @@ class ExtractorArgs(BaseModel):
     youtube: YouTubeExtractorConfig
 
 
+class JsRuntimeConfig(BaseModel):
+    """Per-runtime entry for yt-dlp's ``js_runtimes`` param; ``path`` locates the binary."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: NonEmptyStr | None = None
+
+
 class YtDlpOpts(BaseModel):
     """Typed yt-dlp configuration options passed to YoutubeDL."""
 
@@ -184,3 +195,13 @@ class YtDlpOpts(BaseModel):
     skip_download: bool = True
     extract_flat: NonEmptyStr | bool = False
     extractor_args: ExtractorArgs | None = None
+    js_runtimes: dict[YtDlpJsRuntime, JsRuntimeConfig] = Field(
+        default_factory=lambda: {YtDlpJsRuntime.NODE: JsRuntimeConfig()}
+    )
+
+    @field_serializer("js_runtimes")
+    def _serialize_js_runtimes(
+        self, value: dict[YtDlpJsRuntime, JsRuntimeConfig]
+    ) -> dict[str, dict[str, str | None]]:
+        # yt-dlp expects plain string keys: {"node": {"path": "/..."}}
+        return {runtime.value: config.model_dump() for runtime, config in value.items()}

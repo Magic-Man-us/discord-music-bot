@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from pydantic import (
     AliasChoices,
@@ -37,6 +37,10 @@ from ..domain.shared.types import (
     VolumeFloat,
 )
 
+_VALIDATOR_MODE_BEFORE: Final[str] = "before"
+_TRUTHY_ENV_VALUES: Final[frozenset[str]] = frozenset("1 true t yes y on".split())
+_FALSY_ENV_VALUES: Final[frozenset[str]] = frozenset("0 false f no n off release".split())
+
 
 class DatabaseSettings(BaseModel):
     model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
@@ -60,9 +64,7 @@ class DatabaseSettings(BaseModel):
     @classmethod
     def validate_url(cls, v: str) -> str:
         if not v.startswith(("sqlite://", "postgresql://", "mysql://")):
-            raise ValueError(
-                "Database URL must start with sqlite://, postgresql://, or mysql://"
-            )
+            raise ValueError("Database URL must start with sqlite://, postgresql://, or mysql://")
         return v
 
 
@@ -102,7 +104,7 @@ class DiscordSettings(BaseModel):
         description="Optional role ID that gates destructive commands (skip, stop, clear, etc.)",
     )
 
-    @field_validator("owner_ids", "guild_ids", "test_guild_ids", mode="before")
+    @field_validator("owner_ids", "guild_ids", "test_guild_ids", mode=_VALIDATOR_MODE_BEFORE)
     @classmethod
     def _coerce_to_tuple(cls, v: tuple[int, ...] | list[int] | str) -> tuple[int, ...]:
         if isinstance(v, str):
@@ -135,11 +137,10 @@ class AudioSettings(BaseModel):
         }
     )
     ytdlp_format: NonEmptyStr = "bestaudio/best"
-    # android last is the no-JS-runtime fallback (legacy fmt 18, no PO token).
+    # tv_simply serves Opus 251 on URLs that authorize here; web/mweb 251 URLs 403. android (itag 18) is the fallback.
     player_client: list[YtDlpPlayerClient] = Field(
         default_factory=lambda: [
-            YtDlpPlayerClient.WEB,
-            YtDlpPlayerClient.MWEB,
+            YtDlpPlayerClient.TV_SIMPLY,
             YtDlpPlayerClient.ANDROID,
         ],
     )
@@ -147,8 +148,13 @@ class AudioSettings(BaseModel):
         default="http://127.0.0.1:4416",
         validation_alias=AliasChoices("pot_server_url", "bgutil_pot_server_url"),
     )
+    js_runtime_path: NonEmptyStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("js_runtime_path", "node_path"),
+        description="Path to the Node/Deno binary yt-dlp uses to solve YouTube's nsig challenge.",
+    )
     normalize_audio: bool = Field(
-        default=False,
+        default=True,
         description="Apply EBU R128 loudnorm filter to normalize audio volume across tracks.",
     )
 
@@ -246,19 +252,19 @@ class Settings(BaseSettings):
 
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
 
-    @field_validator("debug", mode="before")
+    @field_validator("debug", mode=_VALIDATOR_MODE_BEFORE)
     @classmethod
     def _normalize_debug(cls, v: bool | str) -> bool | str:
         """Coerce common boolean env strings and tolerate shell ``DEBUG=release``."""
         if isinstance(v, str):
             normalized = v.strip().casefold()
-            if normalized in {"1", "true", "t", "yes", "y", "on"}:
+            if normalized in _TRUTHY_ENV_VALUES:
                 return True
-            if normalized in {"0", "false", "f", "no", "n", "off", "", "release"}:
+            if not normalized or normalized in _FALSY_ENV_VALUES:
                 return False
         return v
 
-    @field_validator("log_level", mode="before")
+    @field_validator("log_level", mode=_VALIDATOR_MODE_BEFORE)
     @classmethod
     def _normalize_log_level(cls, v: str | LogLevel) -> LogLevel:
         if isinstance(v, str) and not isinstance(v, LogLevel):

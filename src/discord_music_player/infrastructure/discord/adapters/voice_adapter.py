@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import discord
 
@@ -21,6 +22,11 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 DEFAULT_VOLUME: float = 0.2
+
+# Conservative User-Agent allowlist: a value from yt-dlp's per-format headers is
+# interpolated into the FFmpeg before_options string (shlex-split), so anything with
+# quotes/CRLF/exotic chars could inject extra ffmpeg arguments. Reject and fall back.
+_SAFE_USER_AGENT_RE: Final[re.Pattern[str]] = re.compile(r"^[\w .,:;/()+-]+$")
 
 
 async def _safe_voice_op(label: str, coro: Awaitable[bool]) -> bool:
@@ -170,9 +176,17 @@ class DiscordVoiceAdapter(VoiceAdapter):
             vc.stop()
 
         try:
-            # User-Agent must match yt-dlp's primary player_client to prevent YouTube 403
+            # User-Agent must match the client that minted the stream URL or YouTube 403s.
+            # Prefer the resolved format's own UA, but only if it passes the allowlist
+            # (it is interpolated into FFmpeg args); otherwise fall back to the default.
+            candidate_ua = (track.stream_headers or {}).get("User-Agent")
+            user_agent = (
+                candidate_ua
+                if candidate_ua and _SAFE_USER_AGENT_RE.match(candidate_ua)
+                else self._user_agent
+            )
             base_before_opts = self._ffmpeg_options.get("before_options", "")
-            before_opts = f'{base_before_opts} -headers "User-Agent: {self._user_agent}"'
+            before_opts = f'{base_before_opts} -headers "User-Agent: {user_agent}"'
             if start_seconds is not None:
                 before_opts = f"-ss {start_seconds.value} {before_opts}"
             base_opts = self._ffmpeg_options.get("options", "")

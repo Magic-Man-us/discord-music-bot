@@ -264,19 +264,13 @@ class TestAudioSettings:
         assert audio.ytdlp_format == "bestaudio[ext=m4a]"
 
     def test_player_client_default(self):
-        """web/mweb (PO-token clients) + android last as the no-JS-runtime fallback.
-
-        Android serves legacy format 18 (combined mp4) without n-challenge
-        decryption, so it works in the systemd service environment where
-        nvm's node isn't on PATH.
-        """
+        """Defaults to tv_simply (Opus 251 on URLs that authorize) with android as a fallback."""
         from discord_music_player.domain.shared.enums import YtDlpPlayerClient
 
         audio = AudioSettings()
 
         assert audio.player_client == [
-            YtDlpPlayerClient.WEB,
-            YtDlpPlayerClient.MWEB,
+            YtDlpPlayerClient.TV_SIMPLY,
             YtDlpPlayerClient.ANDROID,
         ]
 
@@ -287,6 +281,24 @@ class TestAudioSettings:
         audio = AudioSettings(player_client=[YtDlpPlayerClient.ANDROID])
 
         assert audio.player_client == [YtDlpPlayerClient.ANDROID]
+
+    def test_js_runtime_path_default_none(self):
+        """js_runtime_path defaults to None (yt-dlp then relies on PATH lookup)."""
+        audio = AudioSettings()
+
+        assert audio.js_runtime_path is None
+
+    def test_js_runtime_path_custom(self):
+        """Should accept an explicit path to the JS runtime binary."""
+        audio = AudioSettings(js_runtime_path="/usr/bin/node")
+
+        assert audio.js_runtime_path == "/usr/bin/node"
+
+    def test_js_runtime_path_alias_node_path(self):
+        """Should populate js_runtime_path from the node_path alias."""
+        audio = AudioSettings(node_path="/opt/node/bin/node")
+
+        assert audio.js_runtime_path == "/opt/node/bin/node"
 
 
 # =============================================================================

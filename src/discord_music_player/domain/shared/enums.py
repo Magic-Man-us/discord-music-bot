@@ -41,6 +41,15 @@ class YtDlpPlayerClient(StrEnum):
     TV_SIMPLY = "tv_simply"
 
 
+class YtDlpJsRuntime(StrEnum):
+    """JavaScript runtimes yt-dlp can use to solve YouTube's nsig/signature challenge."""
+
+    DENO = "deno"
+    NODE = "node"
+    QUICKJS = "quickjs"
+    BUN = "bun"
+
+
 class LeaderboardCategory(StrEnum):
     """Leaderboard ranking categories."""
 

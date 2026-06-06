@@ -12,9 +12,11 @@ from typing import Any, Final, cast
 from yt_dlp import YoutubeDL
 
 from ...application.interfaces.audio_resolver import AudioResolver
+from ...application.interfaces.stream_probe import StreamProbe
 from ...config.settings import AudioSettings
 from ...domain.music.entities import PlaylistEntry, PlaylistPreview, Track
 from ...domain.music.wrappers import TrackId
+from ...domain.shared.enums import YtDlpJsRuntime, YtDlpPlayerClient
 from ...domain.shared.types import (
     HttpUrlStr,
     NonEmptyStr,
@@ -33,6 +35,7 @@ from .models import (
     AudioFormatInfo,
     CacheEntry,
     ExtractorArgs,
+    JsRuntimeConfig,
     YouTubeExtractorConfig,
     YtDlpExtractResult,
     YtDlpOpts,
@@ -72,8 +75,12 @@ def _generate_track_id(url: HttpUrlStr) -> str:
 
 
 class YtDlpResolver(AudioResolver):
-    def __init__(self, settings: AudioSettings | None = None) -> None:
+    def __init__(
+        self, settings: AudioSettings | None = None, probe: StreamProbe | None = None
+    ) -> None:
         self._settings = settings or AudioSettings()
+        self._probe = probe
+        self._player_clients: list[YtDlpPlayerClient] = list(self._settings.player_client)
         self._format = (
             self._settings.ytdlp_format or "251/140/bestaudio[protocol^=http]/bestaudio/best"
         )
@@ -88,6 +95,7 @@ class YtDlpResolver(AudioResolver):
         self._base_opts = YtDlpOpts(
             format=self._format,
             extractor_args=self._extractor_args,
+            js_runtimes={YtDlpJsRuntime.NODE: JsRuntimeConfig(path=self._settings.js_runtime_path)},
         )
 
         logger.info(
@@ -102,6 +110,51 @@ class YtDlpResolver(AudioResolver):
 
     def _get_playlist_opts(self) -> YtDlpOpts:
         return self._get_opts(noplaylist=False, extract_flat="in_playlist")
+
+    def _opts_for_client(self, client: YtDlpPlayerClient) -> YtDlpOpts:
+        """Base opts forced to a single player_client, used for 403 fallback resolution."""
+        single = ExtractorArgs(
+            youtube=YouTubeExtractorConfig(
+                pot_server_url=self._settings.pot_server_url,
+                player_client=[client],
+            )
+        )
+        return self._base_opts.model_copy(update={"extractor_args": single})
+
+    async def _ensure_playable(self, track: Track | None, query: NonEmptyStr) -> Track | None:
+        """Re-resolve through each configured client until one yields a non-403 URL.
+
+        No-op when no probe is injected (preserves resolve() behaviour in tests).
+        """
+        if track is None or self._probe is None or not track.stream_url:
+            return track
+        if await self._probe.is_playable(track.stream_url, track.stream_headers):
+            return track
+
+        webpage = track.webpage_url or query
+        for client in self._player_clients:
+            try:
+                info = await asyncio.to_thread(
+                    self._extract_info_sync, webpage, self._opts_for_client(client)
+                )
+            except Exception:
+                logger.exception("Fallback extract failed for client %s", client)
+                continue
+            candidate = self._info_to_track(info) if info else None
+            if (
+                candidate
+                and candidate.stream_url
+                and await self._probe.is_playable(candidate.stream_url, candidate.stream_headers)
+            ):
+                logger.info(
+                    "Stream fallback: client %s produced a playable URL for %r", client, track.title
+                )
+                return candidate
+
+        logger.warning(
+            "No player_client produced a playable stream for %r; using best-effort URL", track.title
+        )
+        return track
 
     def _info_to_track(self, info: YtDlpTrackInfo) -> Track | None:
         try:
@@ -127,6 +180,7 @@ class YtDlpResolver(AudioResolver):
                 title=title,
                 webpage_url=url,
                 stream_url=stream_url,
+                stream_headers=info.http_headers,
                 duration_seconds=info.duration,
                 thumbnail_url=info.thumbnail,
                 artist=artist,
@@ -169,22 +223,26 @@ class YtDlpResolver(AudioResolver):
         except Exception:
             return None
 
-    def _extract_info_sync(self, url: HttpUrlStr) -> YtDlpTrackInfo | None:
+    def _extract_info_sync(
+        self, url: HttpUrlStr, opts: YtDlpOpts | None = None
+    ) -> YtDlpTrackInfo | None:
         now = time.time()
-        with _cache_lock:
-            cached = _info_cache.get(url)
-            if cached is not None:
-                if now - cached.cached_at < CACHE_TTL:
-                    logger.debug("Cache hit for URL: %s", url[:LOG_URL_TRUNCATE])
-                    return cached.info
-                _info_cache.pop(url, None)
+        use_cache = opts is None
+        if use_cache:
+            with _cache_lock:
+                cached = _info_cache.get(url)
+                if cached is not None:
+                    if now - cached.cached_at < CACHE_TTL:
+                        logger.debug("Cache hit for URL: %s", url[:LOG_URL_TRUNCATE])
+                        return cached.info
+                    _info_cache.pop(url, None)
 
         try:
-            with YoutubeDL(params=cast(Any, self._get_opts().model_dump())) as ydl:
+            with YoutubeDL(params=cast(Any, (opts or self._get_opts()).model_dump())) as ydl:
                 data = ydl.extract_info(url, download=False)
                 result = self._parse_single_result(data)
 
-                if result is not None:
+                if result is not None and use_cache:
                     with _cache_lock:
                         _info_cache[url] = CacheEntry(info=result, cached_at=now)
                         self._evict_cache(now)
@@ -251,7 +309,7 @@ class YtDlpResolver(AudioResolver):
             if not info:
                 return None
 
-            return self._info_to_track(info)
+            return await self._ensure_playable(self._info_to_track(info), query)
         except TimeoutError:
             logger.error("yt-dlp extraction timed out after %ds for %r", EXTRACT_TIMEOUT, query)
             return None

@@ -18,7 +18,7 @@ Tests for:
 Uses mocking to isolate from actual implementations.
 """
 
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -37,6 +37,7 @@ def mock_settings():
     settings.audio.pot_server_url = "http://127.0.0.1:4416"
     settings.audio.ytdlp_format = "bestaudio/best"
     settings.audio.player_client = ["web", "android"]
+    settings.audio.js_runtime_path = None
     settings.ai = Mock()
     settings.ai.api_key = Mock()
     settings.ai.model = "gpt-4o-mini"
@@ -264,7 +265,7 @@ class TestAudioResolver:
             "discord_music_player.infrastructure.audio.ytdlp_resolver.YtDlpResolver"
         ) as MockResolver:
             resolver = container.audio_resolver
-            MockResolver.assert_called_once_with(container.settings.audio)
+            MockResolver.assert_called_once_with(container.settings.audio, probe=ANY)
             assert resolver == MockResolver.return_value
 
     def test_caching(self, container):

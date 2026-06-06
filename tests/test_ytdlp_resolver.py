@@ -19,9 +19,11 @@ from unittest.mock import patch
 
 import pytest
 
+from discord_music_player.application.interfaces.stream_probe import StreamProbe
 from discord_music_player.config.settings import AudioSettings
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.wrappers import TrackId
+from discord_music_player.domain.shared.enums import YtDlpPlayerClient
 from discord_music_player.infrastructure.audio.ytdlp_resolver import (
     CACHE_MAX_SIZE,
     CACHE_TTL,
@@ -843,8 +845,7 @@ class TestPOTProviderConfiguration:
         from discord_music_player.domain.shared.enums import YtDlpPlayerClient
 
         assert opts.extractor_args.youtube.player_client == [
-            YtDlpPlayerClient.WEB,
-            YtDlpPlayerClient.MWEB,
+            YtDlpPlayerClient.TV_SIMPLY,
             YtDlpPlayerClient.ANDROID,
         ]
 
@@ -983,12 +984,11 @@ class TestModelValidation:
 
     def test_ytdlp_opts_model_dump_produces_valid_dict(self):
         """model_dump should produce a dict consumable by YoutubeDL."""
+        from discord_music_player.domain.shared.enums import YtDlpPlayerClient
         from discord_music_player.infrastructure.audio.ytdlp_resolver import (
             ExtractorArgs,
             YouTubeExtractorConfig,
         )
-
-        from discord_music_player.domain.shared.enums import YtDlpPlayerClient
 
         opts = YtDlpOpts(
             format="bestaudio/best",
@@ -1021,3 +1021,80 @@ class TestModelValidation:
         """Should reject empty player_client list."""
         with pytest.raises(Exception):
             YouTubeExtractorConfig(pot_server_url="http://localhost:4416", player_client=[])
+
+
+class TestJsRuntimeWiring:
+    """yt-dlp JS runtime (nsig solver) configuration wiring."""
+
+    def test_resolver_wires_configured_node_path(self):
+        """Resolver places the configured node path into yt-dlp's js_runtimes."""
+        resolver = YtDlpResolver(AudioSettings(js_runtime_path="/usr/bin/node"))
+
+        js_runtimes = resolver._get_opts().model_dump()["js_runtimes"]
+
+        assert js_runtimes == {"node": {"path": "/usr/bin/node"}}
+
+    def test_resolver_defaults_to_node_without_path(self):
+        """With no configured path, node stays enabled and yt-dlp falls back to PATH lookup."""
+        resolver = YtDlpResolver(AudioSettings())
+
+        js_runtimes = resolver._get_opts().model_dump()["js_runtimes"]
+
+        assert js_runtimes == {"node": {"path": None}}
+
+
+class _FakeProbe(StreamProbe):
+    """Stub probe: a URL is playable iff it is in the allow-set."""
+
+    def __init__(self, playable: set[str]) -> None:
+        self._playable = playable
+
+    async def is_playable(self, url, headers=None) -> bool:
+        return url in self._playable
+
+
+class TestStreamFallback:
+    """resolve() re-resolves through fallback clients when the first URL 403s."""
+
+    @pytest.mark.asyncio
+    async def test_resolve_falls_back_to_authorizing_client(self):
+        settings = AudioSettings(
+            player_client=[YtDlpPlayerClient.TV_SIMPLY, YtDlpPlayerClient.ANDROID]
+        )
+        resolver = YtDlpResolver(settings, probe=_FakeProbe(playable={"https://good"}))
+
+        webpage = "https://www.youtube.com/watch?v=abcdefghijk"
+        bad = YtDlpTrackInfo(webpage_url=webpage, url="https://bad", title="X")
+        good = YtDlpTrackInfo(webpage_url=webpage, url="https://good", title="X")
+
+        def fake_extract(url, opts=None):
+            if opts is None:
+                return bad  # combined extract yields a 403 URL
+            client = opts.extractor_args.youtube.player_client[0]
+            return good if client == YtDlpPlayerClient.ANDROID else bad
+
+        resolver._extract_info_sync = fake_extract  # type: ignore[method-assign]
+
+        track = await resolver.resolve(webpage)
+
+        assert track is not None
+        assert track.stream_url == "https://good"
+
+    @pytest.mark.asyncio
+    async def test_resolve_keeps_url_when_probe_passes(self):
+        resolver = YtDlpResolver(
+            AudioSettings(player_client=[YtDlpPlayerClient.TV_SIMPLY]),
+            probe=_FakeProbe(playable={"https://good"}),
+        )
+        webpage = "https://www.youtube.com/watch?v=abcdefghijk"
+        good = YtDlpTrackInfo(webpage_url=webpage, url="https://good", title="X")
+
+        def fake_extract(url, opts=None):
+            return good
+
+        resolver._extract_info_sync = fake_extract  # type: ignore[method-assign]
+
+        track = await resolver.resolve(webpage)
+
+        assert track is not None
+        assert track.stream_url == "https://good"

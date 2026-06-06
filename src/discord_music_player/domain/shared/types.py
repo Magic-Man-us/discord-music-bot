@@ -84,6 +84,9 @@ TrackTitleStr = Annotated[str, Field(min_length=1, max_length=500)]
 HttpUrlStr = Annotated[str, Field(pattern=r"^https?://")]
 """String that starts with http:// or https://."""
 
+HttpHeaders = dict[NonEmptyStr, str]
+"""HTTP request headers (e.g. yt-dlp's per-format headers) keyed by header name."""
+
 
 # ── File size constraints ──────────────────────────────────────────
 

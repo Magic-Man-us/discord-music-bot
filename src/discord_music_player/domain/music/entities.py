@@ -7,8 +7,6 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .enums import LoopMode, PlaybackState
-from .wrappers import QueuePosition, TrackId
 from ..shared.constants import LimitConstants
 from ..shared.datetime_utils import UtcDateTime, utcnow
 from ..shared.exceptions import (
@@ -18,6 +16,7 @@ from ..shared.exceptions import (
 from ..shared.types import (
     DiscordSnowflake,
     DurationSeconds,
+    HttpHeaders,
     HttpUrlStr,
     NonEmptyStr,
     NonNegativeInt,
@@ -25,6 +24,8 @@ from ..shared.types import (
     TrackTitleStr,
     UtcDatetimeField,
 )
+from .enums import LoopMode, PlaybackState
+from .wrappers import QueuePosition, TrackId
 
 _RESOLVE_EXCLUDE_FIELDS: frozenset[str] = frozenset(
     {
@@ -61,6 +62,7 @@ class Track(BaseModel):
     title: TrackTitleStr
     webpage_url: HttpUrlStr
     stream_url: HttpUrlStr | None = None
+    stream_headers: HttpHeaders | None = None
     duration_seconds: DurationSeconds | None = None
     thumbnail_url: HttpUrlStr | None = None
     artist: NonEmptyStr | None = None
@@ -332,8 +334,6 @@ class GuildPlaybackSession(BaseModel):
             self.current_track = self.current_track.model_copy(
                 update={"stream_url": None},
             )
-        self.queue = [
-            track.model_copy(update={"stream_url": None}) for track in self.queue
-        ]
+        self.queue = [track.model_copy(update={"stream_url": None}) for track in self.queue]
         self.touch()
         return elapsed
