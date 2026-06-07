@@ -81,12 +81,12 @@ class SessionRepository(ABC):
         ...
 
     @abstractmethod
-    async def cleanup_stale(self, older_than: datetime) -> int:
+    async def cleanup_stale(self, older_than: datetime) -> NonNegativeInt:
         """Remove sessions with no activity since the given time to prevent memory leaks."""
         ...
 
     @abstractmethod
-    async def count(self) -> int:
+    async def count(self) -> NonNegativeInt:
         """Get the total number of sessions."""
         ...
 
@@ -107,19 +107,19 @@ class TrackHistoryRepository(ABC):
         ...
 
     @abstractmethod
-    async def get_play_count(self, guild_id: DiscordSnowflake, track_id: TrackId) -> int:
+    async def get_play_count(self, guild_id: DiscordSnowflake, track_id: TrackId) -> NonNegativeInt:
         """Get the number of times a track has been played in a guild."""
         ...
 
     @abstractmethod
     async def get_most_played(
         self, guild_id: DiscordSnowflake, limit: PositiveInt = 10
-    ) -> list[tuple[Track, int]]:
+    ) -> list[tuple[Track, NonNegativeInt]]:
         """Get the most played tracks for a guild, sorted by play count descending."""
         ...
 
     @abstractmethod
-    async def clear_history(self, guild_id: DiscordSnowflake) -> int:
+    async def clear_history(self, guild_id: DiscordSnowflake) -> NonNegativeInt:
         """Clear all history for a guild."""
         ...
 
@@ -134,43 +134,43 @@ class TrackHistoryRepository(ABC):
         ...
 
     @abstractmethod
-    async def cleanup_old(self, older_than: datetime) -> int:
+    async def cleanup_old(self, older_than: datetime) -> NonNegativeInt:
         """Remove history entries older than the given time."""
         ...
 
     # === Analytics Methods ===
 
     @abstractmethod
-    async def get_total_tracks(self, guild_id: DiscordSnowflake) -> int:
+    async def get_total_tracks(self, guild_id: DiscordSnowflake) -> NonNegativeInt:
         """Get total number of tracks played in a guild."""
         ...
 
     @abstractmethod
-    async def get_unique_tracks(self, guild_id: DiscordSnowflake) -> int:
+    async def get_unique_tracks(self, guild_id: DiscordSnowflake) -> NonNegativeInt:
         """Get number of unique tracks played in a guild."""
         ...
 
     @abstractmethod
-    async def get_total_listen_time(self, guild_id: DiscordSnowflake) -> int:
+    async def get_total_listen_time(self, guild_id: DiscordSnowflake) -> NonNegativeInt:
         """Get total listen time in seconds for a guild."""
         ...
 
     @abstractmethod
     async def get_top_requesters(
         self, guild_id: DiscordSnowflake, limit: PositiveInt = 10
-    ) -> list[tuple[DiscordSnowflake, NonEmptyStr, int]]:
+    ) -> list[tuple[DiscordSnowflake, NonEmptyStr, NonNegativeInt]]:
         """Get top requesters by play count. Returns (user_id, name, count)."""
         ...
 
     @abstractmethod
-    async def get_skip_rate(self, guild_id: DiscordSnowflake) -> float:
+    async def get_skip_rate(self, guild_id: DiscordSnowflake) -> UnitInterval:
         """Get the skip rate (0.0–1.0) for a guild."""
         ...
 
     @abstractmethod
     async def get_most_skipped(
         self, guild_id: DiscordSnowflake, limit: PositiveInt = 10
-    ) -> list[tuple[NonEmptyStr, int]]:
+    ) -> list[tuple[NonEmptyStr, NonNegativeInt]]:
         """Get most skipped tracks. Returns (title, skip_count)."""
         ...
 
@@ -187,24 +187,28 @@ class TrackHistoryRepository(ABC):
         guild_id: DiscordSnowflake,
         user_id: DiscordSnowflake,
         limit: PositiveInt = 10,
-    ) -> list[tuple[NonEmptyStr, int]]:
+    ) -> list[tuple[NonEmptyStr, NonNegativeInt]]:
         """Get a user's most played tracks. Returns (title, count)."""
         ...
 
     @abstractmethod
     async def get_activity_by_day(
         self, guild_id: DiscordSnowflake, days: PositiveInt = 30
-    ) -> list[tuple[str, int]]:
+    ) -> list[tuple[NonEmptyStr, NonNegativeInt]]:
         """Get daily play counts. Returns (date_str, count)."""
         ...
 
     @abstractmethod
-    async def get_activity_by_hour(self, guild_id: DiscordSnowflake) -> list[tuple[int, int]]:
+    async def get_activity_by_hour(
+        self, guild_id: DiscordSnowflake
+    ) -> list[tuple[NonNegativeInt, NonNegativeInt]]:
         """Get hourly play distribution. Returns (hour_0_23, count)."""
         ...
 
     @abstractmethod
-    async def get_activity_by_weekday(self, guild_id: DiscordSnowflake) -> list[tuple[int, int]]:
+    async def get_activity_by_weekday(
+        self, guild_id: DiscordSnowflake
+    ) -> list[tuple[NonNegativeInt, NonNegativeInt]]:
         """Get weekly play distribution. Returns (weekday_0_sun, count)."""
         ...
 
@@ -231,7 +235,7 @@ class TrackHistoryRepository(ABC):
         guild_id: DiscordSnowflake,
         time_range: LeaderboardTimeRange,
         limit: PositiveInt = 10,
-    ) -> list[tuple[Track, int]]:
+    ) -> list[tuple[Track, NonNegativeInt]]:
         """Get most played tracks in a time range. Returns (track, play_count)."""
         ...
 
@@ -241,7 +245,7 @@ class TrackHistoryRepository(ABC):
         guild_id: DiscordSnowflake,
         time_range: LeaderboardTimeRange,
         limit: PositiveInt = 10,
-    ) -> list[tuple[DiscordSnowflake, NonEmptyStr, int]]:
+    ) -> list[tuple[DiscordSnowflake, NonEmptyStr, NonNegativeInt]]:
         """Get top requesters in a time range. Returns (user_id, name, count)."""
         ...
 
@@ -251,6 +255,6 @@ class TrackHistoryRepository(ABC):
         guild_id: DiscordSnowflake,
         time_range: LeaderboardTimeRange,
         limit: PositiveInt = 10,
-    ) -> list[tuple[NonEmptyStr, int]]:
+    ) -> list[tuple[NonEmptyStr, NonNegativeInt]]:
         """Get most skipped tracks in a time range. Returns (title, skip_count)."""
         ...
