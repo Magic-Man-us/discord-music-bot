@@ -9,6 +9,7 @@ from typing import Protocol
 import discord
 from pydantic import BaseModel, ConfigDict
 
+from ....domain.shared.types import NonEmptyStr, NonNegativeInt
 from ....utils.logging import get_logger
 from .base_view import BaseInteractiveView
 
@@ -29,8 +30,8 @@ class WarmupRetryState(BaseModel):
 
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
-    remaining_seconds: int
-    query: str
+    remaining_seconds: NonNegativeInt
+    query: NonEmptyStr
     replay: ReplayFn
 
 

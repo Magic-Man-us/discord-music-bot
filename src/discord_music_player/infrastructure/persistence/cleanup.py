@@ -131,7 +131,7 @@ class CleanupStats(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def total_cleaned(self) -> int:
+    def total_cleaned(self) -> NonNegativeInt:
         return (
             self.sessions_cleaned + self.history_cleaned + self.cache_cleaned + self.votes_cleaned
         )

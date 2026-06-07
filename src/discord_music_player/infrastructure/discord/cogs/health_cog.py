@@ -15,7 +15,13 @@ from pydantic import BaseModel, ConfigDict
 from ....domain.shared.constants import HealthConstants, UIConstants
 from ....domain.shared.datetime_utils import UtcDateTime
 from ....domain.shared.enums import BotStatus
-from ....domain.shared.types import BYTES_PER_MB
+from ....domain.shared.types import (
+    BYTES_PER_MB,
+    FileSizeMB,
+    NonEmptyStr,
+    NonNegativeFloat,
+    NonNegativeInt,
+)
 from .base_cog import BaseCog
 
 if TYPE_CHECKING:
@@ -36,15 +42,15 @@ class BasicStats(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    ts: str
-    uptime_s: int
-    uptime_human: str
-    latency_ms: float
-    latency_human: str
-    queue_len: int
-    current: str | None
+    ts: NonEmptyStr
+    uptime_s: NonNegativeInt
+    uptime_human: NonEmptyStr
+    latency_ms: NonNegativeFloat
+    latency_human: NonEmptyStr
+    queue_len: NonNegativeInt
+    current: NonEmptyStr | None
     connected: bool
-    status: str
+    status: BotStatus
 
 
 class DetailedStats(BasicStats):
@@ -52,12 +58,12 @@ class DetailedStats(BasicStats):
 
     model_config = ConfigDict(extra="allow")
 
-    guild_count: int | None = None
-    voice_connections: int | None = None
-    rss_mb: float | None = None
-    vms_mb: float | None = None
+    guild_count: NonNegativeInt | None = None
+    voice_connections: NonNegativeInt | None = None
+    rss_mb: FileSizeMB | None = None
+    vms_mb: FileSizeMB | None = None
     db_initialized: bool | None = None
-    db_size_mb: float | None = None
+    db_size_mb: FileSizeMB | None = None
 
 
 class HealthCog(BaseCog):

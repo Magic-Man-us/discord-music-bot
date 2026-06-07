@@ -18,7 +18,7 @@ import urllib.error
 import urllib.request
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ...domain.shared.types import NonEmptyStr
 from ...utils.logging import get_logger
@@ -44,7 +44,7 @@ _USER_AGENT = (
     "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 )
 
-_BOUNDARY_CONFIG = ConfigDict(frozen=True, extra="ignore")
+_BOUNDARY_CONFIG = ConfigDict(frozen=True, extra="ignore", populate_by_name=True)
 
 _INDEX_JS_PATTERN = re.compile(r"/assets/(index~[a-f0-9]+\.js)")
 _JWT_PATTERN = re.compile(r"eyJhbGci[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
@@ -61,8 +61,8 @@ class AppleMusicResource(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     resource_type: AppleResourceType
-    country: str
-    resource_id: str
+    country: NonEmptyStr
+    resource_id: NonEmptyStr
 
 
 class AppleMusicError(RuntimeError):
@@ -75,13 +75,13 @@ class _TrackAttributes(BaseModel):
     name: NonEmptyStr
     # Only song rows carry ``artistName``; the root playlist/album resource
     # has ``name`` alone. Shared model, so keep it optional.
-    artistName: NonEmptyStr | None = None
+    artist_name: NonEmptyStr | None = Field(default=None, validation_alias="artistName")
 
 
 class _TracksRelation(BaseModel):
     model_config = _BOUNDARY_CONFIG
 
-    data: list[_Resource] = []
+    data: list[_Resource] = Field(default_factory=list)
 
 
 class _Relationships(BaseModel):
@@ -93,8 +93,8 @@ class _Relationships(BaseModel):
 class _Resource(BaseModel):
     model_config = _BOUNDARY_CONFIG
 
-    id: str
-    type: str
+    id: NonEmptyStr
+    type: NonEmptyStr
     attributes: _TrackAttributes | None = None
     relationships: _Relationships | None = None
 
@@ -102,7 +102,7 @@ class _Resource(BaseModel):
 class _CatalogResponse(BaseModel):
     model_config = _BOUNDARY_CONFIG
 
-    data: list[_Resource] = []
+    data: list[_Resource] = Field(default_factory=list)
 
 
 _Resource.model_rebuild()
@@ -212,9 +212,9 @@ class AppleMusicClient:
         root = catalog.data[0]
 
         if resource_type is AppleResourceType.SONG:
-            if root.attributes is None or root.attributes.artistName is None:
+            if root.attributes is None or root.attributes.artist_name is None:
                 return []
-            return [f"{root.attributes.artistName} - {root.attributes.name}"]
+            return [f"{root.attributes.artist_name} - {root.attributes.name}"]
 
         if root.relationships is None or root.relationships.tracks is None:
             return []
@@ -227,9 +227,9 @@ class AppleMusicClient:
             if track.type != AppleResourceType.SONG.value:
                 continue
             attrs = track.attributes
-            if attrs is None or attrs.artistName is None:
+            if attrs is None or attrs.artist_name is None:
                 continue
-            queries.append(f"{attrs.artistName} - {attrs.name}")
+            queries.append(f"{attrs.artist_name} - {attrs.name}")
         return queries
 
     async def _get_token(self, *, force_refresh: bool) -> str:

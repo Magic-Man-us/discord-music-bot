@@ -30,7 +30,7 @@ class PlaylistSlice(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    items_indices: tuple[int, ...]
+    items_indices: tuple[NonNegativeInt, ...]
     total: NonNegativeInt
     start: PlaylistStartIndex
     requested_count: PlaylistImportCount
