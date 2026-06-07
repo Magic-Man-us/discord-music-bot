@@ -6,12 +6,12 @@ import discord
 from discord import app_commands
 
 from ....domain.shared.constants import UIConstants
-from .base_cog import BaseCog
+from ....utils.reply import format_duration, truncate
 from ..guards.voice_guards import (
     ensure_user_in_voice_and_warm,
     ensure_voice,
 )
-from ....utils.reply import format_duration, truncate
+from .base_cog import BaseCog
 
 _FAVORITES_PER_PAGE = UIConstants.QUEUE_PER_PAGE
 

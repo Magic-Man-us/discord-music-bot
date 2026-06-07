@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ....domain.shared.datetime_utils import UtcDateTime
 from ....domain.music.repository import TrackGenreMap
+from ....domain.shared.datetime_utils import UtcDateTime
 from ....utils.logging import get_logger
 
 if TYPE_CHECKING:

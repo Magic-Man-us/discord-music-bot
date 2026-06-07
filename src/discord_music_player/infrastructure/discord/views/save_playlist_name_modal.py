@@ -44,9 +44,7 @@ class SavePlaylistNameModal(discord.ui.Modal, title="Save playlist"):
 
         normalised = self.name_input.value.strip().lower()
         if not normalised:
-            await interaction.response.send_message(
-                "Playlist name is required.", ephemeral=True
-            )
+            await interaction.response.send_message("Playlist name is required.", ephemeral=True)
             return
 
         repo = self._container.saved_queue_repository

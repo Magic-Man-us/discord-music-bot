@@ -43,9 +43,7 @@ class RadioCog(BaseCog):
     async def _on_pool_exhausted(self, event: RadioPoolExhausted) -> None:
         """Send 'Continue Radio?' prompt to the channel where radio was started."""
         if event.channel_id is None:
-            self.logger.warning(
-                "RadioPoolExhausted has no channel_id for guild %s", event.guild_id
-            )
+            self.logger.warning("RadioPoolExhausted has no channel_id for guild %s", event.guild_id)
             return
 
         channel = self.bot.get_channel(event.channel_id)
@@ -112,9 +110,7 @@ class RadioCog(BaseCog):
         await interaction.response.defer(ephemeral=True)
 
         self.container.radio_service.disable_radio(interaction.guild.id)
-        count = await self.container.queue_service.clear_recommendations(
-            interaction.guild.id
-        )
+        count = await self.container.queue_service.clear_recommendations(interaction.guild.id)
 
         msg = (
             f"Radio disabled. Removed **{count}** AI recommendation(s) from the queue."
@@ -132,9 +128,7 @@ class RadioCog(BaseCog):
         assert interaction.guild is not None
         from ..views.radio_count_view import RadioCountView
 
-        async def _start_radio_cb(
-            inter: discord.Interaction, count: int, q: str | None
-        ) -> None:
+        async def _start_radio_cb(inter: discord.Interaction, count: int, q: str | None) -> None:
             await self.start_radio(inter, count=count, query=q)
 
         view = RadioCountView(
@@ -201,9 +195,7 @@ class RadioCog(BaseCog):
 
         track = await self.container.audio_resolver.resolve(query)
         if not track:
-            await interaction.followup.send(
-                f"Couldn't find a track for: {query}", ephemeral=True
-            )
+            await interaction.followup.send(f"Couldn't find a track for: {query}", ephemeral=True)
             return False
 
         result = await self.container.queue_service.enqueue(
@@ -281,18 +273,14 @@ class RadioCog(BaseCog):
     @app_commands.choices(
         action=[
             app_commands.Choice(name=PlaymineAction.ON.value, value=PlaymineAction.ON),
-            app_commands.Choice(
-                name=PlaymineAction.OFF.value, value=PlaymineAction.OFF
-            ),
+            app_commands.Choice(name=PlaymineAction.OFF.value, value=PlaymineAction.OFF),
         ]
     )
     async def playmine(
         self,
         interaction: discord.Interaction,
         action: app_commands.Choice[str],
-        count: (
-            app_commands.Range[int, 1, LimitConstants.FOLLOW_TRACKS_HARD_CAP] | None
-        ) = None,
+        count: (app_commands.Range[int, 1, LimitConstants.FOLLOW_TRACKS_HARD_CAP] | None) = None,
     ) -> None:
         follow_mode = self.container.follow_mode
 
@@ -300,9 +288,7 @@ class RadioCog(BaseCog):
             assert interaction.guild is not None
             guild_id = interaction.guild.id
             follow_mode.disable(guild_id)
-            await interaction.response.send_message(
-                "Live mirror disabled.", ephemeral=True
-            )
+            await interaction.response.send_message("Live mirror disabled.", ephemeral=True)
             return
 
         if not await ensure_voice(
@@ -323,9 +309,7 @@ class RadioCog(BaseCog):
         from ..services.activity import enable_live_mirror
 
         max_tracks = count if count is not None else LimitConstants.MAX_FOLLOW_TRACKS
-        await enable_live_mirror(
-            interaction, follow_mode=follow_mode, max_tracks=max_tracks
-        )
+        await enable_live_mirror(interaction, follow_mode=follow_mode, max_tracks=max_tracks)
 
     async def _send_radio_enabled(
         self,

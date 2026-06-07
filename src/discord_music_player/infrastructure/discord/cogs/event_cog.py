@@ -349,9 +349,7 @@ class EventCog(BaseCog):
     # ─────────────────────────────────────────────────────────────────
 
     @commands.Cog.listener()
-    async def on_presence_update(
-        self, before: discord.Member, after: discord.Member
-    ) -> None:
+    async def on_presence_update(self, before: discord.Member, after: discord.Member) -> None:
         if after.bot:
             return
 
@@ -380,9 +378,7 @@ class EventCog(BaseCog):
         if guild is None:
             return
 
-        self.logger.info(
-            "Live mirror target stopped, disconnecting from guild %s", event.guild_id
-        )
+        self.logger.info("Live mirror target stopped, disconnecting from guild %s", event.guild_id)
         self._cancel_idle_timer(event.guild_id)
         self._cancel_empty_channel_timer(event.guild_id)
         await self._disconnect_and_cleanup(guild)

@@ -114,9 +114,7 @@ class DiagnosticsCog(BaseCog):
                 return
 
         if not isinstance(target_candidate, discord.Member):
-            await ctx.reply(
-                "Need a Member to inspect activities.", mention_author=False
-            )
+            await ctx.reply("Need a Member to inspect activities.", mention_author=False)
             return
         target = target_candidate
 

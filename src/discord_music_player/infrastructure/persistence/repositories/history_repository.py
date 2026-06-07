@@ -123,9 +123,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         )
         return row[_COUNT] if row else 0
 
-    async def get_most_played(
-        self, guild_id: int, limit: int = 10
-    ) -> list[tuple[Track, int]]:
+    async def get_most_played(self, guild_id: int, limit: int = 10) -> list[tuple[Track, int]]:
         rows = await self._db.fetch_all(
             """
             WITH ranked AS (
@@ -147,9 +145,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             """,
             (guild_id, limit),
         )
-        return [
-            (TrackRow.model_validate(row).to_track(), row["play_count"]) for row in rows
-        ]
+        return [(TrackRow.model_validate(row).to_track(), row["play_count"]) for row in rows]
 
     async def clear_history(self, guild_id: int) -> int:
         cursor = await self._db.execute(
@@ -161,9 +157,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         logger.info("Cleared %s history entries for guild %s", count, guild_id)
         return count
 
-    async def mark_finished(
-        self, guild_id: int, track_id: TrackId, skipped: bool = False
-    ) -> None:
+    async def mark_finished(self, guild_id: int, track_id: TrackId, skipped: bool = False) -> None:
         await self._db.execute(
             """
             UPDATE track_history
@@ -252,9 +246,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             return 0.0
         return row["skipped"] / row[_TOTAL]
 
-    async def get_most_skipped(
-        self, guild_id: int, limit: int = 10
-    ) -> list[tuple[str, int]]:
+    async def get_most_skipped(self, guild_id: int, limit: int = 10) -> list[tuple[str, int]]:
         rows = await self._db.fetch_all(
             """
             WITH ranked AS (
@@ -333,9 +325,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         )
         return [(row[_TITLE], row[_COUNT]) for row in rows]
 
-    async def get_activity_by_day(
-        self, guild_id: int, days: int = 30
-    ) -> list[tuple[str, int]]:
+    async def get_activity_by_day(self, guild_id: int, days: int = 30) -> list[tuple[str, int]]:
         rows = await self._db.fetch_all(
             """
             SELECT DATE(played_at) as day, COUNT(*) as count
@@ -381,9 +371,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         """Return a (clause, params) pair for the given time range."""
         if time_range == LeaderboardTimeRange.ALL_TIME:
             return "", ()
-        days_str = (
-            "-7 days" if time_range == LeaderboardTimeRange.LAST_7_DAYS else "-30 days"
-        )
+        days_str = "-7 days" if time_range == LeaderboardTimeRange.LAST_7_DAYS else "-30 days"
         return " AND played_at >= datetime('now', ?)", (days_str,)
 
     async def get_most_played_since(
@@ -411,9 +399,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
             """,
             (guild_id, *time_params, limit),
         )
-        return [
-            (TrackRow.model_validate(row).to_track(), row["play_count"]) for row in rows
-        ]
+        return [(TrackRow.model_validate(row).to_track(), row["play_count"]) for row in rows]
 
     async def get_top_requesters_since(
         self, guild_id: int, time_range: LeaderboardTimeRange, limit: int = 10
@@ -492,9 +478,7 @@ class SQLiteHistoryRepository(TrackHistoryRepository):
         )
         return [TrackRow.model_validate(row).to_track() for row in rows]
 
-    async def get_user_tracks_for_genre(
-        self, guild_id: int, user_id: int
-    ) -> list[GenreTrackInfo]:
+    async def get_user_tracks_for_genre(self, guild_id: int, user_id: int) -> list[GenreTrackInfo]:
         rows = await self._db.fetch_all(
             """
             SELECT track_id, title, artist

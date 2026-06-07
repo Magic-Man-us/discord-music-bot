@@ -181,9 +181,7 @@ class PlaylistView(BaseInteractiveView):
         for item in self.children:
             if isinstance(item, discord.ui.Select):
                 selected_indices = [int(v) for v in item.values]
-                selected = [
-                    self._entries[i] for i in selected_indices if i < len(self._entries)
-                ]
+                selected = [self._entries[i] for i in selected_indices if i < len(self._entries)]
                 await self._enqueue_selection(interaction, selected)
                 return
 

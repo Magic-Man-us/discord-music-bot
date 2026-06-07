@@ -17,12 +17,8 @@ _SPOTIFY_ALBUM_PATTERN = re.compile(
 _SPOTIFY_PLAYLIST_PATTERN = re.compile(
     r"https?://open\.spotify\.com/(?:intl-[a-z]+/)?playlist/([a-zA-Z0-9]+)"
 )
-_APPLE_MUSIC_PATTERN = re.compile(
-    r"https?://music\.apple\.com/[^/]+/(?:album|song|playlist)/"
-)
-_APPLE_MUSIC_PLAYLIST_PATTERN = re.compile(
-    r"https?://music\.apple\.com/[^/]+/playlist/"
-)
+_APPLE_MUSIC_PATTERN = re.compile(r"https?://music\.apple\.com/[^/]+/(?:album|song|playlist)/")
+_APPLE_MUSIC_PLAYLIST_PATTERN = re.compile(r"https?://music\.apple\.com/[^/]+/playlist/")
 
 
 def is_spotify_url(query: str) -> bool:
@@ -74,9 +70,7 @@ _HTML_TITLE_PATTERN = re.compile(
 _SPOTIFY_TITLE_CLEANUP = re.compile(r"\s*\|\s*Spotify\s*$", re.IGNORECASE)
 # Apple Music <title>: "Song Title - Song by Artist - Apple Music" or
 # "Album Title by Artist - Apple Music" (leading U+200E is common).
-_APPLE_MUSIC_TITLE_CLEANUP = re.compile(
-    r"\s*[-\u2013\u2014]\s*Apple\s+Music\s*$", re.IGNORECASE
-)
+_APPLE_MUSIC_TITLE_CLEANUP = re.compile(r"\s*[-\u2013\u2014]\s*Apple\s+Music\s*$", re.IGNORECASE)
 _SPOTIFY_TITLE_SEPARATOR = re.compile(
     r"\s*-\s*(?:song\s+(?:and\s+\w+\s+)?by|[^-]+\s+by)\s+", re.IGNORECASE
 )

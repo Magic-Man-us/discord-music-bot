@@ -37,10 +37,7 @@ def _extract_listening_payload(
                 return ("Spotify", query)
             continue
 
-        if (
-            isinstance(act, discord.Activity)
-            and act.type == discord.ActivityType.listening
-        ):
+        if isinstance(act, discord.Activity) and act.type == discord.ActivityType.listening:
             payload = _extract_generic_music_payload(act)
             if payload is not None:
                 return payload
@@ -121,10 +118,7 @@ async def enable_live_mirror(
         presences_enabled = interaction.client.intents.presences
         hint = ""
         if not presences_enabled:
-            hint = (
-                " *(bot's `presences` intent is OFF — check Developer "
-                "Portal + bot.py.)*"
-            )
+            hint = " *(bot's `presences` intent is OFF — check Developer Portal + bot.py.)*"
         await interaction.response.send_message(
             "I can't see what you're listening to. Make sure Spotify or "
             "Apple Music is open and **Activity Privacy → Display "

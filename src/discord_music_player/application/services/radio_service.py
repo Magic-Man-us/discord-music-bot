@@ -381,7 +381,9 @@ class RadioApplicationService:
         resolved = await self._drain_pool(state, guild_id, max_count=target)
 
         if resolved:
-            logger.info("Radio refill completed in guild %s: %d tracks from pool", guild_id, len(resolved))
+            logger.info(
+                "Radio refill completed in guild %s: %d tracks from pool", guild_id, len(resolved)
+            )
 
         if not state.pool:
             await self._publish_pool_exhausted(guild_id, state)
