@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import discord
 from discord.ext import commands
@@ -13,6 +13,15 @@ if TYPE_CHECKING:
     from ....application.services.queue_models import BatchEnqueueResult
     from ....config.container import Container
     from ....domain.music.entities import Track
+
+
+@runtime_checkable
+class ContainerBot(Protocol):
+    """Structural type for a Discord bot that carries the DI container."""
+
+    container: Container | None
+
+    async def add_cog(self, cog: commands.Cog, /) -> None: ...
 
 
 class BaseCog(commands.Cog):
@@ -46,9 +55,6 @@ class BaseCog(commands.Cog):
     @classmethod
     async def setup(cls, bot: commands.Bot) -> None:
         """Standard cog setup — registers the cog with the bot's container."""
-        # discord.py's Bot type declares no `container`; MusicBot attaches it at
-        # construction. Read it reflectively to validate setup at this framework edge.
-        container: Container | None = getattr(bot, "container", None)
-        if container is None:
+        if not isinstance(bot, ContainerBot) or bot.container is None:
             raise RuntimeError(f"{cls.__name__}: container not found on bot instance")
-        await bot.add_cog(cls(bot, container))
+        await bot.add_cog(cls(bot, bot.container))

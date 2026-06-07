@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import sys
@@ -41,6 +42,6 @@ class ColoredFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         if self._use_color():
             color = self.COLORS.get(record.levelno, "")
-            record = logging.makeLogRecord(record.__dict__)
+            record = copy.copy(record)
             record.levelname = f"{color}{record.levelname}{self.RESET}"
         return super().format(record)
