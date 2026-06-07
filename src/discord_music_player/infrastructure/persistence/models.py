@@ -7,9 +7,9 @@ rows.  They exist so raw ``dict`` never leaks into repository code.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any, Final
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ...domain.music.entities import Track
 from ...domain.music.wrappers import TrackId
@@ -20,7 +20,11 @@ from ...domain.shared.types import (
     HttpUrlStr,
     NonEmptyStr,
     NonNegativeInt,
+    OptionalNonEmptyStr,
 )
+
+QueueRowPosition = Annotated[int, Field(ge=-1)]
+"""Position in the ``queue_tracks`` table: ``-1`` marks the current track, ``0+`` is queue order."""
 
 
 class TrackRow(BaseModel):
@@ -44,7 +48,7 @@ class TrackRow(BaseModel):
     view_count: NonNegativeInt | None = None
     requested_by_id: DiscordSnowflake | None = None
     requested_by_name: NonEmptyStr | None = None
-    requested_at: str | None = None
+    requested_at: OptionalNonEmptyStr = None
 
     def to_track(self, *, id_from_url: bool = False) -> Track:
         """Convert to a domain ``Track``.
@@ -86,8 +90,8 @@ class QueueTrackRow(BaseModel):
     view_count: NonNegativeInt | None = None
     requested_by_id: DiscordSnowflake | None = None
     requested_by_name: NonEmptyStr | None = None
-    requested_at: str | None = None
-    position: int
+    requested_at: OptionalNonEmptyStr = None
+    position: QueueRowPosition
     is_current: bool
 
     @field_validator("track_id", mode="before")
@@ -116,7 +120,7 @@ class QueueTrackRow(BaseModel):
         track: Track,
         *,
         guild_id: DiscordSnowflake,
-        position: int,
+        position: QueueRowPosition,
         is_current: bool,
     ) -> QueueTrackRow:
         """Build from a domain Track plus queue metadata.
@@ -137,7 +141,7 @@ class QueueTrackRow(BaseModel):
 
 # ── SQL for QueueTrackRow inserts ─────────────────────────────────────
 
-QUEUE_TRACKS_INSERT_SQL: str = """
+QUEUE_TRACKS_INSERT_SQL: Final[str] = """
     INSERT INTO queue_tracks (
         guild_id, track_id, title, webpage_url, stream_url,
         duration_seconds, thumbnail_url, artist, uploader,

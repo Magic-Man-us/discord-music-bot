@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from collections import deque
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ....domain.shared.types import DiscordSnowflake, NonEmptyStr, UserIdField
+from ....domain.shared.types import (
+    DiscordSnowflake,
+    NonEmptyStr,
+    UserIdField,
+    UtcDatetimeField,
+)
 
 if TYPE_CHECKING:
     from ....domain.music.entities import Track
@@ -21,7 +25,7 @@ class TrackKey(BaseModel):
 
     track_id: NonEmptyStr
     requested_by_id: UserIdField | None = None
-    requested_at: datetime | None = None
+    requested_at: UtcDatetimeField | None = None
 
     @classmethod
     def from_track(cls, track: Track) -> TrackKey:
@@ -42,7 +46,9 @@ class TrackedMessage(BaseModel):
     track_key: TrackKey
 
     @classmethod
-    def for_track(cls, track: Track, *, channel_id: int, message_id: int) -> TrackedMessage:
+    def for_track(
+        cls, track: Track, *, channel_id: DiscordSnowflake, message_id: DiscordSnowflake
+    ) -> TrackedMessage:
         return cls(
             channel_id=channel_id,
             message_id=message_id,
@@ -56,7 +62,7 @@ class GuildMessageState(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     now_playing: TrackedMessage | None = None
-    now_playing_reserved_at: datetime | None = None
+    now_playing_reserved_at: UtcDatetimeField | None = None
     queued: deque[TrackedMessage] = Field(default_factory=deque)
 
     def pop_matching_queued(self, track: Track) -> TrackedMessage | None:
