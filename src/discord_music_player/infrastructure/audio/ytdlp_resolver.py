@@ -20,6 +20,7 @@ from ...domain.shared.enums import YtDlpJsRuntime, YtDlpPlayerClient
 from ...domain.shared.types import (
     HttpUrlStr,
     NonEmptyStr,
+    PlayerClientList,
     PositiveInt,
 )
 from ...utils.logging import get_logger
@@ -80,7 +81,7 @@ class YtDlpResolver(AudioResolver):
     ) -> None:
         self._settings = settings or AudioSettings()
         self._probe = probe
-        self._player_clients: list[YtDlpPlayerClient] = list(self._settings.player_client)
+        self._player_clients: PlayerClientList = list(self._settings.player_client)
         self._format = (
             self._settings.ytdlp_format or "251/140/bestaudio[protocol^=http]/bestaudio/best"
         )

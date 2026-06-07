@@ -40,6 +40,6 @@ class RadioToggleResult(BaseModel):
 
     enabled: bool
     tracks_added: NonNegativeInt = 0
-    generated_tracks: list[Track] = []
+    generated_tracks: list[Track] = Field(default_factory=list)
     seed_title: TrackTitleStr | None = None
     message: NonEmptyStr = "Radio toggled."
