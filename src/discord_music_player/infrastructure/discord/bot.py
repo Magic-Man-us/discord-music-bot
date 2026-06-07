@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import discord
 from discord.ext import commands
@@ -24,12 +24,7 @@ logger = get_logger(__name__)
 
 
 class MusicBot(commands.Bot):
-    def __init__(
-        self,
-        container: Container,
-        settings: Settings,
-        **kwargs: Any,
-    ) -> None:
+    def __init__(self, container: Container, settings: Settings) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
         intents.voice_states = True
@@ -41,7 +36,6 @@ class MusicBot(commands.Bot):
             command_prefix=settings.discord.command_prefix,
             intents=intents,
             help_command=None,
-            **kwargs,
         )
 
         self.container: Container = container
