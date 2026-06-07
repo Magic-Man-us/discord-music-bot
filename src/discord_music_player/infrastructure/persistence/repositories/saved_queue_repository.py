@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from enum import StrEnum
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Final
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue, TypeAdapter
 
 from ....domain.music.entities import Track
 from ....domain.shared.model_config import FrozenModelConfig
@@ -24,6 +23,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _MAX_SAVED_QUEUES_PER_GUILD: int = 25
+_TRACK_LIST_ADAPTER: Final = TypeAdapter(list[Track])
+_STORED_TRACKS_ADAPTER: Final = TypeAdapter(list[dict[str, JsonValue]])
 
 
 class _Col(StrEnum):
@@ -65,19 +66,15 @@ class SavedQueueRow(BaseModel):
     created_at: NonEmptyStr
 
     def to_tracks(self) -> list[Track]:
-        raw = json.loads(self.tracks_json)
-        return [Track.model_validate(item) for item in raw]
+        return _TRACK_LIST_ADAPTER.validate_json(self.tracks_json)
 
     @staticmethod
-    def serialize_tracks(tracks: list[Track]) -> str:
-        data = [
-            track.model_dump(
-                include=SavedQueueRow._SERIALIZED_FIELDS,
-                mode="json",
-            )
+    def serialize_tracks(tracks: list[Track]) -> NonEmptyStr:
+        projected = [
+            track.model_dump(include=SavedQueueRow._SERIALIZED_FIELDS, mode="json")
             for track in tracks
         ]
-        return json.dumps(data)
+        return _STORED_TRACKS_ADAPTER.dump_json(projected).decode()
 
     @classmethod
     def from_db_row(cls, row: dict[str, object]) -> SavedQueueRow:

@@ -10,6 +10,8 @@ from pydantic import (
     BaseModel,
     Field,
     SecretStr,
+    TypeAdapter,
+    ValidationError,
     computed_field,
     field_validator,
 )
@@ -44,6 +46,7 @@ from ..domain.shared.types import (
 _VALIDATOR_MODE_BEFORE: Final[str] = "before"
 _TRUTHY_ENV_VALUES: Final[frozenset[str]] = frozenset("1 true t yes y on".split())
 _FALSY_ENV_VALUES: Final[frozenset[str]] = frozenset("0 false f no n off release".split())
+_SNOWFLAKE_TUPLE_ADAPTER: Final = TypeAdapter(tuple[int, ...])
 
 
 class DatabaseSettings(BaseModel):
@@ -112,15 +115,10 @@ class DiscordSettings(BaseModel):
     @classmethod
     def _coerce_to_tuple(cls, v: tuple[int, ...] | list[int] | str) -> tuple[int, ...]:
         if isinstance(v, str):
-            import json
-
             try:
-                parsed = json.loads(v)
-            except json.JSONDecodeError:
-                parsed = [int(s.strip()) for s in v.split(",") if s.strip()]
-            if isinstance(parsed, list):
-                return tuple(parsed)
-            return (parsed,)
+                return _SNOWFLAKE_TUPLE_ADAPTER.validate_json(v)
+            except ValidationError:
+                return tuple(int(s.strip()) for s in v.split(",") if s.strip())
         if isinstance(v, list):
             return tuple(v)
         return v

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -152,7 +151,7 @@ class HealthCog(BaseCog):
     def _atomic_write(self, path: Path, payload: BasicStats | DetailedStats) -> None:
         tmp = path.with_suffix(path.suffix + ".tmp")
         with tmp.open("w", encoding="utf-8") as f:
-            json.dump(payload.model_dump(exclude_none=True), f, ensure_ascii=False, indent=2)
+            f.write(payload.model_dump_json(exclude_none=True, indent=2))
         tmp.replace(path)
 
     # ─────────────────────────────────────────────────────────────────

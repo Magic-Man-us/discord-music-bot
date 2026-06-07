@@ -4,17 +4,19 @@
 from __future__ import annotations
 
 import fcntl
-import json
 import logging
 import logging.config
 import os
 import sys
 from pathlib import Path
 
+from pydantic import JsonValue, TypeAdapter, ValidationError
+
 from .utils.logging import get_logger
 
 _LOGGING_CONFIG_PATH = Path(__file__).resolve().parents[2] / "logging_config.json"
 _PID_FILE = Path(__file__).resolve().parents[2] / "bot.pid"
+_LOGGING_CONFIG_ADAPTER = TypeAdapter(dict[str, JsonValue])
 
 
 def setup_logging(log_level: str = "INFO") -> None:
@@ -26,11 +28,11 @@ def setup_logging(log_level: str = "INFO") -> None:
 
     try:
         with open(_LOGGING_CONFIG_PATH) as f:
-            config = json.load(f)
+            config = _LOGGING_CONFIG_ADAPTER.validate_json(f.read())
         logging.config.dictConfig(config)
     except (
         FileNotFoundError,
-        json.JSONDecodeError,
+        ValidationError,
         ValueError,
         KeyError,
         ImportError,
