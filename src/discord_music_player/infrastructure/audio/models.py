@@ -10,7 +10,10 @@ from typing import Annotated, Any, Final
 
 from pydantic import (
     BaseModel,
+    Discriminator,
     Field,
+    Tag,
+    TypeAdapter,
     field_serializer,
     field_validator,
 )
@@ -144,6 +147,26 @@ class YtDlpExtractResult(BaseModel):
             except Exception:
                 continue
         return parsed
+
+
+def _ytdlp_result_kind(value: Any) -> str:
+    """Discriminator: classify a raw yt-dlp ``extract_info`` result by its ``_type``."""
+    if isinstance(value, YtDlpExtractResult):
+        return "playlist"
+    if isinstance(value, YtDlpTrackInfo):
+        return "video"
+    if isinstance(value, dict) and (value.get("_type") == "playlist" or "entries" in value):
+        return "playlist"
+    return "video"
+
+
+YtDlpResult = Annotated[
+    Annotated[YtDlpTrackInfo, Tag("video")] | Annotated[YtDlpExtractResult, Tag("playlist")],
+    Discriminator(_ytdlp_result_kind),
+]
+"""A yt-dlp ``extract_info`` result: a single ``video`` or a ``playlist``, by ``_type``."""
+
+YTDLP_RESULT_ADAPTER: Final = TypeAdapter(YtDlpResult)
 
 
 class CacheEntry(BaseModel):

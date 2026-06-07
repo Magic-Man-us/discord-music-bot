@@ -33,6 +33,7 @@ from .models import (
     LOG_URL_TRUNCATE,
     RESOLVE_BATCH_DELAY,
     RESOLVE_BATCH_SIZE,
+    YTDLP_RESULT_ADAPTER,
     AudioFormatInfo,
     CacheEntry,
     ExtractorArgs,
@@ -212,17 +213,21 @@ class YtDlpResolver(AudioResolver):
 
     @staticmethod
     def _parse_single_result(data: Any) -> YtDlpTrackInfo | None:
-        """Parse a raw yt-dlp single-entry result into a typed model.
+        """Parse a raw yt-dlp result into a single video.
 
-        Returns None if *data* is not a dict or fails validation.
-        Extra fields are dropped by the model's ``extra="ignore"`` config.
+        The discriminated union distinguishes a ``video`` from a ``playlist`` by
+        ``_type``; a playlist (e.g. a playlist URL passed to /play) is reduced to
+        its first entry. Returns None on invalid data.
         """
-        if not isinstance(data, dict):
-            return None
         try:
-            return YtDlpTrackInfo.model_validate(data)
+            result = YTDLP_RESULT_ADAPTER.validate_python(data)
         except Exception:
             return None
+        match result:
+            case YtDlpExtractResult():
+                return result.entries[0] if result.entries else None
+            case _:
+                return result
 
     def _extract_info_sync(
         self, url: HttpUrlStr, opts: YtDlpOpts | None = None
