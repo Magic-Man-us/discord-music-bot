@@ -17,6 +17,8 @@ from typing import Annotated, Generic, TypeVar
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
+from .enums import YtDlpPlayerClient
+
 T = TypeVar("T")
 
 
@@ -54,6 +56,9 @@ class ValueWrapper(BaseModel, Generic[T]):
 DiscordSnowflake = Annotated[int, Field(gt=0, lt=2**64)]
 """Positive integer that fits a Discord snowflake (1 … 2^64-1)."""
 
+DiscordSnowflakeTuple = tuple[DiscordSnowflake, ...]
+"""Immutable sequence of Discord snowflake IDs (owners, guilds, …)."""
+
 NonNegativeInt = Annotated[int, Field(ge=0)]
 """Integer >= 0."""
 
@@ -86,6 +91,15 @@ HttpUrlStr = Annotated[str, Field(pattern=r"^https?://")]
 
 HttpHeaders = dict[NonEmptyStr, str]
 """HTTP request headers (e.g. yt-dlp's per-format headers) keyed by header name."""
+
+FfmpegOptions = dict[NonEmptyStr, str]
+"""FFmpeg argument groups (e.g. ``before_options`` / ``options``) keyed by group name."""
+
+DatabaseUrlStr = Annotated[str, Field(min_length=1)]
+"""SQLAlchemy-style database URL; the scheme is validated on the settings model."""
+
+PlayerClientList = list[YtDlpPlayerClient]
+"""Ordered yt-dlp ``player_client`` identifiers to try when resolving a stream."""
 
 
 # ── File size constraints ──────────────────────────────────────────

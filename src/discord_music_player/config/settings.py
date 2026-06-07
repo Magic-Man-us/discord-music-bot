@@ -21,12 +21,16 @@ from ..domain.shared.types import (
     BusyTimeoutMs,
     CommandPrefixStr,
     ConnectionTimeoutS,
+    DatabaseUrlStr,
     DiscordSnowflake,
+    DiscordSnowflakeTuple,
+    FfmpegOptions,
     HttpUrlStr,
     MaxQueueSize,
     MaxTokens,
     NonEmptyStr,
     NonNegativeInt,
+    PlayerClientList,
     PoolSize,
     PositiveInt,
     RadioBatchSize,
@@ -45,7 +49,7 @@ _FALSY_ENV_VALUES: Final[frozenset[str]] = frozenset("0 false f no n off release
 class DatabaseSettings(BaseModel):
     model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
 
-    url: str = Field(
+    url: DatabaseUrlStr = Field(
         default="sqlite:///data/bot.db",
         validation_alias=AliasChoices("url", "database_url", "db_url"),
     )
@@ -87,13 +91,13 @@ class DiscordSettings(BaseModel):
         default="!",
         validation_alias=AliasChoices("command_prefix", "prefix"),
     )
-    owner_ids: tuple[DiscordSnowflake, ...] = Field(
+    owner_ids: DiscordSnowflakeTuple = Field(
         default_factory=tuple, validation_alias=AliasChoices("owner_ids", "owners")
     )
-    guild_ids: tuple[DiscordSnowflake, ...] = Field(
+    guild_ids: DiscordSnowflakeTuple = Field(
         default_factory=tuple, validation_alias=AliasChoices("guild_ids", "guilds")
     )
-    test_guild_ids: tuple[DiscordSnowflake, ...] = Field(
+    test_guild_ids: DiscordSnowflakeTuple = Field(
         default_factory=tuple,
         validation_alias=AliasChoices("test_guild_ids", "test_guilds"),
     )
@@ -127,7 +131,7 @@ class AudioSettings(BaseModel):
 
     default_volume: VolumeFloat = 0.5
     max_queue_size: MaxQueueSize = 50
-    ffmpeg_options: dict[str, str] = Field(
+    ffmpeg_options: FfmpegOptions = Field(
         default_factory=lambda: {
             "before_options": (
                 "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 3"
@@ -138,7 +142,7 @@ class AudioSettings(BaseModel):
     )
     ytdlp_format: NonEmptyStr = "bestaudio/best"
     # tv_simply serves Opus 251 on URLs that authorize here; web/mweb 251 URLs 403. android (itag 18) is the fallback.
-    player_client: list[YtDlpPlayerClient] = Field(
+    player_client: PlayerClientList = Field(
         default_factory=lambda: [
             YtDlpPlayerClient.TV_SIMPLY,
             YtDlpPlayerClient.ANDROID,

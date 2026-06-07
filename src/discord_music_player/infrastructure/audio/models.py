@@ -8,7 +8,14 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Final
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+)
 
 from ...domain.shared.enums import YtDlpJsRuntime
 from ...domain.shared.types import (
@@ -36,6 +43,17 @@ LOG_URL_TRUNCATE: Final[int] = 60
 RESOLVE_BATCH_SIZE: Final[int] = 5
 RESOLVE_BATCH_DELAY: Final[float] = 0.5
 EXTRACT_TIMEOUT: Final[int] = 30  # seconds — max time for a single yt-dlp extraction
+
+
+def _empty_str_to_none(v: Any) -> str | None:
+    """Convert empty / whitespace-only / non-string values to None."""
+    if not isinstance(v, str) or not v.strip():
+        return None
+    return v
+
+
+OptionalNonEmptyStr = Annotated[NonEmptyStr | None, BeforeValidator(_empty_str_to_none)]
+"""Non-empty string that coerces empty / whitespace / non-string input to None."""
 
 
 # ── Pydantic models for yt-dlp data ────────────────────────────────────
@@ -70,7 +88,7 @@ class YtDlpTrackInfo(BaseModel):
     channel: NonEmptyStr | None = None
     like_count: NonNegativeInt | None = None
     view_count: NonNegativeInt | None = None
-    formats: list[AudioFormatInfo] = []
+    formats: list[AudioFormatInfo] = Field(default_factory=list)
     http_headers: HttpHeaders | None = None
 
     @field_validator(
@@ -85,10 +103,7 @@ class YtDlpTrackInfo(BaseModel):
     )
     @classmethod
     def _coerce_empty_to_none(cls, v: Any) -> str | None:
-        """Convert empty / whitespace-only / non-string values to None."""
-        if not isinstance(v, str) or not v.strip():
-            return None
-        return v
+        return _empty_str_to_none(v)
 
     @field_validator("title", mode="before")
     @classmethod
@@ -121,8 +136,8 @@ class YtDlpExtractResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
-    entries: list[YtDlpTrackInfo] = []
-    title: str | None = None
+    entries: list[YtDlpTrackInfo] = Field(default_factory=list)
+    title: OptionalNonEmptyStr = None
 
     @field_validator("entries", mode="before")
     @classmethod
@@ -178,6 +193,13 @@ class JsRuntimeConfig(BaseModel):
     path: NonEmptyStr | None = None
 
 
+JsRuntimeMap = dict[YtDlpJsRuntime, JsRuntimeConfig]
+"""yt-dlp ``js_runtimes`` mapping: runtime → its config."""
+
+JsRuntimeWire = dict[str, dict[str, str | None]]
+"""Serialized ``js_runtimes`` as yt-dlp expects it: ``{"node": {"path": "/..."}}``."""
+
+
 class YtDlpOpts(BaseModel):
     """Typed yt-dlp configuration options passed to YoutubeDL."""
 
@@ -195,13 +217,11 @@ class YtDlpOpts(BaseModel):
     skip_download: bool = True
     extract_flat: NonEmptyStr | bool = False
     extractor_args: ExtractorArgs | None = None
-    js_runtimes: dict[YtDlpJsRuntime, JsRuntimeConfig] = Field(
+    js_runtimes: JsRuntimeMap = Field(
         default_factory=lambda: {YtDlpJsRuntime.NODE: JsRuntimeConfig()}
     )
 
     @field_serializer("js_runtimes")
-    def _serialize_js_runtimes(
-        self, value: dict[YtDlpJsRuntime, JsRuntimeConfig]
-    ) -> dict[str, dict[str, str | None]]:
+    def _serialize_js_runtimes(self, value: JsRuntimeMap) -> JsRuntimeWire:
         # yt-dlp expects plain string keys: {"node": {"path": "/..."}}
         return {runtime.value: config.model_dump() for runtime, config in value.items()}
