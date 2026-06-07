@@ -2,54 +2,39 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, Field
 
 from ...domain.music.entities import Track
 from ...domain.shared.model_config import FrozenModelConfig
 from ...domain.shared.types import NonEmptyStr, NonNegativeInt
 
 
-class EnqueueMeta(BaseModel):
-    """Tracks the position/size context of an enqueue operation."""
+class EnqueueOk(BaseModel):
+    """A successful enqueue: the queued track and its position context."""
 
     model_config = FrozenModelConfig
 
+    outcome: Literal["ok"] = "ok"
     track: Track
     position: NonNegativeInt
     queue_length: NonNegativeInt
     should_start: bool = False
-
-
-class EnqueueResult(BaseModel):
-    model_config = FrozenModelConfig
-
-    success: bool
-    meta: EnqueueMeta | None = None
     message: NonEmptyStr
 
-    @property
-    def track(self) -> Track | None:
-        return self.meta.track if self.meta else None
 
-    @property
-    def position(self) -> int:
-        return self.meta.position if self.meta else 0
+class EnqueueFailure(BaseModel):
+    """A rejected enqueue and the reason."""
 
-    @property
-    def queue_length(self) -> int:
-        return self.meta.queue_length if self.meta else 0
+    model_config = FrozenModelConfig
 
-    @property
-    def should_start(self) -> bool:
-        return self.meta.should_start if self.meta else False
+    outcome: Literal["failure"] = "failure"
+    message: NonEmptyStr
 
-    @classmethod
-    def failure(cls, message: NonEmptyStr) -> EnqueueResult:
-        return cls(success=False, message=message)
 
-    @classmethod
-    def ok(cls, *, meta: EnqueueMeta, message: NonEmptyStr) -> EnqueueResult:
-        return cls(success=True, meta=meta, message=message)
+EnqueueResult = Annotated[EnqueueOk | EnqueueFailure, Field(discriminator="outcome")]
+"""Outcome of an enqueue: a populated ``ok`` variant or a ``failure`` with a message."""
 
 
 class BatchEnqueueResult(BaseModel):

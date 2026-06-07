@@ -35,6 +35,7 @@ from ...domain.shared.types import (
     NonNegativeInt,
 )
 from ...utils.logging import get_logger
+from .queue_models import EnqueueFailure
 
 if TYPE_CHECKING:
     from ...domain.music.entities import Track
@@ -264,7 +265,7 @@ class FollowMode:
             user_id=state.user_id,
             user_name=state.user_name,
         )
-        if not result.success:
+        if isinstance(result, EnqueueFailure):
             logger.debug("FollowMode enqueue rejected in guild %s: %s", guild_id, result.message)
             return False
 
@@ -284,7 +285,7 @@ class FollowMode:
         # plays when the current track finishes (continuous, no skip).
         if result.should_start:
             await self._playback_service.start_playback(guild_id)
-        elif result.position == 0 and result.track is not None:
+        elif result.position == 0:
             await self._notify_next_track_queued(guild_id, result.track)
 
         return True

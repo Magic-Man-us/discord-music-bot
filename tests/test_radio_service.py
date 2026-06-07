@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from discord_music_player.application.services.queue_models import EnqueueFailure, EnqueueOk
 from discord_music_player.application.services.radio_service import (
     RadioApplicationService,
 )
@@ -61,9 +62,15 @@ def _make_service(
     audio_resolver.resolve.return_value = resolve_returns
 
     queue_service = AsyncMock()
-    enqueue_result = MagicMock()
-    enqueue_result.success = enqueue_success
-    enqueue_result.track = resolve_returns if enqueue_success else None
+    if enqueue_success:
+        enqueue_result = EnqueueOk(
+            track=resolve_returns or _make_track(),
+            position=0,
+            queue_length=1,
+            message="Queued",
+        )
+    else:
+        enqueue_result = EnqueueFailure(message="Rejected")
     queue_service.enqueue.return_value = enqueue_result
 
     session_repo = AsyncMock()
@@ -445,10 +452,9 @@ class TestRadioReroll:
         mocks["ai_client"].get_recommendations.return_value = [rec]
         mocks["audio_resolver"].resolve.return_value = new_track
 
-        enqueue_result = MagicMock()
-        enqueue_result.success = True
-        enqueue_result.track = new_track
-        mocks["queue_service"].enqueue.return_value = enqueue_result
+        mocks["queue_service"].enqueue.return_value = EnqueueOk(
+            track=new_track, position=0, queue_length=1, message="Queued"
+        )
         mocks["queue_service"].remove.return_value = queued
 
         empty_session = _make_session(current_track=track, queue=[])
@@ -649,9 +655,7 @@ class TestRadioAutoRefill:
         radio_service.has_queued_tracks = AsyncMock(return_value=True)
         radio_service.replenish_from_pool = AsyncMock()
 
-        sub = RadioAutoRefill(
-            radio_service=radio_service, playback_service=AsyncMock()
-        )
+        sub = RadioAutoRefill(radio_service=radio_service, playback_service=AsyncMock())
         sub.start()
         await get_event_bus().publish(
             TrackStartedPlaying(
@@ -681,9 +685,7 @@ class TestRadioAutoRefill:
         radio_service.has_queued_tracks = AsyncMock(return_value=False)
         radio_service.replenish_from_pool = AsyncMock(return_value=1)
 
-        sub = RadioAutoRefill(
-            radio_service=radio_service, playback_service=AsyncMock()
-        )
+        sub = RadioAutoRefill(radio_service=radio_service, playback_service=AsyncMock())
         sub.start()
         await get_event_bus().publish(
             TrackStartedPlaying(
@@ -713,9 +715,7 @@ class TestRadioAutoRefill:
         radio_service.has_queued_tracks = AsyncMock(return_value=False)
         radio_service.replenish_from_pool = AsyncMock(side_effect=RuntimeError("boom"))
 
-        sub = RadioAutoRefill(
-            radio_service=radio_service, playback_service=AsyncMock()
-        )
+        sub = RadioAutoRefill(radio_service=radio_service, playback_service=AsyncMock())
         sub.start()
         # Must not raise
         await get_event_bus().publish(
@@ -758,7 +758,11 @@ class TestWarmupNext:
 
         # Simulate session limit reached
         state = svc.get_state(1)
-        state.tracks_consumed = state.tracks_consumed.__class__(99) if hasattr(state.tracks_consumed, "__class__") else 99
+        state.tracks_consumed = (
+            state.tracks_consumed.__class__(99)
+            if hasattr(state.tracks_consumed, "__class__")
+            else 99
+        )
         # Simpler: just bump counter directly
         state.tracks_consumed = 999
 
@@ -1110,9 +1114,7 @@ class TestTryResolveErrorPaths:
             session=_make_session(current_track=_make_track()),
         )
         rec = recs[0]
-        result = await svc._try_resolve_and_enqueue(
-            rec, guild_id=1, user_id=100, user_name="U"
-        )
+        result = await svc._try_resolve_and_enqueue(rec, guild_id=1, user_id=100, user_name="U")
         assert result is None
 
     @pytest.mark.asyncio
@@ -1126,9 +1128,7 @@ class TestTryResolveErrorPaths:
         mocks["audio_resolver"].resolve.side_effect = RuntimeError("net down")
 
         # The exception path returns None instead of bubbling.
-        result = await svc._try_resolve_and_enqueue(
-            recs[0], guild_id=1, user_id=100, user_name="U"
-        )
+        result = await svc._try_resolve_and_enqueue(recs[0], guild_id=1, user_id=100, user_name="U")
         assert result is None
 
     @pytest.mark.asyncio
@@ -1141,7 +1141,5 @@ class TestTryResolveErrorPaths:
             enqueue_success=False,  # enqueue.success=False
             session=_make_session(current_track=_make_track()),
         )
-        result = await svc._try_resolve_and_enqueue(
-            recs[0], guild_id=1, user_id=100, user_name="U"
-        )
+        result = await svc._try_resolve_and_enqueue(recs[0], guild_id=1, user_id=100, user_name="U")
         assert result is None

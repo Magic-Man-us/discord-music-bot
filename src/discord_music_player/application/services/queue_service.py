@@ -10,7 +10,13 @@ from ...domain.shared.datetime_utils import utcnow
 from ...domain.shared.exceptions import BusinessRuleViolationError
 from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, QueuePositionInt
 from ...utils.logging import get_logger
-from .queue_models import BatchEnqueueResult, EnqueueMeta, EnqueueResult, QueueSnapshot
+from .queue_models import (
+    BatchEnqueueResult,
+    EnqueueFailure,
+    EnqueueOk,
+    EnqueueResult,
+    QueueSnapshot,
+)
 
 if TYPE_CHECKING:
     from ...domain.music.repository import SessionRepository
@@ -45,7 +51,7 @@ class QueueApplicationService:
         try:
             position = session.enqueue(track_with_requester)
         except BusinessRuleViolationError as exc:
-            return EnqueueResult.failure(exc.message)
+            return EnqueueFailure(message=exc.message)
 
         await self._session_repo.save(session)
         logger.info(
@@ -57,13 +63,13 @@ class QueueApplicationService:
             if was_idle
             else f"Added to queue at position {position.value + 1}"
         )
-        meta = EnqueueMeta(
+        return EnqueueOk(
             track=track_with_requester,
             position=position.value,
             queue_length=session.queue_length,
             should_start=was_idle,
+            message=message,
         )
-        return EnqueueResult.ok(meta=meta, message=message)
 
     async def enqueue_next(
         self,
@@ -83,17 +89,17 @@ class QueueApplicationService:
         try:
             position = session.enqueue_next(track_with_requester)
         except BusinessRuleViolationError as exc:
-            return EnqueueResult.failure(exc.message)
+            return EnqueueFailure(message=exc.message)
 
         await self._session_repo.save(session)
         logger.info("Enqueued track '%s' to play next in guild %s", track.title, guild_id)
 
-        meta = EnqueueMeta(
+        return EnqueueOk(
             track=track_with_requester,
             position=position.value,
             queue_length=session.queue_length,
+            message="Added to play next",
         )
-        return EnqueueResult.ok(meta=meta, message="Added to play next")
 
     async def enqueue_batch(
         self,

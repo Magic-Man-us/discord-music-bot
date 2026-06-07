@@ -9,6 +9,19 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from discord_music_player.application.services.queue_models import EnqueueOk
+
+
+def _enqueue_ok(*, should_start: bool) -> EnqueueOk:
+    from discord_music_player.domain.music.entities import Track
+    from discord_music_player.domain.music.wrappers import TrackId
+
+    track = Track(id=TrackId(value="voted1"), title="Voted", webpage_url="https://youtu.be/voted1")
+    return EnqueueOk(
+        track=track, position=0, queue_length=1, should_start=should_start, message="Queued"
+    )
+
+
 # =============================================================================
 # ResumePlaybackView
 # =============================================================================
@@ -143,7 +156,9 @@ class TestWarmupRetryView:
             # replay-bound params: stash them so the test can assert.
             await _inner_execute(i, query="q", count=25, start=3, shuffle=True)
 
-        async def _inner_execute(i: AsyncMock, *, query: str, count: int, start: int, shuffle: bool) -> None:
+        async def _inner_execute(
+            i: AsyncMock, *, query: str, count: int, start: int, shuffle: bool
+        ) -> None:
             captured.update(query=query, count=count, start=start, shuffle=shuffle)
 
         view, _ = _make_warmup_view(replay=AsyncMock(wraps=_replay))
@@ -276,10 +291,7 @@ class TestLongTrackVoteView:
         interaction = AsyncMock()
         interaction.user.id = 42
 
-        enqueue_result = MagicMock()
-        enqueue_result.success = True
-        enqueue_result.should_start = True
-        container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
+        container.queue_service.enqueue = AsyncMock(return_value=_enqueue_ok(should_start=True))
 
         await view.accept_button.callback(interaction)
 
@@ -313,10 +325,7 @@ class TestLongTrackVoteView:
         interaction = AsyncMock()
         interaction.user.id = 42
 
-        enqueue_result = MagicMock()
-        enqueue_result.success = True
-        enqueue_result.should_start = False
-        container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
+        container.queue_service.enqueue = AsyncMock(return_value=_enqueue_ok(should_start=False))
 
         await view.accept_button.callback(interaction)
 
@@ -341,10 +350,7 @@ class TestLongTrackVoteView:
         interaction = AsyncMock()
         interaction.user.id = 42
 
-        enqueue_result = MagicMock()
-        enqueue_result.success = True
-        enqueue_result.should_start = False
-        container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
+        container.queue_service.enqueue = AsyncMock(return_value=_enqueue_ok(should_start=False))
 
         await view.accept_button.callback(interaction)
 

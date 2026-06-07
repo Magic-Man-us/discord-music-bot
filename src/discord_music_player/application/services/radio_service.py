@@ -27,6 +27,7 @@ from ...domain.shared.types import (
     NonEmptyStr,
 )
 from ...utils.logging import get_logger
+from .queue_models import EnqueueOk
 from .radio_models import RadioState, RadioToggleResult
 
 if TYPE_CHECKING:
@@ -461,7 +462,7 @@ class RadioApplicationService:
                 user_id=user_id,
                 user_name=user_name,
             )
-            if result.success and result.track is not None:
+            if isinstance(result, EnqueueOk):
                 return result.track
             return None
         except Exception as exc:
@@ -523,7 +524,7 @@ class RadioApplicationService:
                 user_id=restore_user_id,
                 user_name=restore_user_name,
             )
-            if result.success:
+            if isinstance(result, EnqueueOk):
                 session = await self._session_repo.get(guild_id)
                 if session is not None and session.queue_length > 1:
                     from_pos = session.queue_length - 1

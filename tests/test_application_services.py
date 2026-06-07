@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from discord_music_player.application.services.queue_models import EnqueueFailure, EnqueueOk
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
 from discord_music_player.domain.music.enums import LoopMode, PlaybackState
 from discord_music_player.domain.music.wrappers import TrackId
@@ -76,7 +77,7 @@ class TestQueueApplicationServiceEnqueue:
             user_name="TestUser",
         )
 
-        assert result.success is True
+        assert isinstance(result, EnqueueOk)
         assert result.track is not None
         assert result.track.requested_by_id == 111
         assert result.track.requested_by_name == "TestUser"
@@ -103,7 +104,7 @@ class TestQueueApplicationServiceEnqueue:
             user_name="TestUser",
         )
 
-        assert result.success is False
+        assert isinstance(result, EnqueueFailure)
         assert "full" in result.message.lower()
         mock_session_repo.save.assert_not_called()
 
@@ -121,7 +122,7 @@ class TestQueueApplicationServiceEnqueue:
             user_name="TestUser",
         )
 
-        assert result.success is True
+        assert isinstance(result, EnqueueOk)
         assert result.should_start is True
 
     @pytest.mark.asyncio
@@ -144,7 +145,7 @@ class TestQueueApplicationServiceEnqueue:
             user_name="TestUser",
         )
 
-        assert result.success is True
+        assert isinstance(result, EnqueueOk)
         assert result.should_start is False
 
 
@@ -198,7 +199,7 @@ class TestQueueApplicationServiceEnqueueNext:
             user_name="TestUser",
         )
 
-        assert result.success is True
+        assert isinstance(result, EnqueueOk)
         assert result.position == 0
 
 
@@ -2156,7 +2157,7 @@ class TestEnqueueNextFailure:
 
         result = await svc.enqueue_next(guild_id=1, track=track, user_id=42, user_name="U")
 
-        assert result.success is False
+        assert isinstance(result, EnqueueFailure)
         assert "full" in result.message.lower()
 
 

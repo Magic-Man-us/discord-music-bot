@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from ....application.services.queue_models import EnqueueOk
 from ....domain.shared.types import DiscordSnowflake
 from ....domain.voting.services import VotingDomainService
 from ....utils.logging import get_logger
@@ -102,7 +103,7 @@ class LongTrackVoteView(BaseInteractiveView):
             user_name=self._requester_name,
         )
 
-        if result.success and result.should_start:
+        if isinstance(result, EnqueueOk) and result.should_start:
             await playback_service.start_playback(self._guild_id)
 
         if self._message:
