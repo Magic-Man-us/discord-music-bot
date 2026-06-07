@@ -78,6 +78,9 @@ class PlaybackCog(BaseCog):
     def __init__(self, bot: commands.Bot, container: Container) -> None:
         super().__init__(bot, container)
         self._requester_left_views: dict[DiscordSnowflake, RequesterLeftView] = {}
+        from ....domain.shared.events import get_event_bus
+
+        self._event_bus = get_event_bus()
 
     async def cog_load(self) -> None:
         self.container.playback_service.set_track_finished_callback(self._on_track_finished)
@@ -87,9 +90,8 @@ class PlaybackCog(BaseCog):
         auto_skip = self.container.auto_skip_on_requester_leave
         auto_skip.set_on_requester_left_callback(self._on_requester_left)
         auto_skip.set_on_requester_rejoined_callback(self._on_requester_rejoined)
-        from ....domain.shared.events import TrackStartedPlaying, get_event_bus
+        from ....domain.shared.events import TrackStartedPlaying
 
-        self._event_bus = get_event_bus()
         self._event_bus.subscribe(TrackStartedPlaying, self._on_track_started_auto_post)
 
     async def cog_unload(self) -> None:
@@ -99,10 +101,9 @@ class PlaybackCog(BaseCog):
         auto_skip.set_on_requester_left_callback(None)
         auto_skip.set_on_requester_rejoined_callback(None)
         self.container.message_state_manager.clear_all()
-        if hasattr(self, "_event_bus"):
-            from ....domain.shared.events import TrackStartedPlaying
+        from ....domain.shared.events import TrackStartedPlaying
 
-            self._event_bus.unsubscribe(TrackStartedPlaying, self._on_track_started_auto_post)
+        self._event_bus.unsubscribe(TrackStartedPlaying, self._on_track_started_auto_post)
 
     # ─────────────────────────────────────────────────────────────────
     # Play
@@ -961,8 +962,9 @@ class PlaybackCog(BaseCog):
         """Yield candidate text channels in priority order."""
         candidates: list[discord.TextChannel] = []
 
-        if guild.voice_client and guild.voice_client.channel:
-            category = getattr(guild.voice_client.channel, "category", None)
+        vc = guild.voice_client
+        if vc is not None and isinstance(vc.channel, discord.VoiceChannel | discord.StageChannel):
+            category = vc.channel.category
             if category is not None:
                 candidates.extend(category.text_channels)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from typing import TextIO
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -28,11 +29,14 @@ class ColoredFormatter(logging.Formatter):
     }
     RESET = "\033[0m"
 
+    # Output stream the color decision is based on; defaults to stdout, overridable for tests.
+    _stream: TextIO | None = None
+
     def _use_color(self) -> bool:
         if os.environ.get("NO_COLOR") is not None:
             return False
-        stream = getattr(self, "_stream", None) or sys.stdout
-        return hasattr(stream, "isatty") and stream.isatty()
+        stream = self._stream if self._stream is not None else sys.stdout
+        return stream.isatty()
 
     def format(self, record: logging.LogRecord) -> str:
         if self._use_color():

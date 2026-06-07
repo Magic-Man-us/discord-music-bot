@@ -335,11 +335,12 @@ class TestCleanupJob:
         """Test CleanupStats model_dump includes computed total."""
         from discord_music_player.infrastructure.persistence.cleanup import CleanupStats
 
-        stats = CleanupStats()
-        stats.sessions_cleaned = 5
-        stats.history_cleaned = 10
-        stats.cache_cleaned = 3
-        stats.votes_cleaned = 2
+        stats = CleanupStats(
+            sessions_cleaned=5,
+            history_cleaned=10,
+            cache_cleaned=3,
+            votes_cleaned=2,
+        )
 
         result = stats.model_dump()
 

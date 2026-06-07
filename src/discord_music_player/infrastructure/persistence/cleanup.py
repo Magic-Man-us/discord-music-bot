@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, computed_field
 
 from ...domain.shared.datetime_utils import utcnow
-from ...domain.shared.model_config import MutableValidatedModelConfig
-from ...domain.shared.types import NonNegativeInt
+from ...domain.shared.model_config import FrozenModelConfig
+from ...domain.shared.types import NonEmptyStr, NonNegativeInt
 from ...utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -77,14 +77,13 @@ class CleanupJob:
             except asyncio.CancelledError:
                 break
 
-    async def _run_one(
-        self, label: str, stats: CleanupStats, field: str, coro: Awaitable[int]
-    ) -> None:
-        """Execute a single cleanup operation, logging failures without propagating."""
+    async def _safe_count(self, label: NonEmptyStr, coro: Awaitable[int]) -> NonNegativeInt:
+        """Await a cleanup operation, returning its removed-count or 0 on failure."""
         try:
-            setattr(stats, field, await coro)
+            return await coro
         except Exception as e:
             logger.error("Failed to cleanup %s: %r", label, e)
+            return 0
 
     async def run_cleanup(self) -> CleanupStats:
         logger.debug("Running cleanup cycle")
@@ -92,16 +91,17 @@ class CleanupJob:
         stale_cutoff = utcnow() - timedelta(hours=self._settings.stale_session_hours)
         history_cutoff = utcnow() - timedelta(days=self._settings.history_retention_days)
 
-        stats = CleanupStats()
-        await self._run_one(
-            "sessions", stats, "sessions_cleaned", self._session_repo.cleanup_stale(stale_cutoff)
-        )
-        await self._run_one(
-            "history", stats, "history_cleaned", self._history_repo.cleanup_old(history_cutoff)
-        )
-        await self._run_one("cache", stats, "cache_cleaned", self._cache_repo.cleanup_expired())
-        await self._run_one(
-            "vote sessions", stats, "votes_cleaned", self._vote_repo.cleanup_expired()
+        stats = CleanupStats(
+            sessions_cleaned=await self._safe_count(
+                "sessions", self._session_repo.cleanup_stale(stale_cutoff)
+            ),
+            history_cleaned=await self._safe_count(
+                "history", self._history_repo.cleanup_old(history_cutoff)
+            ),
+            cache_cleaned=await self._safe_count("cache", self._cache_repo.cleanup_expired()),
+            votes_cleaned=await self._safe_count(
+                "vote sessions", self._vote_repo.cleanup_expired()
+            ),
         )
 
         if stats.total_cleaned > 0:
@@ -121,9 +121,9 @@ class CleanupJob:
 
 
 class CleanupStats(BaseModel):
-    """Accumulator for cleanup operation results."""
+    """Counts produced by one cleanup cycle."""
 
-    model_config = MutableValidatedModelConfig
+    model_config = FrozenModelConfig
 
     sessions_cleaned: NonNegativeInt = 0
     history_cleaned: NonNegativeInt = 0

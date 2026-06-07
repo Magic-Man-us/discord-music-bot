@@ -17,6 +17,7 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ..domain.shared.constants import HealthConstants
 from ..domain.shared.enums import EnvironmentType, LogLevel, YtDlpPlayerClient
 from ..domain.shared.model_config import FrozenStrictModelConfig, SettingsSubModelConfig
 from ..domain.shared.types import (
@@ -240,6 +241,17 @@ class CleanupSettings(BaseModel):
     history_retention_days: PositiveInt = 30
 
 
+class HealthSettings(BaseModel):
+    model_config = SettingsSubModelConfig
+
+    fast_interval: PositiveInt = HealthConstants.DEFAULT_FAST_INTERVAL
+    detailed_interval: PositiveInt = HealthConstants.DEFAULT_DETAILED_INTERVAL
+    alert_channel_id: DiscordSnowflake | None = Field(
+        default=None,
+        validation_alias=AliasChoices("alert_channel_id", "alert_channel"),
+    )
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -279,6 +291,8 @@ class Settings(BaseSettings):
     voting: VotingSettings = Field(default_factory=VotingSettings)
     cleanup: CleanupSettings = Field(default_factory=CleanupSettings)
     radio: RadioSettings = Field(default_factory=RadioSettings)
+    health: HealthSettings = Field(default_factory=HealthSettings)
+    log_dir: NonEmptyStr = "logs"
 
 
 @lru_cache(maxsize=1)

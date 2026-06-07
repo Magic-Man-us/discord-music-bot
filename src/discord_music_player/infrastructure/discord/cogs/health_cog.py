@@ -27,15 +27,6 @@ from .base_cog import BaseCog
 if TYPE_CHECKING:
     from ....config.container import Container
 
-_HEALTH_SETTINGS_ATTR = "health"
-
-
-def _get_health_settings(settings: object) -> object | None:
-    """Safely retrieve optional health settings sub-object."""
-    if hasattr(settings, _HEALTH_SETTINGS_ATTR):
-        return settings.health  # type: ignore[attr-defined]
-    return None
-
 
 class BasicStats(BaseModel):
     """Core heartbeat stats written to JSON file."""
@@ -74,23 +65,14 @@ class HealthCog(BaseCog):
         self._warned = False
 
         settings = container.settings
-        log_dir = Path(getattr(settings, "log_dir", "logs"))
+        log_dir = Path(settings.log_dir)
         log_dir.mkdir(parents=True, exist_ok=True)
 
         self.heartbeat_file = log_dir / "heartbeat.json"
         self.detailed_file = log_dir / "heartbeat_detailed.json"
 
-        health_settings = _get_health_settings(settings)
-        fast_interval = HealthConstants.DEFAULT_FAST_INTERVAL
-        detailed_interval = HealthConstants.DEFAULT_DETAILED_INTERVAL
-        if health_settings is not None:
-            if hasattr(health_settings, "fast_interval"):
-                fast_interval = health_settings.fast_interval  # type: ignore[union-attr]
-            if hasattr(health_settings, "detailed_interval"):
-                detailed_interval = health_settings.detailed_interval  # type: ignore[union-attr]
-
-        self.heartbeat_fast.change_interval(seconds=fast_interval)
-        self.heartbeat_detailed.change_interval(seconds=detailed_interval)
+        self.heartbeat_fast.change_interval(seconds=settings.health.fast_interval)
+        self.heartbeat_detailed.change_interval(seconds=settings.health.detailed_interval)
 
     async def cog_load(self) -> None:
         self.heartbeat_fast.start()
@@ -191,8 +173,8 @@ class HealthCog(BaseCog):
             with proc.oneshot():
                 mem = proc.memory_full_info()
                 payload.rss_mb = round(mem.rss / BYTES_PER_MB, 1)
-                vms = getattr(mem, "vms", None)
-                payload.vms_mb = round(vms / BYTES_PER_MB, 1) if vms else None
+                # psutil's memory tuple is platform-dependent; the broad except below covers gaps.
+                payload.vms_mb = round(mem.vms / BYTES_PER_MB, 1)
         except ImportError:
             pass
         except Exception:
@@ -220,11 +202,7 @@ class HealthCog(BaseCog):
 
             # Latency warning logic
             lat_ms = payload.latency_ms
-            settings = self.container.settings
-            health_settings = _get_health_settings(settings)
-            alert_channel_id = (
-                getattr(health_settings, "alert_channel_id", None) if health_settings else None
-            )
+            alert_channel_id = self.container.settings.health.alert_channel_id
 
             if alert_channel_id:
                 ch = self.bot.get_channel(alert_channel_id)

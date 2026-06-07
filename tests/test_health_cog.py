@@ -222,15 +222,17 @@ class TestHealthCogInitialization:
         # Should be called (multiple times as tasks.loop creates multiple Loop instances)
         assert mock_change.call_count >= 2
 
-    def test_cog_handles_missing_health_settings(self, mock_bot, mock_container):
-        """Should use default intervals when health settings missing."""
-        mock_container.settings.health = None
+    def test_cog_uses_default_health_settings(self, mock_bot, mock_container):
+        """Default HealthSettings drives the heartbeat intervals."""
+        from discord_music_player.config.settings import HealthSettings
 
-        with patch.object(tasks.Loop, "change_interval"):
+        mock_container.settings.health = HealthSettings()
+
+        with patch.object(tasks.Loop, "change_interval") as change_interval:
             cog = HealthCog(mock_bot, mock_container)
 
-        # Should not raise, uses defaults
         assert cog is not None
+        change_interval.assert_any_call(seconds=HealthSettings().fast_interval)
 
     @pytest.mark.asyncio
     async def test_cog_load_starts_heartbeat_loops(self, health_cog):

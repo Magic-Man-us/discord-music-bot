@@ -45,7 +45,9 @@ class BaseCog(commands.Cog):
 
     @classmethod
     async def setup(cls, bot: commands.Bot) -> None:
-        """Standard cog setup — extracts the container from the bot and registers the cog."""
+        """Standard cog setup — registers the cog with the bot's container."""
+        # discord.py's Bot type declares no `container`; MusicBot attaches it at
+        # construction. Read it reflectively to validate setup at this framework edge.
         container: Container | None = getattr(bot, "container", None)
         if container is None:
             raise RuntimeError(f"{cls.__name__}: container not found on bot instance")

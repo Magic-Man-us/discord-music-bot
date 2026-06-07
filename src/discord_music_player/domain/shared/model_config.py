@@ -32,9 +32,6 @@ MutableModelConfig = ConfigDict()
 # Mutable aggregate that must reject silent coercion (playback session).
 MutableStrictModelConfig = ConfigDict(strict=True)
 
-# Mutable accumulator re-validated on every assignment (cleanup counters).
-MutableValidatedModelConfig = ConfigDict(validate_assignment=True)
-
 # Immutable model holding non-Pydantic objects (callables, deque).
 FrozenArbitraryModelConfig = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 

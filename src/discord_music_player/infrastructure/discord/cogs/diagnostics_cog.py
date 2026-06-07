@@ -26,10 +26,10 @@ def _format_activities_message(
     resolved_query = extract_listening_query(target)
     header_prefix = f"**{label}**\n" if label else ""
     status_line = (
-        f"status=`{getattr(target, 'status', '?')}` "
-        f"desktop=`{getattr(target, 'desktop_status', '?')}` "
-        f"mobile=`{getattr(target, 'mobile_status', '?')}` "
-        f"web=`{getattr(target, 'web_status', '?')}`"
+        f"status=`{target.status}` "
+        f"desktop=`{target.desktop_status}` "
+        f"mobile=`{target.mobile_status}` "
+        f"web=`{target.web_status}`"
     )
 
     if not activities:
@@ -55,7 +55,7 @@ def _format_activities_message(
     ]
     for idx, act in enumerate(activities, start=1):
         kind = type(act).__name__
-        type_name = getattr(act.type, "name", "?") if hasattr(act, "type") else "?"
+        type_name = act.type.name
         line = f"`{idx}` **{kind}** (type=`{type_name}`)"
 
         if isinstance(act, discord.Spotify):

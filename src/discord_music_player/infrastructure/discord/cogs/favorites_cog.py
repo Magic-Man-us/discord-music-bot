@@ -137,8 +137,7 @@ class FavoritesCog(BaseCog):
             return
 
         track = tracks[position - 1]
-        track_id_str = track.id.value if hasattr(track.id, "value") else str(track.id)
-        removed = await repo.remove(interaction.user.id, track_id_str)
+        removed = await repo.remove(interaction.user.id, track.id.value)
 
         if removed:
             title = truncate(track.title, UIConstants.TITLE_TRUNCATION)
