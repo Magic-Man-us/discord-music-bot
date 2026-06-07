@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from ...domain.shared.events import (
     VoiceMemberJoinedVoiceChannel,
@@ -43,19 +43,20 @@ class AutoSkipOnRequesterLeave:
         self._pending_requester: dict[DiscordSnowflake, DiscordSnowflake] = {}
 
         self._on_requester_left_callback: (
-            Callable[[DiscordSnowflake, DiscordSnowflake, Track], Any] | None
+            Callable[[DiscordSnowflake, DiscordSnowflake, Track], Awaitable[None]] | None
         ) = None
         self._on_requester_rejoined_callback: (
-            Callable[[DiscordSnowflake, DiscordSnowflake], Any] | None
+            Callable[[DiscordSnowflake, DiscordSnowflake], Awaitable[None]] | None
         ) = None
 
     def set_on_requester_left_callback(
-        self, callback: Callable[[DiscordSnowflake, DiscordSnowflake, Track], Any] | None
+        self,
+        callback: Callable[[DiscordSnowflake, DiscordSnowflake, Track], Awaitable[None]] | None,
     ) -> None:
         self._on_requester_left_callback = callback
 
     def set_on_requester_rejoined_callback(
-        self, callback: Callable[[DiscordSnowflake, DiscordSnowflake], Any] | None
+        self, callback: Callable[[DiscordSnowflake, DiscordSnowflake], Awaitable[None]] | None
     ) -> None:
         self._on_requester_rejoined_callback = callback
 
@@ -118,11 +119,7 @@ class AutoSkipOnRequesterLeave:
             self._pending_requester[event.guild_id] = event.user_id
 
             if self._on_requester_left_callback is not None:
-                result = self._on_requester_left_callback(
-                    event.guild_id, event.user_id, current_track
-                )
-                if asyncio.iscoroutine(result):
-                    await result
+                await self._on_requester_left_callback(event.guild_id, event.user_id, current_track)
 
     async def _on_member_joined(self, event: VoiceMemberJoinedVoiceChannel) -> None:
         lock = self._guild_locks[event.guild_id]
@@ -141,6 +138,4 @@ class AutoSkipOnRequesterLeave:
             await self._playback_service.resume_playback(event.guild_id)
 
             if self._on_requester_rejoined_callback is not None:
-                result = self._on_requester_rejoined_callback(event.guild_id, event.user_id)
-                if asyncio.iscoroutine(result):
-                    await result
+                await self._on_requester_rejoined_callback(event.guild_id, event.user_id)

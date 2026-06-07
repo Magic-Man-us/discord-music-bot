@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
@@ -21,7 +21,7 @@ from ..models import (
 )
 
 if TYPE_CHECKING:
-    from ..database import Database
+    from ..database import Database, SqlRow
 
 logger = get_logger(__name__)
 
@@ -36,7 +36,7 @@ class _SessionMetadata(BaseModel):
     playback_started_at: UtcDatetimeField | None = None
 
     @staticmethod
-    def from_row(row: dict[str, Any]) -> _SessionMetadata:
+    def from_row(row: SqlRow) -> _SessionMetadata:
         raw_started = row.get("playback_started_at")
         return _SessionMetadata(
             state=PlaybackState(row["state"]),

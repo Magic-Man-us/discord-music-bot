@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator, Iterable
 from contextlib import asynccontextmanager
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 import aiosqlite
 from pydantic import BaseModel, Field
@@ -29,8 +29,14 @@ logger = get_logger(__name__)
 
 # ── Types ─────────────────────────────────────────────────────────────
 
-SqlParams = tuple[Any, ...] | dict[str, Any]
+SqliteValue = str | int | float | bytes | None
+"""A value SQLite can bind or return: TEXT / INTEGER / REAL / BLOB / NULL."""
+
+SqlParams = tuple[SqliteValue, ...] | dict[str, SqliteValue]
 """Positional (``?``) or named (``:name``) SQL parameters."""
+
+SqlRow = dict[str, SqliteValue]
+"""One fetched SQLite row keyed by column name."""
 
 # ── Constants ──────────────────────────────────────────────────────────
 
@@ -524,9 +530,7 @@ class Database:
                 cursor = await conn.execute(sql)
             return cursor
 
-    async def fetch_one(
-        self, sql: str, parameters: SqlParams | None = None
-    ) -> dict[str, Any] | None:
+    async def fetch_one(self, sql: str, parameters: SqlParams | None = None) -> SqlRow | None:
         async with self.connection() as conn:
             if parameters is not None:
                 cursor = await conn.execute(sql, parameters)
@@ -535,9 +539,7 @@ class Database:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
-    async def fetch_all(
-        self, sql: str, parameters: SqlParams | None = None
-    ) -> list[dict[str, Any]]:
+    async def fetch_all(self, sql: str, parameters: SqlParams | None = None) -> list[SqlRow]:
         async with self.connection() as conn:
             if parameters is not None:
                 cursor = await conn.execute(sql, parameters)
