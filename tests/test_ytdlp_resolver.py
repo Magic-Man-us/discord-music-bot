@@ -838,7 +838,7 @@ class TestPOTProviderConfiguration:
         settings = AudioSettings()
         resolver = YtDlpResolver(settings)
 
-        opts = resolver._get_opts()
+        opts = resolver._base_opts
         assert isinstance(opts, YtDlpOpts)
         assert opts.extractor_args is not None
         assert opts.extractor_args.youtube.pot_server_url == settings.pot_server_url
@@ -854,7 +854,7 @@ class TestPOTProviderConfiguration:
         settings = AudioSettings(pot_server_url="http://test:4416")
         resolver = YtDlpResolver(settings)
 
-        opts = resolver._get_opts()
+        opts = resolver._base_opts
 
         assert opts.extractor_args is not None
         assert opts.extractor_args.youtube.pot_server_url == "http://test:4416"
@@ -863,7 +863,7 @@ class TestPOTProviderConfiguration:
         """Should preserve POT config when applying option overrides."""
         resolver = YtDlpResolver()
 
-        opts = resolver._get_opts(quiet=False, noplaylist=False)
+        opts = resolver._base_opts.model_copy(update={"quiet": False, "noplaylist": False})
 
         # Overrides should be applied
         assert opts.quiet is False
@@ -1030,7 +1030,7 @@ class TestJsRuntimeWiring:
         """Resolver places the configured node path into yt-dlp's js_runtimes."""
         resolver = YtDlpResolver(AudioSettings(js_runtime_path="/usr/bin/node"))
 
-        js_runtimes = resolver._get_opts().model_dump()["js_runtimes"]
+        js_runtimes = resolver._base_opts.model_dump()["js_runtimes"]
 
         assert js_runtimes == {"node": {"path": "/usr/bin/node"}}
 
@@ -1038,7 +1038,7 @@ class TestJsRuntimeWiring:
         """With no configured path, node stays enabled and yt-dlp falls back to PATH lookup."""
         resolver = YtDlpResolver(AudioSettings())
 
-        js_runtimes = resolver._get_opts().model_dump()["js_runtimes"]
+        js_runtimes = resolver._base_opts.model_dump()["js_runtimes"]
 
         assert js_runtimes == {"node": {"path": None}}
 

@@ -49,6 +49,8 @@ logger = get_logger(__name__)
 
 # ── Module-level state and patterns ────────────────────────────────────
 
+_EXTRACT_FLAT_IN_PLAYLIST: Final[str] = "in_playlist"
+
 _info_cache: dict[HttpUrlStr, CacheEntry] = {}
 _cache_lock = threading.Lock()
 
@@ -105,13 +107,10 @@ class YtDlpResolver(AudioResolver):
             self._settings.pot_server_url,
         )
 
-    def _get_opts(self, **overrides: Any) -> YtDlpOpts:
-        if overrides:
-            return self._base_opts.model_copy(update=overrides)
-        return self._base_opts
-
     def _get_playlist_opts(self) -> YtDlpOpts:
-        return self._get_opts(noplaylist=False, extract_flat="in_playlist")
+        return self._base_opts.model_copy(
+            update={"noplaylist": False, "extract_flat": _EXTRACT_FLAT_IN_PLAYLIST}
+        )
 
     def _opts_for_client(self, client: YtDlpPlayerClient) -> YtDlpOpts:
         """Base opts forced to a single player_client, used for 403 fallback resolution."""
@@ -244,7 +243,7 @@ class YtDlpResolver(AudioResolver):
                     _info_cache.pop(url, None)
 
         try:
-            with YoutubeDL(params=cast(Any, (opts or self._get_opts()).model_dump())) as ydl:
+            with YoutubeDL(params=cast(Any, (opts or self._base_opts).model_dump())) as ydl:
                 data = ydl.extract_info(url, download=False)
                 result = self._parse_single_result(data)
 
@@ -287,7 +286,7 @@ class YtDlpResolver(AudioResolver):
     def _search_sync(self, query: NonEmptyStr, limit: PositiveInt = 1) -> list[YtDlpTrackInfo]:
         try:
             search_query = f"ytsearch{limit}:{query}"
-            with YoutubeDL(params=cast(Any, self._get_opts().model_dump())) as ydl:
+            with YoutubeDL(params=cast(Any, self._base_opts.model_dump())) as ydl:
                 data = ydl.extract_info(search_query, download=False)
                 return self._parse_extract_result(data).entries
         except Exception:
