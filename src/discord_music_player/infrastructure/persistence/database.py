@@ -53,22 +53,22 @@ class DatabaseStats(BaseModel):
     """Result of get_stats() — typed instead of dict[str, Any]."""
 
     model_config = ConfigDict(frozen=True)
-    db_path: str | None = None
+    db_path: NonEmptyStr | None = None
     initialized: bool = False
-    tables: dict[str, NonNegativeInt] = Field(default_factory=dict)
+    tables: dict[NonEmptyStr, NonNegativeInt] = Field(default_factory=dict)
     file_size_bytes: FileBytes | None = None
     file_size_mb: FileSizeMB | None = None
     page_count: NonNegativeInt | None = None
     page_size: NonNegativeInt | None = None
-    error: str | None = None
+    error: NonEmptyStr | None = None
 
 
 class ExpectedSchema(BaseModel):
     """Expected database schema definition."""
 
     model_config = ConfigDict(frozen=True)
-    tables: dict[str, list[str]]
-    indexes: list[str]
+    tables: dict[NonEmptyStr, list[NonEmptyStr]]
+    indexes: list[NonEmptyStr]
 
 
 class CountValidation(BaseModel):
@@ -93,7 +93,7 @@ class PragmaValidation(BaseModel):
     """SQLite pragma check results."""
 
     model_config = ConfigDict(frozen=False)
-    journal_mode: str | None = None
+    journal_mode: NonEmptyStr | None = None
     foreign_keys: Literal[0, 1] | None = None
 
 
@@ -105,15 +105,15 @@ class SchemaValidationResult(BaseModel):
     columns: ColumnValidation = Field(default_factory=ColumnValidation)
     indexes: CountValidation = Field(default_factory=CountValidation)
     pragmas: PragmaValidation = Field(default_factory=PragmaValidation)
-    issues: list[str] = Field(default_factory=list)
+    issues: list[NonEmptyStr] = Field(default_factory=list)
 
 
 class _ExistingSchema(BaseModel):
     """Names currently present in sqlite_master."""
 
     model_config = ConfigDict(frozen=True)
-    tables: frozenset[str]
-    indexes: frozenset[str]
+    tables: frozenset[NonEmptyStr]
+    indexes: frozenset[NonEmptyStr]
 
 
 EXPECTED_SCHEMA = ExpectedSchema(

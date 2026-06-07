@@ -13,6 +13,7 @@ from ....domain.shared.types import (
     DiscordSnowflake,
     NonEmptyStr,
     NonNegativeInt,
+    PositiveInt,
 )
 from ....utils.logging import get_logger
 
@@ -53,10 +54,10 @@ class SavedQueueRow(BaseModel):
 
     _SERIALIZED_FIELDS: ClassVar[set[str]] = {f.value for f in _TrackField}
 
-    id: int
+    id: PositiveInt
     guild_id: DiscordSnowflake
     name: NonEmptyStr
-    tracks_json: str
+    tracks_json: NonEmptyStr
     track_count: NonNegativeInt
     created_by_id: DiscordSnowflake
     created_by_name: NonEmptyStr
