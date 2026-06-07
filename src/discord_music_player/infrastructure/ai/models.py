@@ -17,6 +17,7 @@ from ...domain.shared.types import (
     NonEmptyStr,
     NonNegativeFloat,
     NonNegativeInt,
+    OptionalNonEmptyStr,
     PercentageInt,
     PositiveInt,
 )
@@ -31,7 +32,7 @@ class AIRecommendationItem(BaseModel):
 
     title: NonEmptyStr
     artist: NonEmptyStr | None = None
-    query: str = ""
+    query: OptionalNonEmptyStr = None
     url: HttpUrlStr | None = None
 
     def to_domain(self) -> Recommendation:

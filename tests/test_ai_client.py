@@ -54,7 +54,7 @@ class TestAIRecommendationItem:
 
         assert item.title == "Hotel California"
         assert item.artist is None
-        assert item.query == ""  # Default
+        assert item.query is None  # Empty/absent query normalizes to None
         assert item.url is None
 
     def test_to_domain_with_query(self) -> None:

@@ -10,7 +10,6 @@ from typing import Annotated, Any, Final
 
 from pydantic import (
     BaseModel,
-    BeforeValidator,
     ConfigDict,
     Field,
     field_serializer,
@@ -24,7 +23,9 @@ from ...domain.shared.types import (
     NonEmptyStr,
     NonNegativeFloat,
     NonNegativeInt,
+    OptionalNonEmptyStr,
     PositiveInt,
+    coerce_empty_to_none,
 )
 
 # ── Annotated list types ──────────────────────────────────────────────
@@ -43,17 +44,6 @@ LOG_URL_TRUNCATE: Final[int] = 60
 RESOLVE_BATCH_SIZE: Final[int] = 5
 RESOLVE_BATCH_DELAY: Final[float] = 0.5
 EXTRACT_TIMEOUT: Final[int] = 30  # seconds — max time for a single yt-dlp extraction
-
-
-def _empty_str_to_none(v: Any) -> str | None:
-    """Convert empty / whitespace-only / non-string values to None."""
-    if not isinstance(v, str) or not v.strip():
-        return None
-    return v
-
-
-OptionalNonEmptyStr = Annotated[NonEmptyStr | None, BeforeValidator(_empty_str_to_none)]
-"""Non-empty string that coerces empty / whitespace / non-string input to None."""
 
 
 # ── Pydantic models for yt-dlp data ────────────────────────────────────
@@ -103,7 +93,7 @@ class YtDlpTrackInfo(BaseModel):
     )
     @classmethod
     def _coerce_empty_to_none(cls, v: Any) -> str | None:
-        return _empty_str_to_none(v)
+        return coerce_empty_to_none(v)
 
     @field_validator("title", mode="before")
     @classmethod

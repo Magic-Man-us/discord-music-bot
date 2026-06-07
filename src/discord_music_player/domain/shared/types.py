@@ -13,7 +13,7 @@ so models can simply annotate their fields::
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Generic, TypeVar
+from typing import Annotated, Any, Generic, TypeVar
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
@@ -88,6 +88,17 @@ TrackTitleStr = Annotated[str, Field(min_length=1, max_length=500)]
 
 HttpUrlStr = Annotated[str, Field(pattern=r"^https?://")]
 """String that starts with http:// or https://."""
+
+
+def coerce_empty_to_none(v: Any) -> str | None:
+    """Convert empty / whitespace-only / non-string values to None (boundary coercion)."""
+    if not isinstance(v, str) or not v.strip():
+        return None
+    return v
+
+
+OptionalNonEmptyStr = Annotated[NonEmptyStr | None, BeforeValidator(coerce_empty_to_none)]
+"""Non-empty string that coerces empty / whitespace / non-string input to None."""
 
 HttpHeaders = dict[NonEmptyStr, str]
 """HTTP request headers (e.g. yt-dlp's per-format headers) keyed by header name."""
