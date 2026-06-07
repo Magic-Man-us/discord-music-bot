@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 import discord
 
+from ....application.services.queue_models import EnqueueFailure
 from ....domain.recommendations.entities import RecommendationRequest
 from ....domain.shared.types import DiscordSnowflake, HttpUrlStr, NonEmptyStr
 from ....utils.logging import get_logger
@@ -135,7 +136,7 @@ class NowPlayingView(BaseInteractiveView):
                     user_name=user.display_name,
                 )
 
-                if not result.success:
+                if isinstance(result, EnqueueFailure):
                     await interaction.followup.send(result.message, ephemeral=True)
                     return
 

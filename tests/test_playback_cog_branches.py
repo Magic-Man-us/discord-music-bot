@@ -29,6 +29,7 @@ from conftest import (  # noqa: E402  -- pytest adds tests/ to sys.path
 
 from discord_music_player.application.services.queue_models import (
     BatchEnqueueResult,
+    EnqueueFailure,
     QueueSnapshot,
 )
 from discord_music_player.domain.music.entities import Track
@@ -708,7 +709,7 @@ class TestPlaynextCommand:
         resolved = _track("rsvd")
         container.audio_resolver.resolve = AsyncMock(return_value=resolved)
         container.queue_service.enqueue_next = AsyncMock(
-            return_value=MagicMock(success=False, message="queue is full")
+            return_value=EnqueueFailure(message="queue is full")
         )
         cog = _make_cog(container)
         await cog.playnext.callback(cog, interaction, query="any")
@@ -968,7 +969,7 @@ class TestPlayTrack:
         container = _container()
         container.audio_resolver.resolve = AsyncMock(return_value=_track("song"))
         container.queue_service.enqueue = AsyncMock(
-            return_value=MagicMock(success=False, message="queue is full")
+            return_value=EnqueueFailure(message="queue is full")
         )
         cog = _make_cog(container)
         cog._start_long_track_vote = AsyncMock(return_value=False)

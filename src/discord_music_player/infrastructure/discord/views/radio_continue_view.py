@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from ....application.services.radio_models import RadioDisabled
 from ....domain.shared.types import DiscordSnowflake
 from ....utils.logging import get_logger
 from ..guards.voice_guards import check_user_in_voice
@@ -60,7 +61,7 @@ class RadioContinueView(BaseInteractiveView):
         radio_service = self._container.radio_service
         result = await radio_service.continue_radio(self._guild_id)
 
-        if not result.enabled:
+        if isinstance(result, RadioDisabled):
             msg = result.message or "Couldn't continue radio."
             embed = discord.Embed(
                 title=_RADIO_STOPPED_TITLE,

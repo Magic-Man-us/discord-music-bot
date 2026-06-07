@@ -17,6 +17,7 @@ from ...domain.shared.constants import TimeConstants
 from ...domain.shared.events import QueueExhausted, TrackStartedPlaying, get_event_bus
 from ...domain.shared.types import DiscordSnowflake
 from ...utils.logging import get_logger
+from .radio_models import RadioEnabled
 
 if TYPE_CHECKING:
     from ...domain.music.entities import Track
@@ -175,7 +176,7 @@ class AutoDJ:
                 user_name=user_name,
             )
 
-            if result.enabled and result.tracks_added > 0:
+            if isinstance(result, RadioEnabled) and result.tracks_added > 0:
                 logger.info(
                     "Auto-DJ enabled in guild %s: %d tracks queued", guild_id, result.tracks_added
                 )

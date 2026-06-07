@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from discord_music_player.application.services.queue_models import EnqueueFailure, EnqueueOk
+from discord_music_player.application.services.radio_models import RadioDisabled, RadioEnabled
 from discord_music_player.application.services.radio_service import (
     RadioApplicationService,
 )
@@ -124,7 +125,7 @@ class TestRadioToggle:
 
         result = await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
 
-        assert result.enabled is True
+        assert isinstance(result, RadioEnabled)
         # Default visible_count=3, so 3 tracks enqueued
         assert result.tracks_added == 3
         assert len(result.generated_tracks) == 3
@@ -157,7 +158,7 @@ class TestRadioToggle:
         assert svc.is_enabled(1)
 
         result = await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
-        assert result.enabled is False
+        assert isinstance(result, RadioDisabled)
         assert not svc.is_enabled(1)
 
     @pytest.mark.asyncio
@@ -167,7 +168,7 @@ class TestRadioToggle:
         svc, _ = _make_service(session=session)
 
         result = await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
-        assert result.enabled is False
+        assert isinstance(result, RadioDisabled)
 
     @pytest.mark.asyncio
     async def test_toggle_ai_unavailable(self):
@@ -177,7 +178,7 @@ class TestRadioToggle:
         svc, _ = _make_service(ai_available=False, session=session)
 
         result = await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
-        assert result.enabled is False
+        assert isinstance(result, RadioDisabled)
 
     @pytest.mark.asyncio
     async def test_toggle_no_recommendations(self):
@@ -187,7 +188,7 @@ class TestRadioToggle:
         svc, _ = _make_service(ai_available=True, recommendations=[], session=session)
 
         result = await svc.toggle_radio(guild_id=1, user_id=100, user_name="User")
-        assert result.enabled is False
+        assert isinstance(result, RadioDisabled)
 
     @pytest.mark.asyncio
     async def test_toggle_stores_channel_id(self):
@@ -340,7 +341,7 @@ class TestContinueRadio:
 
         result = await svc.continue_radio(1)
 
-        assert result.enabled is True
+        assert isinstance(result, RadioEnabled)
         assert result.tracks_added == 3  # visible_count
         state = svc.get_state(1)
         assert state is not None
@@ -350,7 +351,7 @@ class TestContinueRadio:
     async def test_continue_when_not_active(self):
         svc, _ = _make_service()
         result = await svc.continue_radio(1)
-        assert result.enabled is False
+        assert isinstance(result, RadioDisabled)
 
 
 class TestRadioRefill:
@@ -913,7 +914,7 @@ class TestContinueRadioBranches:
 
         result = await svc.continue_radio(1)
 
-        assert result.enabled is False
+        assert isinstance(result, RadioDisabled)
         assert "currently playing" in result.message.lower()
 
     @pytest.mark.asyncio
@@ -935,7 +936,7 @@ class TestContinueRadioBranches:
 
         result = await svc.continue_radio(1)
 
-        assert result.enabled is False
+        assert isinstance(result, RadioDisabled)
         assert "limit" in result.message.lower()
         assert svc.is_enabled(1) is False
 
@@ -957,7 +958,7 @@ class TestContinueRadioBranches:
 
         result = await svc.continue_radio(1)
 
-        assert result.enabled is True
+        assert isinstance(result, RadioEnabled)
         assert "couldn't find" in result.message.lower()
 
 

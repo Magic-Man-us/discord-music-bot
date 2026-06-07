@@ -7,7 +7,16 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from discord_music_player.application.services.queue_models import EnqueueFailure
+from discord_music_player.application.services.radio_models import RadioDisabled, RadioEnabled
+from discord_music_player.domain.music.entities import Track
+from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.infrastructure.discord.cogs.radio_cog import RadioCog
+
+
+def _track(title: str = "Track", tid: str = "t1") -> Track:
+    return Track(id=TrackId(value=tid), title=title, webpage_url=f"https://youtu.be/{tid}")
+
 
 # =============================================================================
 # Fixtures
@@ -130,14 +139,9 @@ async def test_clear_zero_recommendations(cog, interaction, mock_container):
 
 @pytest.mark.asyncio
 async def test_toggle_enable_sends_embed(cog, interaction, mock_container):
-    track_mock = MagicMock()
-    track_mock.title = "Next Track"
-
-    result = MagicMock()
-    result.enabled = True
-    result.seed_title = "Cool Song"
-    result.tracks_added = 2
-    result.generated_tracks = [track_mock, track_mock]
+    result = RadioEnabled(
+        seed_title="Cool Song", tracks_added=2, generated_tracks=[_track(), _track()]
+    )
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=result)
 
     queue_info = MagicMock()
@@ -160,9 +164,7 @@ async def test_toggle_enable_sends_embed(cog, interaction, mock_container):
 
 @pytest.mark.asyncio
 async def test_toggle_disable_sends_ephemeral(cog, interaction, mock_container):
-    result = MagicMock()
-    result.enabled = False
-    result.message = ""
+    result = RadioDisabled(message="Disabled")
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=result)
 
     await cog.radio.callback(cog, interaction, action=None, count=3, query=None)
@@ -173,9 +175,7 @@ async def test_toggle_disable_sends_ephemeral(cog, interaction, mock_container):
 
 @pytest.mark.asyncio
 async def test_toggle_disable_with_message(cog, interaction, mock_container):
-    result = MagicMock()
-    result.enabled = False
-    result.message = "No current track"
+    result = RadioDisabled(message="No current track")
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=result)
 
     await cog.radio.callback(cog, interaction, action=None, count=3, query=None)
@@ -190,9 +190,7 @@ async def test_toggle_disable_with_message(cog, interaction, mock_container):
 
 
 @pytest.mark.asyncio
-async def test_toggle_with_query_resolves_and_enqueues(
-    cog, interaction, mock_container
-):
+async def test_toggle_with_query_resolves_and_enqueues(cog, interaction, mock_container):
     """Seed query resolves a track via audio_resolver and enqueues it."""
     seed_track = MagicMock()
     seed_track.title = "Queried Song"
@@ -203,10 +201,7 @@ async def test_toggle_with_query_resolves_and_enqueues(
     enqueue_result.should_start = True
     mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
 
-    radio_result = MagicMock()
-    radio_result.enabled = True
-    radio_result.seed_title = "Queried Song"
-    radio_result.generated_tracks = [seed_track]
+    radio_result = RadioEnabled(seed_title="Queried Song", generated_tracks=[_track()])
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=radio_result)
 
     queue_info = MagicMock()
@@ -239,9 +234,7 @@ async def test_toggle_with_query_enqueue_fails(cog, interaction, mock_container)
     seed_track.title = "Dup Song"
     mock_container.audio_resolver.resolve = AsyncMock(return_value=seed_track)
 
-    enqueue_result = MagicMock()
-    enqueue_result.success = False
-    enqueue_result.message = "Already in queue"
+    enqueue_result = EnqueueFailure(message="Already in queue")
     mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
 
     await cog.radio.callback(cog, interaction, action=None, count=3, query="dup query")
@@ -252,9 +245,7 @@ async def test_toggle_with_query_enqueue_fails(cog, interaction, mock_container)
 
 
 @pytest.mark.asyncio
-async def test_toggle_with_query_disables_existing_radio(
-    cog, interaction, mock_container
-):
+async def test_toggle_with_query_disables_existing_radio(cog, interaction, mock_container):
     """When radio is already enabled, _seed_track disables it so toggle re-enables fresh."""
     mock_container.radio_service.is_enabled = MagicMock(return_value=True)
 
@@ -267,10 +258,7 @@ async def test_toggle_with_query_disables_existing_radio(
     enqueue_result.should_start = False
     mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
 
-    radio_result = MagicMock()
-    radio_result.enabled = True
-    radio_result.seed_title = "New Seed"
-    radio_result.generated_tracks = [seed_track]
+    radio_result = RadioEnabled(seed_title="New Seed", generated_tracks=[_track()])
     mock_container.radio_service.toggle_radio = AsyncMock(return_value=radio_result)
 
     queue_info = MagicMock()
@@ -403,9 +391,7 @@ async def test_on_pool_exhausted_sends_continue_prompt(cog, mock_container):
 
 
 @pytest.mark.asyncio
-async def test_on_pool_exhausted_falls_back_to_event_count_when_no_state(
-    cog, mock_container
-):
+async def test_on_pool_exhausted_falls_back_to_event_count_when_no_state(cog, mock_container):
     from discord_music_player.domain.shared.events import RadioPoolExhausted
 
     channel = MagicMock(spec=discord.TextChannel)
@@ -513,9 +499,7 @@ async def test_playmine_off_disables_follow_mode(cog, interaction, mock_containe
 
 
 @pytest.mark.asyncio
-async def test_playmine_on_with_no_activity_returns_hint(
-    cog, interaction, mock_container
-):
+async def test_playmine_on_with_no_activity_returns_hint(cog, interaction, mock_container):
     interaction.user.activities = []
     interaction.client = MagicMock()
     interaction.client.intents = MagicMock()
@@ -529,9 +513,7 @@ async def test_playmine_on_with_no_activity_returns_hint(
 
 
 @pytest.mark.asyncio
-async def test_playmine_on_with_activity_enables_and_seeds(
-    cog, interaction, mock_container
-):
+async def test_playmine_on_with_activity_enables_and_seeds(cog, interaction, mock_container):
     import discord
 
     spotify = MagicMock(spec=discord.Spotify)
@@ -551,9 +533,7 @@ async def test_playmine_on_with_activity_enables_and_seeds(
 
 
 @pytest.mark.asyncio
-async def test_playmine_on_with_count_sets_max_tracks(
-    cog, interaction, mock_container
-):
+async def test_playmine_on_with_count_sets_max_tracks(cog, interaction, mock_container):
     import discord
 
     spotify = MagicMock(spec=discord.Spotify)
@@ -572,9 +552,7 @@ async def test_playmine_on_with_count_sets_max_tracks(
 
 
 @pytest.mark.asyncio
-async def test_playmine_on_without_count_defaults_max_tracks(
-    cog, interaction, mock_container
-):
+async def test_playmine_on_without_count_defaults_max_tracks(cog, interaction, mock_container):
     import discord
 
     from discord_music_player.domain.shared.constants import LimitConstants
@@ -656,9 +634,7 @@ async def test_playmine_on_prefers_cached_guild_member_for_activity(
 
 
 @pytest.mark.asyncio
-async def test_playmine_on_connects_voice_before_seeding(
-    cog, interaction, mock_container
-):
+async def test_playmine_on_connects_voice_before_seeding(cog, interaction, mock_container):
     import discord
 
     spotify = MagicMock(spec=discord.Spotify)

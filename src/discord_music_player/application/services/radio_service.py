@@ -28,7 +28,7 @@ from ...domain.shared.types import (
 )
 from ...utils.logging import get_logger
 from .queue_models import EnqueueOk
-from .radio_models import RadioState, RadioToggleResult
+from .radio_models import RadioDisabled, RadioEnabled, RadioState, RadioToggleResult
 
 if TYPE_CHECKING:
     from ...config.settings import RadioSettings
@@ -118,14 +118,14 @@ class RadioApplicationService:
     ) -> RadioToggleResult:
         if self.is_enabled(guild_id):
             self.disable_radio(guild_id)
-            return RadioToggleResult(enabled=False, message="Radio disabled.")
+            return RadioDisabled(message="Radio disabled.")
 
         session = await self._session_repo.get(guild_id)
         if session is None or session.current_track is None:
-            return RadioToggleResult(enabled=False, message="No track is currently playing.")
+            return RadioDisabled(message="No track is currently playing.")
 
         if not await self._ai_client.is_available():
-            return RadioToggleResult(enabled=False, message="AI service unavailable.")
+            return RadioDisabled(message="AI service unavailable.")
 
         current_track = session.current_track
 
@@ -151,10 +151,7 @@ class RadioApplicationService:
 
         if not recommendations:
             self.disable_radio(guild_id)
-            return RadioToggleResult(
-                enabled=False,
-                message="Couldn't find similar tracks.",
-            )
+            return RadioDisabled(message="Couldn't find similar tracks.")
 
         # Split: resolve count (or visible_count) immediately, pool the rest
         effective_count = count or self._settings.visible_count
@@ -170,10 +167,7 @@ class RadioApplicationService:
 
         if not enqueued:
             self.disable_radio(guild_id)
-            return RadioToggleResult(
-                enabled=False,
-                message="Couldn't find similar tracks.",
-            )
+            return RadioDisabled(message="Couldn't find similar tracks.")
 
         # Store remaining unresolved recommendations in the pool
         state.pool = list(pool_recs)
@@ -187,8 +181,7 @@ class RadioApplicationService:
             len(state.pool),
         )
 
-        return RadioToggleResult(
-            enabled=True,
+        return RadioEnabled(
             tracks_added=len(enqueued),
             generated_tracks=enqueued,
             seed_title=current_track.title,
@@ -240,16 +233,16 @@ class RadioApplicationService:
         """
         state = self._get_active_state(guild_id)
         if state is None:
-            return RadioToggleResult(enabled=False, message="Radio is not active.")
+            return RadioDisabled(message="Radio is not active.")
 
         base_track = await self._get_base_track(guild_id)
         if base_track is None:
-            return RadioToggleResult(enabled=False, message="No track is currently playing.")
+            return RadioDisabled(message="No track is currently playing.")
 
         remaining_budget = self._settings.max_tracks_per_session - state.tracks_consumed
         if remaining_budget <= 0:
             self.disable_radio(guild_id)
-            return RadioToggleResult(enabled=False, message="Radio session limit reached.")
+            return RadioDisabled(message="Radio session limit reached.")
 
         batch_size = min(self._settings.batch_size, remaining_budget)
         exclude_ids = await self._collect_exclude_ids(guild_id)
@@ -263,10 +256,7 @@ class RadioApplicationService:
         )
 
         if not recommendations:
-            return RadioToggleResult(
-                enabled=True,
-                message="Couldn't find more similar tracks.",
-            )
+            return RadioEnabled(message="Couldn't find more similar tracks.")
 
         # Split: resolve visible_count immediately, pool the rest
         visible_count = min(self._settings.visible_count, len(recommendations))
@@ -291,8 +281,7 @@ class RadioApplicationService:
             state.tracks_consumed,
         )
 
-        return RadioToggleResult(
-            enabled=True,
+        return RadioEnabled(
             tracks_added=len(enqueued),
             generated_tracks=enqueued,
             seed_title=state.seed_track_title,

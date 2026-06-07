@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
+from discord_music_player.application.services.queue_models import EnqueueFailure
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
 from discord_music_player.domain.music.enums import LoopMode, PlaybackState
 from discord_music_player.domain.music.wrappers import TrackId
@@ -679,9 +680,7 @@ class TestPlayCommand:
         mock_container.voice_adapter.is_connected = MagicMock(return_value=True)
         mock_container.audio_resolver.resolve = AsyncMock(return_value=sample_track)
 
-        enqueue_result = MagicMock()
-        enqueue_result.success = False
-        enqueue_result.message = "Queue is full"
+        enqueue_result = EnqueueFailure(message="Queue is full")
         mock_container.queue_service.enqueue = AsyncMock(return_value=enqueue_result)
 
         await playback_cog.play.callback(playback_cog, mock_interaction, "test query")

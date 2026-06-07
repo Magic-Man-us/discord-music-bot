@@ -8,6 +8,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from ....application.services.queue_models import EnqueueFailure
+from ....application.services.radio_models import RadioDisabled
 from ....domain.shared.constants import LimitConstants
 from ....domain.shared.enums import AutoDJAction, PlaymineAction, RadioAction
 from ....domain.shared.events import RadioPoolExhausted, get_event_bus
@@ -20,7 +22,7 @@ from .base_cog import BaseCog
 
 if TYPE_CHECKING:
     from ....application.services.follow_mode import FollowMode
-    from ....application.services.radio_models import RadioToggleResult
+    from ....application.services.radio_models import RadioEnabled
     from ....config.container import Container
 
 
@@ -170,7 +172,7 @@ class RadioCog(BaseCog):
             count=count,
         )
 
-        if not result.enabled:
+        if isinstance(result, RadioDisabled):
             msg = result.message or "Couldn't enable radio."
             await interaction.followup.send(msg, ephemeral=True)
             return
@@ -205,7 +207,7 @@ class RadioCog(BaseCog):
             user_name=interaction.user.display_name,
         )
 
-        if not result.success:
+        if isinstance(result, EnqueueFailure):
             await interaction.followup.send(result.message, ephemeral=True)
             return False
 
@@ -314,7 +316,7 @@ class RadioCog(BaseCog):
     async def _send_radio_enabled(
         self,
         interaction: discord.Interaction,
-        result: RadioToggleResult,
+        result: RadioEnabled,
     ) -> None:
         """Send the 'Up Next' embed with per-track re-roll buttons."""
         assert interaction.guild is not None

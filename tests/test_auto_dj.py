@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from discord_music_player.application.services.auto_dj import AutoDJ
-from discord_music_player.application.services.radio_models import RadioToggleResult
+from discord_music_player.application.services.radio_models import RadioDisabled, RadioEnabled
 from discord_music_player.domain.music.entities import GuildPlaybackSession, Track
 from discord_music_player.domain.music.wrappers import TrackId
 from discord_music_player.domain.shared.events import (
@@ -57,11 +57,7 @@ def radio_service() -> MagicMock:
     svc = MagicMock()
     svc.is_enabled = MagicMock(return_value=False)
     svc.toggle_radio = AsyncMock(
-        return_value=RadioToggleResult(
-            enabled=True,
-            tracks_added=3,
-            message="Radio enabled.",
-        )
+        return_value=RadioEnabled(tracks_added=3, message="Radio enabled.")
     )
     return svc
 
@@ -492,11 +488,7 @@ class TestDelayedActivateFailures:
         self, auto_dj: AutoDJ, radio_service: MagicMock, playback_service: MagicMock
     ) -> None:
         radio_service.toggle_radio = AsyncMock(
-            return_value=RadioToggleResult(
-                enabled=False,
-                tracks_added=0,
-                message="No recommendations available.",
-            )
+            return_value=RadioDisabled(message="No recommendations available.")
         )
 
         await auto_dj._delayed_activate(GUILD_ID, delay=0)
@@ -508,10 +500,8 @@ class TestDelayedActivateFailures:
         self, auto_dj: AutoDJ, radio_service: MagicMock, playback_service: MagicMock
     ) -> None:
         radio_service.toggle_radio = AsyncMock(
-            return_value=RadioToggleResult(
-                enabled=True,
-                tracks_added=0,
-                message="Radio enabled but no tracks resolved.",
+            return_value=RadioEnabled(
+                tracks_added=0, message="Radio enabled but no tracks resolved."
             )
         )
 
@@ -551,7 +541,9 @@ class TestMultiGuild:
         assert guild_b in auto_dj._timers
 
         # Cancel only guild_a
-        await auto_dj._on_track_started(TrackStartedPlaying(guild_id=guild_a, track_id=TrackId(value="test")))
+        await auto_dj._on_track_started(
+            TrackStartedPlaying(guild_id=guild_a, track_id=TrackId(value="test"))
+        )
         assert guild_a not in auto_dj._timers
         assert guild_b in auto_dj._timers
 

@@ -380,9 +380,9 @@ class TestSimilarButton:
         resolved_track = _make_track(title="Resolved Song")
         container.audio_resolver.resolve = AsyncMock(return_value=resolved_track)
 
-        enqueue_result = MagicMock()
-        enqueue_result.success = False
-        enqueue_result.message = "Queue is full"
+        from discord_music_player.application.services.queue_models import EnqueueFailure
+
+        enqueue_result = EnqueueFailure(message="Queue is full")
         container.queue_service.enqueue_next = AsyncMock(return_value=enqueue_result)
 
         view, _ = _make_view(container=container, guild_id=505)

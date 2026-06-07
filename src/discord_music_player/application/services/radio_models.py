@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Annotated, Literal
+
 from pydantic import BaseModel, Field
 
 from ...domain.music.entities import Track
 from ...domain.recommendations.entities import Recommendation
-from ...domain.shared.model_config import MutableModelConfig
+from ...domain.shared.model_config import FrozenModelConfig, MutableModelConfig
 from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, NonNegativeInt, TrackTitleStr
 
 
@@ -36,11 +38,26 @@ class RadioState(BaseModel):
         return self.user_name or "Radio"
 
 
-class RadioToggleResult(BaseModel):
-    model_config = MutableModelConfig
+class RadioEnabled(BaseModel):
+    """Radio is on: the freshly queued tracks and the seed."""
 
-    enabled: bool
+    model_config = FrozenModelConfig
+
+    enabled: Literal[True] = True
     tracks_added: NonNegativeInt = 0
     generated_tracks: list[Track] = Field(default_factory=list)
     seed_title: TrackTitleStr | None = None
-    message: NonEmptyStr = "Radio toggled."
+    message: NonEmptyStr = "Radio enabled."
+
+
+class RadioDisabled(BaseModel):
+    """Radio is off, or could not be enabled, with the reason."""
+
+    model_config = FrozenModelConfig
+
+    enabled: Literal[False] = False
+    message: NonEmptyStr
+
+
+RadioToggleResult = Annotated[RadioEnabled | RadioDisabled, Field(discriminator="enabled")]
+"""Outcome of a radio toggle/continue, discriminated on ``enabled`` (mirrors RadioState.enabled)."""

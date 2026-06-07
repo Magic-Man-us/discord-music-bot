@@ -7,6 +7,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
+from discord_music_player.application.services.radio_models import RadioDisabled, RadioEnabled
+from discord_music_player.domain.music.entities import Track
+from discord_music_player.domain.music.wrappers import TrackId
+
+
+def _track(title: str = "Track", tid: str = "t1") -> Track:
+    return Track(id=TrackId(value=tid), title=title, webpage_url=f"https://youtu.be/{tid}")
+
 
 def _make_container() -> MagicMock:
     container = MagicMock()
@@ -22,7 +30,7 @@ def _make_container() -> MagicMock:
     return container
 
 
-def _make_view(container: MagicMock | None = None) -> "RadioContinueView":
+def _make_view(container: MagicMock | None = None) -> RadioContinueView:
     from discord_music_player.infrastructure.discord.views.radio_continue_view import (
         RadioContinueView,
     )
@@ -47,13 +55,7 @@ def test_build_continue_embed_contains_track_count() -> None:
 async def test_continue_button_success_creates_radio_view() -> None:
     container = _make_container()
 
-    track = MagicMock()
-    track.title = "Song A"
-    result = MagicMock()
-    result.enabled = True
-    result.generated_tracks = [track]
-    result.seed_title = "Seed Song"
-    result.message = None
+    result = RadioEnabled(generated_tracks=[_track(title="Song A")], seed_title="Seed Song")
     container.radio_service.continue_radio = AsyncMock(return_value=result)
 
     queue_info = MagicMock()
@@ -63,11 +65,14 @@ async def test_continue_button_success_creates_radio_view() -> None:
     view = _make_view(container)
     interaction = AsyncMock()
 
-    with patch(
-        "discord_music_player.infrastructure.discord.views.radio_continue_view.RadioView"
-    ) as MockRadioView, patch(
-        "discord_music_player.infrastructure.discord.views.radio_continue_view.build_up_next_embed"
-    ) as mock_embed_fn:
+    with (
+        patch(
+            "discord_music_player.infrastructure.discord.views.radio_continue_view.RadioView"
+        ) as MockRadioView,
+        patch(
+            "discord_music_player.infrastructure.discord.views.radio_continue_view.build_up_next_embed"
+        ) as mock_embed_fn,
+    ):
         mock_embed = MagicMock(spec=discord.Embed)
         mock_embed_fn.return_value = mock_embed
         mock_radio_view = MagicMock()
@@ -77,7 +82,7 @@ async def test_continue_button_success_creates_radio_view() -> None:
 
         interaction.response.defer.assert_awaited_once()
         container.radio_service.continue_radio.assert_awaited_once_with(123)
-        mock_embed_fn.assert_called_once_with([track], "Seed Song")
+        mock_embed_fn.assert_called_once_with(result.generated_tracks, "Seed Song")
         interaction.edit_original_response.assert_awaited_once()
         call_kwargs = interaction.edit_original_response.call_args[1]
         assert call_kwargs["embed"] is mock_embed
@@ -88,10 +93,7 @@ async def test_continue_button_success_creates_radio_view() -> None:
 async def test_continue_button_failure_shows_stopped_embed() -> None:
     container = _make_container()
 
-    result = MagicMock()
-    result.enabled = False
-    result.message = "No seeds available."
-    result.generated_tracks = []
+    result = RadioDisabled(message="No seeds available.")
     container.radio_service.continue_radio = AsyncMock(return_value=result)
 
     view = _make_view(container)
@@ -110,11 +112,7 @@ async def test_continue_button_failure_shows_stopped_embed() -> None:
 async def test_continue_button_starts_playback_when_idle() -> None:
     container = _make_container()
 
-    track = MagicMock()
-    result = MagicMock()
-    result.enabled = True
-    result.generated_tracks = [track]
-    result.seed_title = "Seed"
+    result = RadioEnabled(generated_tracks=[_track()], seed_title="Seed")
     container.radio_service.continue_radio = AsyncMock(return_value=result)
 
     queue_info = MagicMock()
@@ -128,11 +126,12 @@ async def test_continue_button_starts_playback_when_idle() -> None:
     view = _make_view(container)
     interaction = AsyncMock()
 
-    with patch(
-        "discord_music_player.infrastructure.discord.views.radio_continue_view.RadioView"
-    ), patch(
-        "discord_music_player.infrastructure.discord.views.radio_continue_view.build_up_next_embed"
-    ) as mock_embed_fn:
+    with (
+        patch("discord_music_player.infrastructure.discord.views.radio_continue_view.RadioView"),
+        patch(
+            "discord_music_player.infrastructure.discord.views.radio_continue_view.build_up_next_embed"
+        ) as mock_embed_fn,
+    ):
         mock_embed_fn.return_value = MagicMock(spec=discord.Embed)
         await view.continue_button.callback(interaction)
 
@@ -171,10 +170,7 @@ async def test_on_timeout_disables_radio_and_deletes_message() -> None:
 @pytest.mark.asyncio
 async def test_race_guard_second_press_returns_early() -> None:
     container = _make_container()
-    result = MagicMock()
-    result.enabled = False
-    result.message = "stopped"
-    result.generated_tracks = []
+    result = RadioDisabled(message="stopped")
     container.radio_service.continue_radio = AsyncMock(return_value=result)
 
     view = _make_view(container)

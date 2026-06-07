@@ -8,6 +8,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from ....application.services.queue_models import EnqueueFailure
 from ....domain.music.entities import PlaylistPreview, Track
 from ....domain.shared.constants import PlaylistConstants, UIConstants
 from ....domain.shared.types import (
@@ -524,7 +525,7 @@ class PlaybackCog(BaseCog):
                 user_name=interaction.user.display_name,
             )
 
-            if not result.success:
+            if isinstance(result, EnqueueFailure):
                 await interaction.followup.send(result.message, ephemeral=True)
                 return False
 
@@ -767,7 +768,7 @@ class PlaybackCog(BaseCog):
                 user_name=interaction.user.display_name,
             )
 
-            if not result.success:
+            if isinstance(result, EnqueueFailure):
                 await interaction.followup.send(result.message, ephemeral=True)
                 return
 

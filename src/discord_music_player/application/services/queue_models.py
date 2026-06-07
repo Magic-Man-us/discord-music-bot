@@ -16,7 +16,7 @@ class EnqueueOk(BaseModel):
 
     model_config = FrozenModelConfig
 
-    outcome: Literal["ok"] = "ok"
+    success: Literal[True] = True
     track: Track
     position: NonNegativeInt
     queue_length: NonNegativeInt
@@ -29,12 +29,12 @@ class EnqueueFailure(BaseModel):
 
     model_config = FrozenModelConfig
 
-    outcome: Literal["failure"] = "failure"
+    success: Literal[False] = False
     message: NonEmptyStr
 
 
-EnqueueResult = Annotated[EnqueueOk | EnqueueFailure, Field(discriminator="outcome")]
-"""Outcome of an enqueue: a populated ``ok`` variant or a ``failure`` with a message."""
+EnqueueResult = Annotated[EnqueueOk | EnqueueFailure, Field(discriminator="success")]
+"""Outcome of an enqueue, discriminated on ``success``: a populated ``ok`` or a ``failure``."""
 
 
 class BatchEnqueueResult(BaseModel):
