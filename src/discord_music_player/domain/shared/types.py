@@ -1,7 +1,7 @@
 """Reusable Pydantic Annotated types for domain-wide validation.
 
-Every constrained type used across bounded contexts is defined here once,
-so models can simply annotate their fields::
+Every constrained type used across bounded contexts is defined here once, carrying
+its constraint and schema metadata (description / examples) in a single place::
 
     from discord_music_player.domain.shared.types import DiscordSnowflake, NonEmptyStr
 
@@ -54,41 +54,63 @@ class ValueWrapper(BaseModel, Generic[T]):
 
 # ── Numeric constraints ─────────────────────────────────────────────
 
-DiscordSnowflake = Annotated[int, Field(gt=0, lt=2**64)]
-"""Positive integer that fits a Discord snowflake (1 … 2^64-1)."""
+DiscordSnowflake = Annotated[
+    int,
+    Field(
+        gt=0,
+        lt=2**64,
+        description="Discord snowflake ID (1 .. 2^64-1).",
+        examples=[123456789012345678],
+    ),
+]
 
 DiscordSnowflakeTuple = tuple[DiscordSnowflake, ...]
 """Immutable sequence of Discord snowflake IDs (owners, guilds, …)."""
 
-NonNegativeInt = Annotated[int, Field(ge=0)]
-"""Integer >= 0."""
+NonNegativeInt = Annotated[int, Field(ge=0, description="Integer >= 0.", examples=[0])]
 
-PositiveInt = Annotated[int, Field(gt=0)]
-"""Integer > 0."""
+PositiveInt = Annotated[int, Field(gt=0, description="Integer > 0.", examples=[1])]
 
-NonNegativeFloat = Annotated[float, Field(ge=0.0)]
-"""Float >= 0.0."""
+NonNegativeFloat = Annotated[float, Field(ge=0.0, description="Float >= 0.0.", examples=[0.0])]
 
-UnitInterval = Annotated[float, Field(ge=0.0, le=1.0)]
-"""Float in [0.0, 1.0] — used for confidence scores."""
+UnitInterval = Annotated[
+    float, Field(ge=0.0, le=1.0, description="Confidence/ratio in [0.0, 1.0].", examples=[0.5])
+]
 
-PercentageInt = Annotated[int, Field(ge=0, le=100)]
-"""Integer percentage: 0 … 100."""
+PercentageInt = Annotated[
+    int, Field(ge=0, le=100, description="Percentage: 0 .. 100.", examples=[42])
+]
 
-VolumeFloat = Annotated[float, Field(ge=0.0, le=2.0)]
-"""Audio volume multiplier in [0.0, 2.0]."""
+VolumeFloat = Annotated[
+    float,
+    Field(ge=0.0, le=2.0, description="Audio volume multiplier in [0.0, 2.0].", examples=[1.0]),
+]
 
 
 # ── String constraints ──────────────────────────────────────────────
 
-NonEmptyStr = Annotated[str, Field(min_length=1)]
-"""String with at least one character."""
+NonEmptyStr = Annotated[
+    str, Field(min_length=1, description="Non-empty string.", examples=["text"])
+]
 
-TrackTitleStr = Annotated[str, Field(min_length=1, max_length=500)]
-"""Track title: 1-500 characters."""
+TrackTitleStr = Annotated[
+    str,
+    Field(
+        min_length=1,
+        max_length=500,
+        description="Track title (1-500 characters).",
+        examples=["Daft Punk - Get Lucky"],
+    ),
+]
 
-HttpUrlStr = Annotated[str, Field(pattern=r"^https?://")]
-"""String that starts with http:// or https://."""
+HttpUrlStr = Annotated[
+    str,
+    Field(
+        pattern=r"^https?://",
+        description="URL starting with http:// or https://.",
+        examples=["https://youtu.be/dQw4w9WgXcQ"],
+    ),
+]
 
 
 def coerce_empty_to_none(v: Any) -> str | None:
@@ -107,8 +129,14 @@ HttpHeaders = dict[NonEmptyStr, str]
 FfmpegOptions = dict[NonEmptyStr, str]
 """FFmpeg argument groups (e.g. ``before_options`` / ``options``) keyed by group name."""
 
-DatabaseUrlStr = Annotated[str, Field(min_length=1)]
-"""SQLAlchemy-style database URL; the scheme is validated on the settings model."""
+DatabaseUrlStr = Annotated[
+    str,
+    Field(
+        min_length=1,
+        description="Database URL; the scheme is validated on the settings model.",
+        examples=["sqlite:///data/bot.db"],
+    ),
+]
 
 PlayerClientList = list[YtDlpPlayerClient]
 """Ordered yt-dlp ``player_client`` identifiers to try when resolving a stream."""
@@ -116,11 +144,13 @@ PlayerClientList = list[YtDlpPlayerClient]
 
 # ── File size constraints ──────────────────────────────────────────
 
-FileBytes = Annotated[int, Field(ge=0)]
-"""File size in bytes: >= 0."""
+FileBytes = Annotated[
+    int, Field(ge=0, description="File size in bytes (>= 0).", examples=[1048576])
+]
 
-FileSizeMB = Annotated[float, Field(ge=0.0)]
-"""File size in megabytes: >= 0.0."""
+FileSizeMB = Annotated[
+    float, Field(ge=0.0, description="File size in megabytes (>= 0.0).", examples=[2.5])
+]
 
 BYTES_PER_MB: int = 1024 * 1024
 """1 mebibyte = 1 048 576 bytes."""
@@ -128,56 +158,102 @@ BYTES_PER_MB: int = 1024 * 1024
 
 # ── Domain-specific numeric constraints ─────────────────────────────
 
-DurationSeconds = Annotated[int, Field(ge=0, le=86_400)]
-"""Track duration in seconds: 0 … 86 400 (24 hours)."""
+DurationSeconds = Annotated[
+    int,
+    Field(ge=0, le=86_400, description="Track duration in seconds (0 .. 86400).", examples=[210]),
+]
 
-QueuePositionInt = Annotated[int, Field(ge=0)]
-"""Zero-based queue position."""
+QueuePositionInt = Annotated[
+    int, Field(ge=0, description="Zero-based queue position.", examples=[0])
+]
 
-PlaylistImportCount = Annotated[int, Field(ge=1, le=50)]
-"""Number of tracks to import from an external playlist: 1 … MAX_PLAYLIST_TRACKS (50)."""
+PlaylistImportCount = Annotated[
+    int,
+    Field(
+        ge=1,
+        le=50,
+        description="Tracks to import from an external playlist (1 .. 50).",
+        examples=[10],
+    ),
+]
 
-PlaylistStartIndex = Annotated[int, Field(ge=1, le=1000)]
-"""1-based start offset into a playlist: 1 … 1 000."""
+PlaylistStartIndex = Annotated[
+    int,
+    Field(ge=1, le=1000, description="1-based playlist start offset (1 .. 1000).", examples=[1]),
+]
 
-FollowTrackCount = Annotated[int, Field(ge=1, le=25)]
-"""Tracks to mirror before /playmine auto-stops: 1 … FOLLOW_TRACKS_HARD_CAP (25)."""
+FollowTrackCount = Annotated[
+    int,
+    Field(
+        ge=1,
+        le=25,
+        description="Tracks to mirror before /playmine auto-stops (1 .. 25).",
+        examples=[5],
+    ),
+]
 
-RecommendationCount = Annotated[int, Field(ge=1, le=10)]
-"""AI recommendations to request: 1 … MAX_RECOMMENDATION_COUNT (10)."""
+RecommendationCount = Annotated[
+    int, Field(ge=1, le=10, description="AI recommendations to request (1 .. 10).", examples=[3])
+]
 
 
 # ── Settings-specific constraints ──────────────────────────────────
 
-PoolSize = Annotated[int, Field(ge=1, le=100)]
-"""Database connection pool size: 1 … 100."""
+PoolSize = Annotated[
+    int, Field(ge=1, le=100, description="Database connection pool size (1 .. 100).", examples=[5])
+]
 
-BusyTimeoutMs = Annotated[int, Field(ge=1000, le=30000)]
-"""Database busy timeout in milliseconds: 1 000 … 30 000."""
+BusyTimeoutMs = Annotated[
+    int,
+    Field(
+        ge=1000,
+        le=30000,
+        description="Database busy timeout in ms (1000 .. 30000).",
+        examples=[5000],
+    ),
+]
 
-ConnectionTimeoutS = Annotated[int, Field(ge=1, le=60)]
-"""Database connection timeout in seconds: 1 … 60."""
+ConnectionTimeoutS = Annotated[
+    int,
+    Field(
+        ge=1, le=60, description="Database connection timeout in seconds (1 .. 60).", examples=[10]
+    ),
+]
 
-CommandPrefixStr = Annotated[str, Field(min_length=1, max_length=5)]
-"""Bot command prefix: 1-5 characters."""
+CommandPrefixStr = Annotated[
+    str,
+    Field(
+        min_length=1,
+        max_length=5,
+        description="Bot command prefix (1-5 characters).",
+        examples=["!"],
+    ),
+]
 
-MaxQueueSize = Annotated[int, Field(gt=0, le=1000)]
-"""Maximum queue size: 1 … 1 000."""
+MaxQueueSize = Annotated[
+    int, Field(gt=0, le=1000, description="Maximum queue size (1 .. 1000).", examples=[50])
+]
 
-MaxTokens = Annotated[int, Field(ge=1, le=4096)]
-"""AI max tokens: 1 … 4 096."""
+MaxTokens = Annotated[
+    int, Field(ge=1, le=4096, description="AI max output tokens (1 .. 4096).", examples=[500])
+]
 
-TemperatureFloat = Annotated[float, Field(ge=0.0, le=2.0)]
-"""AI temperature: 0.0 … 2.0."""
+TemperatureFloat = Annotated[
+    float,
+    Field(ge=0.0, le=2.0, description="AI sampling temperature (0.0 .. 2.0).", examples=[0.7]),
+]
 
-RadioCount = Annotated[int, Field(gt=0, le=10)]
-"""Radio visible tracks in queue: 1 … 10."""
+RadioCount = Annotated[
+    int, Field(gt=0, le=10, description="Radio visible tracks in queue (1 .. 10).", examples=[3])
+]
 
-RadioBatchSize = Annotated[int, Field(gt=0, le=10)]
-"""Radio AI batch size: 1 … 10 (capped by MAX_RECOMMENDATION_COUNT)."""
+RadioBatchSize = Annotated[
+    int, Field(gt=0, le=10, description="Radio AI batch size (1 .. 10).", examples=[10])
+]
 
-RadioMaxTracks = Annotated[int, Field(gt=0, le=200)]
-"""Radio max tracks per session: 1 … 200."""
+RadioMaxTracks = Annotated[
+    int, Field(gt=0, le=200, description="Radio max tracks per session (1 .. 200).", examples=[50])
+]
 
 
 # ── Datetime constraints ────────────────────────────────────────────
