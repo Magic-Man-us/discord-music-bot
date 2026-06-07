@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 from ..music.wrappers import TrackId
 from ..shared.datetime_utils import utcnow
 from ..shared.mixins import ExpirableMixin
-from ..shared.types import DiscordSnowflake, PositiveInt
+from ..shared.types import DiscordSnowflake, NonNegativeInt, PositiveInt, UtcDatetimeField
 from .enums import VoteType
 
 
@@ -21,7 +21,7 @@ class Vote(BaseModel):
 
     user_id: DiscordSnowflake
     vote_type: VoteType
-    timestamp: datetime = Field(default_factory=utcnow)
+    timestamp: UtcDatetimeField = Field(default_factory=utcnow)
 
     def __hash__(self) -> int:
         return hash((self.user_id, self.vote_type))
@@ -46,11 +46,11 @@ class VoteSession(ExpirableMixin, BaseModel):
     track_id: TrackId
     vote_type: VoteType
     threshold: PositiveInt
-    started_at: datetime = Field(default_factory=utcnow)
-    expires_at: datetime | None = None
-    initial_voters: set[int] = Field(default_factory=set, exclude=True)
+    started_at: UtcDatetimeField = Field(default_factory=utcnow)
+    expires_at: UtcDatetimeField | None = None
+    initial_voters: set[DiscordSnowflake] = Field(default_factory=set, exclude=True)
 
-    _voters: set[int] = PrivateAttr(default_factory=set)
+    _voters: set[DiscordSnowflake] = PrivateAttr(default_factory=set)
 
     DEFAULT_EXPIRATION_MINUTES: ClassVar[int] = 5
 
@@ -83,7 +83,7 @@ class VoteSession(ExpirableMixin, BaseModel):
     def voters(self) -> frozenset[int]:
         return frozenset(self._voters)
 
-    def add_vote(self, user_id: int) -> bool:
+    def add_vote(self, user_id: DiscordSnowflake) -> bool:
         """Add a vote. Returns True if this vote caused the threshold to be met."""
         if self.has_voted(user_id):
             return False
@@ -91,13 +91,13 @@ class VoteSession(ExpirableMixin, BaseModel):
         self._voters.add(user_id)
         return self.is_threshold_met
 
-    def remove_vote(self, user_id: int) -> bool:
+    def remove_vote(self, user_id: DiscordSnowflake) -> bool:
         if user_id in self._voters:
             self._voters.remove(user_id)
             return True
         return False
 
-    def has_voted(self, user_id: int) -> bool:
+    def has_voted(self, user_id: DiscordSnowflake) -> bool:
         return user_id in self._voters
 
     def reset(self, new_track_id: TrackId | None = None) -> None:
@@ -111,7 +111,7 @@ class VoteSession(ExpirableMixin, BaseModel):
     def extend_expiration(self, minutes: int = 5) -> None:
         self.expires_at = utcnow() + timedelta(minutes=minutes)
 
-    def update_threshold(self, new_threshold: int) -> None:
+    def update_threshold(self, new_threshold: PositiveInt) -> None:
         """Update threshold, e.g. when listeners join or leave the channel."""
         if new_threshold < 1:
             raise ValueError("Threshold must be at least 1")
@@ -122,7 +122,7 @@ class VoteSession(ExpirableMixin, BaseModel):
 
     @classmethod
     def create_skip_session(
-        cls, guild_id: int, track_id: TrackId, listener_count: int
+        cls, guild_id: DiscordSnowflake, track_id: TrackId, listener_count: NonNegativeInt
     ) -> VoteSession:
         """Create a skip vote session with an auto-calculated threshold."""
         from .services import VotingDomainService

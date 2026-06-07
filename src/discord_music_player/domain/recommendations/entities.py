@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Final
+from datetime import timedelta
+from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -13,8 +13,9 @@ from ..shared.types import (
     HttpUrlStr,
     NonEmptyStr,
     NonNegativeInt,
-    PositiveInt,
+    RecommendationCount,
     UnitInterval,
+    UtcDatetimeField,
 )
 
 if TYPE_CHECKING:
@@ -43,7 +44,7 @@ class RecommendationRequest(BaseModel):
 
     base_track_title: NonEmptyStr
     base_track_artist: NonEmptyStr | None = None
-    count: Annotated[PositiveInt, Field(le=MAX_RECOMMENDATION_COUNT)] = DEFAULT_RECOMMENDATION_COUNT
+    count: RecommendationCount = DEFAULT_RECOMMENDATION_COUNT
     genre_hint: NonEmptyStr | None = None
     exclude_tracks: frozenset[NonEmptyStr] = Field(default_factory=frozenset)
     session_context: tuple[SessionSeedTrack, ...] = Field(
@@ -95,10 +96,13 @@ class Recommendation(BaseModel):
 
     title: NonEmptyStr
     artist: NonEmptyStr | None = None
-    query: str = ""  # Search query for resolution (derived from artist + title if empty)
-    url: HttpUrlStr | None = None  # Optional direct URL
-    confidence: UnitInterval = 1.0  # Confidence score from AI
-    reason: NonEmptyStr | None = None  # Why this was recommended
+    query: NonEmptyStr = Field(
+        default="",  # always overwritten by _derive_query before validation
+        description="Search query for resolution (derived from artist + title if empty).",
+    )
+    url: HttpUrlStr | None = None
+    confidence: UnitInterval = 1.0
+    reason: NonEmptyStr | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -130,8 +134,8 @@ class RecommendationSet(ExpirableMixin, BaseModel):
     base_track_title: NonEmptyStr
     base_track_artist: NonEmptyStr | None = None
     recommendations: list[Recommendation] = Field(default_factory=list)
-    generated_at: datetime = Field(default_factory=utcnow)
-    expires_at: datetime | None = None
+    generated_at: UtcDatetimeField = Field(default_factory=utcnow)
+    expires_at: UtcDatetimeField | None = None
 
     DEFAULT_CACHE_HOURS: ClassVar[int] = 24
 
@@ -194,8 +198,8 @@ class CacheStats(BaseModel):
     total_entries: NonNegativeInt = 0
     expired_entries: NonNegativeInt = 0
     valid_entries: NonNegativeInt = 0
-    oldest_entry: datetime | None = None
-    newest_entry: datetime | None = None
+    oldest_entry: UtcDatetimeField | None = None
+    newest_entry: UtcDatetimeField | None = None
 
 
 def filter_duplicates(recommendations: list[Recommendation]) -> list[Recommendation]:

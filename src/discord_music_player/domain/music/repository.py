@@ -40,7 +40,7 @@ class TrackForClassification(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     track_id: NonEmptyStr
-    description: str | None = None
+    description: NonEmptyStr | None = None
 
 
 TrackGenreMap = dict[NonEmptyStr, NonEmptyStr]

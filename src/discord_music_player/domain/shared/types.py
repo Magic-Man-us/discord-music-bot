@@ -131,6 +131,9 @@ PlaylistStartIndex = Annotated[int, Field(ge=1, le=1000)]
 FollowTrackCount = Annotated[int, Field(ge=1, le=25)]
 """Tracks to mirror before /playmine auto-stops: 1 … FOLLOW_TRACKS_HARD_CAP (25)."""
 
+RecommendationCount = Annotated[int, Field(ge=1, le=10)]
+"""AI recommendations to request: 1 … MAX_RECOMMENDATION_COUNT (10)."""
+
 
 # ── Settings-specific constraints ──────────────────────────────────
 
