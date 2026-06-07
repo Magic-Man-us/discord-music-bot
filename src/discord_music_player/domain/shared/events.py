@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
-from datetime import datetime
 from typing import Any, TypeVar
 from uuid import uuid4
 
@@ -20,6 +19,7 @@ from .types import (
     NonEmptyStr,
     NonNegativeInt,
     UserIdField,
+    UtcDatetimeField,
 )
 
 logger = get_logger(__name__)
@@ -31,10 +31,10 @@ EventHandler = Callable[[T], Awaitable[None]]
 class DomainEvent(BaseModel):
     """Base class for all domain events."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
-    event_id: str = Field(default_factory=lambda: str(uuid4()))
-    occurred_at: datetime = Field(default_factory=utcnow)
+    event_id: NonEmptyStr = Field(default_factory=lambda: str(uuid4()))
+    occurred_at: UtcDatetimeField = Field(default_factory=utcnow)
 
 
 # === Music Domain Events ===

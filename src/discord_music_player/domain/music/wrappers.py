@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from typing import Final
 
 from pydantic import field_validator
 
@@ -14,11 +15,11 @@ from ..shared.types import (
     ValueWrapper,
 )
 
-_YOUTUBE_PATTERNS: list[re.Pattern[str]] = [
+_YOUTUBE_PATTERNS: Final[list[re.Pattern[str]]] = [
     re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})"),
     re.compile(r"youtube\.com/shorts/([a-zA-Z0-9_-]{11})"),
 ]
-_HASH_ID_LENGTH = 16
+_HASH_ID_LENGTH: Final[int] = 16
 
 
 class TrackId(ValueWrapper[NonEmptyStr]):
@@ -35,7 +36,7 @@ class TrackId(ValueWrapper[NonEmptyStr]):
         return v
 
     @classmethod
-    def from_url(cls, url: str) -> TrackId:
+    def from_url(cls, url: NonEmptyStr) -> TrackId:
         """Extract track ID from a URL, using YouTube video ID or a URL hash as fallback."""
         for pattern in _YOUTUBE_PATTERNS:
             match = pattern.search(url)
@@ -62,7 +63,7 @@ class StartSeconds(ValueWrapper[DurationSeconds]):
     """Validated seek offset for starting playback at a specific timestamp."""
 
     @classmethod
-    def from_optional(cls, seconds: int | None) -> StartSeconds | None:
+    def from_optional(cls, seconds: DurationSeconds | None) -> StartSeconds | None:
         """Create from an optional int, returning None if input is None or zero."""
         if seconds is None or seconds == 0:
             return None

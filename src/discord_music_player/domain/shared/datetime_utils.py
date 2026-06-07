@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from .types import UtcDatetimeField
+from .types import NonEmptyStr, UtcDatetimeField
 
 
 class UtcDateTime(BaseModel):
@@ -37,7 +37,7 @@ class UtcDateTime(BaseModel):
         return cls(datetime.now(UTC))
 
     @classmethod
-    def from_iso(cls, value: str) -> UtcDateTime:
+    def from_iso(cls, value: NonEmptyStr) -> UtcDateTime:
         # Accepts: '...+00:00' or '...Z'
         if value.endswith("Z"):
             value = value[:-1] + "+00:00"
