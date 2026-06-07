@@ -5,7 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict
 
 from ...domain.music.entities import Track
-from ...domain.shared.types import NonNegativeInt
+from ...domain.shared.types import NonEmptyStr, NonNegativeInt
 
 
 class EnqueueMeta(BaseModel):
@@ -24,7 +24,7 @@ class EnqueueResult(BaseModel):
 
     success: bool
     meta: EnqueueMeta | None = None
-    message: str = ""
+    message: NonEmptyStr
 
     @property
     def track(self) -> Track | None:
@@ -43,11 +43,11 @@ class EnqueueResult(BaseModel):
         return self.meta.should_start if self.meta else False
 
     @classmethod
-    def failure(cls, message: str) -> EnqueueResult:
+    def failure(cls, message: NonEmptyStr) -> EnqueueResult:
         return cls(success=False, message=message)
 
     @classmethod
-    def ok(cls, *, meta: EnqueueMeta, message: str) -> EnqueueResult:
+    def ok(cls, *, meta: EnqueueMeta, message: NonEmptyStr) -> EnqueueResult:
         return cls(success=True, meta=meta, message=message)
 
 

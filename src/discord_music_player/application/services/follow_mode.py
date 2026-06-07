@@ -31,6 +31,7 @@ from ...domain.shared.types import (
     DiscordSnowflake,
     FollowTrackCount,
     NonEmptyStr,
+    NonNegativeInt,
 )
 from ...utils.logging import get_logger
 
@@ -51,17 +52,17 @@ class FollowState(BaseModel):
     user_id: DiscordSnowflake
     user_name: NonEmptyStr
     max_tracks: FollowTrackCount = LimitConstants.MAX_FOLLOW_TRACKS
-    last_enqueued_key: str | None = None
-    pending_key: str | None = None
+    last_enqueued_key: NonEmptyStr | None = None
+    pending_key: NonEmptyStr | None = None
     # Mirror tracks that played through (the limit counts these); a skip never
     # increments it, so skipping frees a slot for one more mirror.
-    kept_count: int = 0
+    kept_count: NonNegativeInt = 0
     # Track IDs queued by the mirror but not yet played/skipped. The enqueue
     # budget is kept_count + len(pending_track_ids), capped at max_tracks.
-    pending_track_ids: set[str] = Field(default_factory=set)
+    pending_track_ids: set[NonEmptyStr] = Field(default_factory=set)
     # Dedup against every key mirrored this session, so a revisited song
     # (A → B → A) isn't queued twice — not just the single most recent one.
-    enqueued_keys: set[str] = Field(default_factory=set)
+    enqueued_keys: set[NonEmptyStr] = Field(default_factory=set)
 
 
 class FollowMode:

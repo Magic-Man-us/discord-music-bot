@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 
-from ...domain.shared.types import DiscordSnowflake, NonNegativeInt
+from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, NonNegativeInt, TrackTitleStr
 from ...domain.voting.enums import VoteResult, VoteType
 
 if TYPE_CHECKING:
@@ -19,7 +19,7 @@ class VoteSkipResult(BaseModel):
     model_config = ConfigDict(frozen=True, strict=True)
 
     result: VoteResult
-    message: str
+    message: NonEmptyStr
     votes_current: NonNegativeInt = 0
     votes_needed: NonNegativeInt = 0
     action_executed: bool = False
@@ -28,7 +28,7 @@ class VoteSkipResult(BaseModel):
     def is_success(self) -> bool:
         return self.result.is_success
 
-    def format_display(self, track_title: str) -> str:
+    def format_display(self, track_title: TrackTitleStr) -> str:
         return self.result.get_message(
             VoteType.SKIP,
             self.votes_current,
@@ -40,8 +40,8 @@ class VoteSkipResult(BaseModel):
     def from_vote_result(
         cls,
         result: VoteResult,
-        votes_current: int = 0,
-        votes_needed: int = 0,
+        votes_current: NonNegativeInt = 0,
+        votes_needed: NonNegativeInt = 0,
     ) -> VoteSkipResult:
         if not isinstance(result, VoteResult):
             raise TypeError(f"Expected VoteResult, got {type(result).__name__}: {result!r}")
