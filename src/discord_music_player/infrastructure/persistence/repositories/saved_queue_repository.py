@@ -6,9 +6,10 @@ import json
 from enum import StrEnum
 from typing import TYPE_CHECKING, ClassVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from ....domain.music.entities import Track
+from ....domain.shared.model_config import FrozenModelConfig
 from ....domain.shared.types import (
     DiscordSnowflake,
     NonEmptyStr,
@@ -50,7 +51,7 @@ class _TrackField(StrEnum):
 class SavedQueueRow(BaseModel):
     """Boundary between saved_queues DB rows and domain Track lists."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     _SERIALIZED_FIELDS: ClassVar[set[str]] = {f.value for f in _TrackField}
 
@@ -86,7 +87,7 @@ class SavedQueueRow(BaseModel):
 class SavedQueueInfo(BaseModel):
     """Summary without track data — used for list display."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     name: NonEmptyStr
     track_count: NonNegativeInt

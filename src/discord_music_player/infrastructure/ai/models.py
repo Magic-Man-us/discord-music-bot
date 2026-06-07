@@ -9,9 +9,10 @@ from __future__ import annotations
 import time
 from typing import Final
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, Field, computed_field
 
 from ...domain.recommendations.entities import Recommendation
+from ...domain.shared.model_config import FrozenModelConfig
 from ...domain.shared.types import (
     HttpUrlStr,
     NonEmptyStr,
@@ -28,7 +29,7 @@ AI_TIMEOUT: Final[float] = 20.0
 class AIRecommendationItem(BaseModel):
     """A single recommendation item from the AI response."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     title: NonEmptyStr
     artist: NonEmptyStr | None = None
@@ -48,7 +49,7 @@ class AIRecommendationItem(BaseModel):
 class AIRecommendationResponse(BaseModel):
     """Structured output returned by the AI agent."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     recs: list[AIRecommendationItem] = Field(default_factory=list)
 
@@ -59,7 +60,7 @@ class AIRecommendationResponse(BaseModel):
 class AICacheEntry(BaseModel):
     """Cached AI recommendation response."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     data: list[AIRecommendationItem]
     created_at: NonNegativeFloat = Field(default_factory=time.time)
@@ -69,7 +70,7 @@ class AICacheEntry(BaseModel):
 
 
 class AIUsageStats(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     total_input_tokens: NonNegativeInt = 0
     total_output_tokens: NonNegativeInt = 0
@@ -83,7 +84,7 @@ class AIUsageStats(BaseModel):
 
 
 class AICacheStats(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     size: NonNegativeInt
     hits: NonNegativeInt

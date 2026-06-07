@@ -9,9 +9,10 @@ from __future__ import annotations
 import random
 from typing import TypeVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from ..domain.shared.constants import PlaylistConstants
+from ..domain.shared.model_config import FrozenModelConfig
 from ..domain.shared.types import (
     NonNegativeInt,
     PlaylistImportCount,
@@ -28,7 +29,7 @@ class PlaylistSlice(BaseModel):
     so callers can render "queuing 10 of 42 tracks" honestly.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     items_indices: tuple[NonNegativeInt, ...]
     total: NonNegativeInt

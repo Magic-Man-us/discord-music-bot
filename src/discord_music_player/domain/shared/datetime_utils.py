@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
+from .model_config import FrozenModelConfig
 from .types import NonEmptyStr, UtcDatetimeField
 
 
 class UtcDateTime(BaseModel):
     """A tiny value-object wrapper around a timezone-aware UTC ``datetime``."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     dt: UtcDatetimeField
 

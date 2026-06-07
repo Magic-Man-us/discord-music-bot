@@ -5,11 +5,12 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 from ..music.wrappers import TrackId
 from ..shared.datetime_utils import utcnow
 from ..shared.mixins import ExpirableMixin
+from ..shared.model_config import FrozenModelConfig, MutableModelConfig
 from ..shared.types import DiscordSnowflake, NonNegativeInt, PositiveInt, UtcDatetimeField
 from .enums import VoteType
 
@@ -17,7 +18,7 @@ from .enums import VoteType
 class Vote(BaseModel):
     """Immutable value object representing a single vote."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     user_id: DiscordSnowflake
     vote_type: VoteType
@@ -40,7 +41,7 @@ class VoteSession(ExpirableMixin, BaseModel):
     hydrate from persistence.
     """
 
-    model_config = ConfigDict()
+    model_config = MutableModelConfig
 
     guild_id: DiscordSnowflake
     track_id: TrackId

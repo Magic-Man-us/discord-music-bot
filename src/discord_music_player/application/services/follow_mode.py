@@ -18,7 +18,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from ...domain.shared.constants import LimitConstants, TimeConstants
 from ...domain.shared.events import (
@@ -27,6 +27,7 @@ from ...domain.shared.events import (
     VoiceMemberLeftVoiceChannel,
     get_event_bus,
 )
+from ...domain.shared.model_config import MutableStrictModelConfig
 from ...domain.shared.types import (
     DiscordSnowflake,
     FollowTrackCount,
@@ -47,7 +48,7 @@ logger = get_logger(__name__)
 class FollowState(BaseModel):
     """Per-guild follow state. Mutable across track changes."""
 
-    model_config = ConfigDict(strict=True)
+    model_config = MutableStrictModelConfig
 
     user_id: DiscordSnowflake
     user_name: NonEmptyStr

@@ -8,11 +8,12 @@ from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from ...utils.logging import get_logger
 from ..music.wrappers import TrackId
 from .datetime_utils import utcnow
+from .model_config import EventModelConfig
 from .types import (
     ChannelIdField,
     DiscordSnowflake,
@@ -31,7 +32,7 @@ EventHandler = Callable[[T], Awaitable[None]]
 class DomainEvent(BaseModel):
     """Base class for all domain events."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = EventModelConfig
 
     event_id: NonEmptyStr = Field(default_factory=lambda: str(uuid4()))
     occurred_at: UtcDatetimeField = Field(default_factory=utcnow)
@@ -104,9 +105,7 @@ class EventBus:
     """
 
     def __init__(self) -> None:
-        self._handlers: dict[type[DomainEvent], list[EventHandler[Any]]] = defaultdict(
-            list
-        )
+        self._handlers: dict[type[DomainEvent], list[EventHandler[Any]]] = defaultdict(list)
 
     def subscribe(self, event_type: type[T], handler: EventHandler[T]) -> None:
         self._handlers[event_type].append(handler)

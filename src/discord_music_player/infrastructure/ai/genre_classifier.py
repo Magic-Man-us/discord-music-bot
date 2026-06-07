@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
 from ...domain.music.repository import TrackForClassification, TrackGenreMap
+from ...domain.shared.model_config import FrozenModelConfig
 from ...utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -21,7 +22,7 @@ _UNKNOWN_GENRE = "Unknown"
 class GenreClassificationResponse(BaseModel):
     """AI agent output mapping track IDs to genre strings."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     genres: TrackGenreMap = Field(default_factory=dict)
 

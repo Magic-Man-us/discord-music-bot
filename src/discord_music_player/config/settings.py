@@ -8,7 +8,6 @@ from typing import ClassVar, Final
 from pydantic import (
     AliasChoices,
     BaseModel,
-    ConfigDict,
     Field,
     SecretStr,
     computed_field,
@@ -17,6 +16,7 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ..domain.shared.enums import EnvironmentType, LogLevel, YtDlpPlayerClient
+from ..domain.shared.model_config import FrozenStrictModelConfig, SettingsSubModelConfig
 from ..domain.shared.types import (
     BusyTimeoutMs,
     CommandPrefixStr,
@@ -47,7 +47,7 @@ _FALSY_ENV_VALUES: Final[frozenset[str]] = frozenset("0 false f no n off release
 
 
 class DatabaseSettings(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
+    model_config = SettingsSubModelConfig
 
     url: DatabaseUrlStr = Field(
         default="sqlite:///data/bot.db",
@@ -73,7 +73,7 @@ class DatabaseSettings(BaseModel):
 
 
 class DiscordSettings(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
+    model_config = SettingsSubModelConfig
 
     token: SecretStr = Field(
         default=SecretStr(""),
@@ -127,7 +127,7 @@ class DiscordSettings(BaseModel):
 
 
 class AudioSettings(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
+    model_config = SettingsSubModelConfig
 
     default_volume: VolumeFloat = 0.5
     max_queue_size: MaxQueueSize = 50
@@ -166,7 +166,7 @@ class AudioSettings(BaseModel):
 class AISettings(BaseModel):
     """AI configuration. Features auto-disable when the provider API key is missing."""
 
-    model_config = ConfigDict(frozen=True, strict=True, populate_by_name=True)
+    model_config = SettingsSubModelConfig
 
     # Provider prefix → environment variable holding the API key.
     _PROVIDER_API_KEY_ENV: ClassVar[dict[str, str]] = {
@@ -219,7 +219,7 @@ class AISettings(BaseModel):
 
 
 class VotingSettings(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True)
+    model_config = FrozenStrictModelConfig
 
     skip_threshold_percentage: UnitInterval = 0.5
     min_voters: PositiveInt = 1
@@ -227,7 +227,7 @@ class VotingSettings(BaseModel):
 
 
 class RadioSettings(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True)
+    model_config = FrozenStrictModelConfig
 
     batch_size: RadioBatchSize = 10
     visible_count: RadioCount = 3
@@ -235,7 +235,7 @@ class RadioSettings(BaseModel):
 
 
 class CleanupSettings(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True)
+    model_config = FrozenStrictModelConfig
 
     stale_session_hours: PositiveInt = 24
     cleanup_interval_minutes: PositiveInt = 30

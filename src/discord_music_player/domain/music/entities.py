@@ -5,13 +5,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from ..shared.constants import LimitConstants
 from ..shared.datetime_utils import UtcDateTime, utcnow
 from ..shared.exceptions import (
     BusinessRuleViolationError,
     InvalidOperationError,
+)
+from ..shared.model_config import (
+    FrozenModelConfig,
+    FrozenStrictModelConfig,
+    MutableStrictModelConfig,
 )
 from ..shared.types import (
     DiscordSnowflake,
@@ -39,7 +44,7 @@ _RESOLVE_EXCLUDE_FIELDS: frozenset[str] = frozenset(
 
 
 class PlaylistEntry(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     title: TrackTitleStr
     url: HttpUrlStr
@@ -49,14 +54,14 @@ class PlaylistEntry(BaseModel):
 class PlaylistPreview(BaseModel):
     """Lightweight preview of a remote playlist: its own title + track entries."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     entries: list[PlaylistEntry]
     title: TrackTitleStr | None = None
 
 
 class Track(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True)
+    model_config = FrozenStrictModelConfig
 
     id: TrackId
     title: TrackTitleStr
@@ -138,7 +143,7 @@ class Track(BaseModel):
 
 
 class GuildPlaybackSession(BaseModel):
-    model_config = ConfigDict(strict=True)
+    model_config = MutableStrictModelConfig
 
     MAX_QUEUE_SIZE: ClassVar[int] = LimitConstants.MAX_QUEUE_SIZE
 

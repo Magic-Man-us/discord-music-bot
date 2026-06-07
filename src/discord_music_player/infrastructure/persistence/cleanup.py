@@ -7,9 +7,10 @@ from collections.abc import Awaitable
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, computed_field
 
 from ...domain.shared.datetime_utils import utcnow
+from ...domain.shared.model_config import MutableValidatedModelConfig
 from ...domain.shared.types import NonNegativeInt
 from ...utils.logging import get_logger
 
@@ -122,7 +123,7 @@ class CleanupJob:
 class CleanupStats(BaseModel):
     """Accumulator for cleanup operation results."""
 
-    model_config = ConfigDict(validate_assignment=True)
+    model_config = MutableValidatedModelConfig
 
     sessions_cleaned: NonNegativeInt = 0
     history_cleaned: NonNegativeInt = 0

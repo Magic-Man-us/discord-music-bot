@@ -9,11 +9,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any, Final
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from ...domain.music.entities import Track
 from ...domain.music.wrappers import TrackId
 from ...domain.shared.datetime_utils import UtcDateTime
+from ...domain.shared.model_config import FrozenBoundaryModelConfig, FrozenModelConfig
 from ...domain.shared.types import (
     DiscordSnowflake,
     DurationSeconds,
@@ -34,7 +35,7 @@ class TrackRow(BaseModel):
     (e.g. ``stream_url`` in history) default to ``None``.
     """
 
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    model_config = FrozenBoundaryModelConfig
 
     track_id: NonEmptyStr
     title: NonEmptyStr
@@ -75,7 +76,7 @@ class QueueTrackRow(BaseModel):
     Serialized to a named-parameter dict via ``model_dump()``.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     guild_id: DiscordSnowflake
     track_id: NonEmptyStr

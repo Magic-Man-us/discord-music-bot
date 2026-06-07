@@ -5,10 +5,11 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, ClassVar, Final
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from ..shared.datetime_utils import utcnow
 from ..shared.mixins import ExpirableMixin
+from ..shared.model_config import FrozenModelConfig
 from ..shared.types import (
     HttpUrlStr,
     NonEmptyStr,
@@ -31,7 +32,7 @@ DEFAULT_TOP_N: Final[int] = 3
 class SessionSeedTrack(BaseModel):
     """Lightweight seed track used for multi-track radio seeding."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     title: NonEmptyStr
     artist: NonEmptyStr | None = None
@@ -40,7 +41,7 @@ class SessionSeedTrack(BaseModel):
 class RecommendationRequest(BaseModel):
     """Value object for a recommendation request."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     base_track_title: NonEmptyStr
     base_track_artist: NonEmptyStr | None = None
@@ -92,7 +93,7 @@ class RecommendationRequest(BaseModel):
 class Recommendation(BaseModel):
     """A single track recommendation that hasn't been resolved yet."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     title: NonEmptyStr
     artist: NonEmptyStr | None = None
@@ -129,7 +130,7 @@ class Recommendation(BaseModel):
 class RecommendationSet(ExpirableMixin, BaseModel):
     """Aggregate grouping recommendations for a specific base track."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     base_track_title: NonEmptyStr
     base_track_artist: NonEmptyStr | None = None
@@ -193,7 +194,7 @@ class RecommendationSet(ExpirableMixin, BaseModel):
 class CacheStats(BaseModel):
     """Cache statistics for the recommendation cache repository."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     total_entries: NonNegativeInt = 0
     expired_entries: NonNegativeInt = 0

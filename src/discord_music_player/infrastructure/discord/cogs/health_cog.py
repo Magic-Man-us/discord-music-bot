@@ -10,11 +10,12 @@ from typing import TYPE_CHECKING
 
 import discord
 from discord.ext import commands, tasks
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from ....domain.shared.constants import HealthConstants, UIConstants
 from ....domain.shared.datetime_utils import UtcDateTime
 from ....domain.shared.enums import BotStatus
+from ....domain.shared.model_config import ExtraAllowedModelConfig, StrictSchemaModelConfig
 from ....domain.shared.types import (
     BYTES_PER_MB,
     FileSizeMB,
@@ -40,7 +41,7 @@ def _get_health_settings(settings: object) -> object | None:
 class BasicStats(BaseModel):
     """Core heartbeat stats written to JSON file."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = StrictSchemaModelConfig
 
     ts: NonEmptyStr
     uptime_s: NonNegativeInt
@@ -56,7 +57,7 @@ class BasicStats(BaseModel):
 class DetailedStats(BasicStats):
     """Extended heartbeat stats with optional system info."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ExtraAllowedModelConfig
 
     guild_count: NonNegativeInt | None = None
     voice_connections: NonNegativeInt | None = None

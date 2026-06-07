@@ -5,10 +5,11 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING, ClassVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from ....domain.music.entities import Track
 from ....domain.music.wrappers import TrackId
+from ....domain.shared.model_config import FrozenBoundaryModelConfig
 from ....domain.shared.types import (
     DiscordSnowflake,
     DurationSeconds,
@@ -36,7 +37,7 @@ class _Col(StrEnum):
 
 
 class FavoriteRow(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    model_config = FrozenBoundaryModelConfig
 
     track_id: NonEmptyStr
     title: NonEmptyStr

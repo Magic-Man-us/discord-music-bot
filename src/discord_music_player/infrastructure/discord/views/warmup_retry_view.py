@@ -7,8 +7,9 @@ from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 import discord
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
+from ....domain.shared.model_config import FrozenArbitraryModelConfig
 from ....domain.shared.types import NonEmptyStr, NonNegativeInt
 from ....utils.logging import get_logger
 from .base_view import BaseInteractiveView
@@ -28,7 +29,7 @@ class WarmupRetryState(BaseModel):
     user originally supplied (query, count, start, shuffle, seek). The view
     just invokes it on retry — no per-param plumbing needed."""
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    model_config = FrozenArbitraryModelConfig
 
     remaining_seconds: NonNegativeInt
     query: NonEmptyStr

@@ -5,8 +5,9 @@ from __future__ import annotations
 from collections import deque
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
+from ....domain.shared.model_config import FrozenModelConfig, MutableArbitraryModelConfig
 from ....domain.shared.types import (
     DiscordSnowflake,
     NonEmptyStr,
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 class TrackKey(BaseModel):
     """Frozen identity key for matching a track to its Discord message."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     track_id: NonEmptyStr
     requested_by_id: UserIdField | None = None
@@ -39,7 +40,7 @@ class TrackKey(BaseModel):
 class TrackedMessage(BaseModel):
     """A Discord message that the bot posted for a specific track."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     channel_id: DiscordSnowflake
     message_id: DiscordSnowflake
@@ -59,7 +60,7 @@ class TrackedMessage(BaseModel):
 class GuildMessageState(BaseModel):
     """Mutable per-guild state tracking now-playing and queued messages."""
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = MutableArbitraryModelConfig
 
     now_playing: TrackedMessage | None = None
     now_playing_reserved_at: UtcDatetimeField | None = None

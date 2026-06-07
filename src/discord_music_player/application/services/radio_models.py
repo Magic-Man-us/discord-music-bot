@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from ...domain.music.entities import Track
 from ...domain.recommendations.entities import Recommendation
+from ...domain.shared.model_config import MutableModelConfig
 from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, NonNegativeInt, TrackTitleStr
 
 
@@ -16,7 +17,7 @@ class RadioState(BaseModel):
     on-demand as the queue is consumed, without extra AI calls.
     """
 
-    model_config = ConfigDict()
+    model_config = MutableModelConfig
 
     enabled: bool = False
     seed_track_title: TrackTitleStr | None = None
@@ -36,7 +37,7 @@ class RadioState(BaseModel):
 
 
 class RadioToggleResult(BaseModel):
-    model_config = ConfigDict()
+    model_config = MutableModelConfig
 
     enabled: bool
     tracks_added: NonNegativeInt = 0

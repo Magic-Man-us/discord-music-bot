@@ -10,13 +10,13 @@ from typing import Annotated, Any, Final
 
 from pydantic import (
     BaseModel,
-    ConfigDict,
     Field,
     field_serializer,
     field_validator,
 )
 
 from ...domain.shared.enums import YtDlpJsRuntime
+from ...domain.shared.model_config import FrozenBoundaryModelConfig, FrozenModelConfig
 from ...domain.shared.types import (
     HttpHeaders,
     HttpUrlStr,
@@ -52,7 +52,7 @@ EXTRACT_TIMEOUT: Final[int] = 30  # seconds — max time for a single yt-dlp ext
 class AudioFormatInfo(BaseModel):
     """A single audio format entry from yt-dlp extraction."""
 
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    model_config = FrozenBoundaryModelConfig
 
     url: NonEmptyStr | None = None
     acodec: NonEmptyStr | None = None
@@ -65,7 +65,7 @@ class YtDlpTrackInfo(BaseModel):
     Before-validators coerce garbage from external yt-dlp data gracefully.
     """
 
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    model_config = FrozenBoundaryModelConfig
 
     webpage_url: HttpUrlStr | None = None
     url: NonEmptyStr | None = None
@@ -124,7 +124,7 @@ class YtDlpExtractResult(BaseModel):
     Invalid entries are silently dropped.
     """
 
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    model_config = FrozenBoundaryModelConfig
 
     entries: list[YtDlpTrackInfo] = Field(default_factory=list)
     title: OptionalNonEmptyStr = None
@@ -149,7 +149,7 @@ class YtDlpExtractResult(BaseModel):
 class CacheEntry(BaseModel):
     """Cached yt-dlp extraction result with expiry timestamp."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     info: YtDlpTrackInfo | None = None
     cached_at: NonNegativeFloat
@@ -161,7 +161,7 @@ class CacheEntry(BaseModel):
 class YouTubeExtractorConfig(BaseModel):
     """YouTube-specific yt-dlp extractor arguments."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     pot_server_url: HttpUrlStr
     player_client: NonEmptyStrList
@@ -170,7 +170,7 @@ class YouTubeExtractorConfig(BaseModel):
 class ExtractorArgs(BaseModel):
     """Container for yt-dlp extractor arguments."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     youtube: YouTubeExtractorConfig
 
@@ -178,7 +178,7 @@ class ExtractorArgs(BaseModel):
 class JsRuntimeConfig(BaseModel):
     """Per-runtime entry for yt-dlp's ``js_runtimes`` param; ``path`` locates the binary."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     path: NonEmptyStr | None = None
 
@@ -193,7 +193,7 @@ JsRuntimeWire = dict[str, dict[str, str | None]]
 class YtDlpOpts(BaseModel):
     """Typed yt-dlp configuration options passed to YoutubeDL."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     quiet: bool = True
     noprogress: bool = True

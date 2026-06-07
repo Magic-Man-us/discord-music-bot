@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
+from ...domain.shared.model_config import FrozenStrictModelConfig
 from ...domain.shared.types import DiscordSnowflake, NonEmptyStr, NonNegativeInt, TrackTitleStr
 from ...domain.voting.enums import VoteResult, VoteType
 
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
 
 
 class VoteSkipResult(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True)
+    model_config = FrozenStrictModelConfig
 
     result: VoteResult
     message: NonEmptyStr

@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 import aiosqlite
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from ...domain.shared.constants import SQLPragmas
+from ...domain.shared.model_config import FrozenModelConfig, MutableModelConfig
 from ...domain.shared.types import (
     BYTES_PER_MB,
     FileBytes,
@@ -52,7 +53,7 @@ class _SQLiteType(StrEnum):
 class DatabaseStats(BaseModel):
     """Result of get_stats() — typed instead of dict[str, Any]."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
     db_path: NonEmptyStr | None = None
     initialized: bool = False
     tables: dict[NonEmptyStr, NonNegativeInt] = Field(default_factory=dict)
@@ -66,7 +67,7 @@ class DatabaseStats(BaseModel):
 class ExpectedSchema(BaseModel):
     """Expected database schema definition."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
     tables: dict[NonEmptyStr, list[NonEmptyStr]]
     indexes: list[NonEmptyStr]
 
@@ -74,7 +75,7 @@ class ExpectedSchema(BaseModel):
 class CountValidation(BaseModel):
     """Validation counts for a schema element category."""
 
-    model_config = ConfigDict(frozen=False)
+    model_config = MutableModelConfig
     expected: NonNegativeInt = 0
     found: NonNegativeInt = 0
     missing: list[NonEmptyStr] = Field(default_factory=list)
@@ -83,7 +84,7 @@ class CountValidation(BaseModel):
 class ColumnValidation(BaseModel):
     """Validation counts for columns, with per-table missing info."""
 
-    model_config = ConfigDict(frozen=False)
+    model_config = MutableModelConfig
     expected: NonNegativeInt = 0
     found: NonNegativeInt = 0
     missing: dict[NonEmptyStr, list[NonEmptyStr]] = Field(default_factory=dict)
@@ -92,7 +93,7 @@ class ColumnValidation(BaseModel):
 class PragmaValidation(BaseModel):
     """SQLite pragma check results."""
 
-    model_config = ConfigDict(frozen=False)
+    model_config = MutableModelConfig
     journal_mode: NonEmptyStr | None = None
     foreign_keys: Literal[0, 1] | None = None
 
@@ -100,7 +101,7 @@ class PragmaValidation(BaseModel):
 class SchemaValidationResult(BaseModel):
     """Result of validate_schema() — typed instead of dict[str, Any]."""
 
-    model_config = ConfigDict(frozen=False)
+    model_config = MutableModelConfig
     tables: CountValidation = Field(default_factory=CountValidation)
     columns: ColumnValidation = Field(default_factory=ColumnValidation)
     indexes: CountValidation = Field(default_factory=CountValidation)
@@ -111,7 +112,7 @@ class SchemaValidationResult(BaseModel):
 class _ExistingSchema(BaseModel):
     """Names currently present in sqlite_master."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
     tables: frozenset[NonEmptyStr]
     indexes: frozenset[NonEmptyStr]
 

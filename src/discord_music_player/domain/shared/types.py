@@ -15,9 +15,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated, Any, Generic, TypeVar
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, Field
 
 from .enums import YtDlpPlayerClient
+from .model_config import FrozenModelConfig
 
 T = TypeVar("T")
 
@@ -32,7 +33,7 @@ class ValueWrapper(BaseModel, Generic[T]):
     and str/int conversions.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     value: T  # type: ignore[misc]
 

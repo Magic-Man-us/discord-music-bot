@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from ...domain.music.entities import Track
+from ...domain.shared.model_config import FrozenModelConfig
 from ...domain.shared.types import NonEmptyStr, NonNegativeInt
 
 
 class EnqueueMeta(BaseModel):
     """Tracks the position/size context of an enqueue operation."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     track: Track
     position: NonNegativeInt
@@ -20,7 +21,7 @@ class EnqueueMeta(BaseModel):
 
 
 class EnqueueResult(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     success: bool
     meta: EnqueueMeta | None = None
@@ -52,14 +53,14 @@ class EnqueueResult(BaseModel):
 
 
 class BatchEnqueueResult(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     enqueued: NonNegativeInt = 0
     should_start: bool = False
 
 
 class QueueSnapshot(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     current_track: Track | None
     tracks: list[Track]

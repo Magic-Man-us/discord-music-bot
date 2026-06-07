@@ -5,9 +5,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from ..shared.enums import LeaderboardTimeRange
+from ..shared.model_config import FrozenModelConfig
 from ..shared.types import DiscordSnowflake, NonEmptyStr, NonNegativeInt, PositiveInt, UnitInterval
 from .entities import GuildPlaybackSession, Track
 from .wrappers import TrackId
@@ -16,7 +17,7 @@ from .wrappers import TrackId
 class UserStats(BaseModel):
     """Per-user listening statistics for a guild."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     total_tracks: NonNegativeInt = 0
     unique_tracks: NonNegativeInt = 0
@@ -27,7 +28,7 @@ class UserStats(BaseModel):
 class GenreTrackInfo(BaseModel):
     """Minimal track metadata used for genre classification."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     track_id: NonEmptyStr
     title: NonEmptyStr
@@ -37,7 +38,7 @@ class GenreTrackInfo(BaseModel):
 class TrackForClassification(BaseModel):
     """A track to be classified by the genre classifier."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     track_id: NonEmptyStr
     description: NonEmptyStr | None = None

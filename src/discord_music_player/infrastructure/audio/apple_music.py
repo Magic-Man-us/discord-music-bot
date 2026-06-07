@@ -18,8 +18,9 @@ import urllib.error
 import urllib.request
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
+from ...domain.shared.model_config import FrozenBoundaryAliasedModelConfig, FrozenModelConfig
 from ...domain.shared.types import NonEmptyStr
 from ...utils.logging import get_logger
 
@@ -44,8 +45,6 @@ _USER_AGENT = (
     "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 )
 
-_BOUNDARY_CONFIG = ConfigDict(frozen=True, extra="ignore", populate_by_name=True)
-
 _INDEX_JS_PATTERN = re.compile(r"/assets/(index~[a-f0-9]+\.js)")
 _JWT_PATTERN = re.compile(r"eyJhbGci[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
 
@@ -58,7 +57,7 @@ _TRACK_QUERY = re.compile(r"[?&]i=(\d+)")
 
 
 class AppleMusicResource(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     resource_type: AppleResourceType
     country: NonEmptyStr
@@ -70,7 +69,7 @@ class AppleMusicError(RuntimeError):
 
 
 class _TrackAttributes(BaseModel):
-    model_config = _BOUNDARY_CONFIG
+    model_config = FrozenBoundaryAliasedModelConfig
 
     name: NonEmptyStr
     # Only song rows carry ``artistName``; the root playlist/album resource
@@ -79,19 +78,19 @@ class _TrackAttributes(BaseModel):
 
 
 class _TracksRelation(BaseModel):
-    model_config = _BOUNDARY_CONFIG
+    model_config = FrozenBoundaryAliasedModelConfig
 
     data: list[_Resource] = Field(default_factory=list)
 
 
 class _Relationships(BaseModel):
-    model_config = _BOUNDARY_CONFIG
+    model_config = FrozenBoundaryAliasedModelConfig
 
     tracks: _TracksRelation | None = None
 
 
 class _Resource(BaseModel):
-    model_config = _BOUNDARY_CONFIG
+    model_config = FrozenBoundaryAliasedModelConfig
 
     id: NonEmptyStr
     type: NonEmptyStr
@@ -100,7 +99,7 @@ class _Resource(BaseModel):
 
 
 class _CatalogResponse(BaseModel):
-    model_config = _BOUNDARY_CONFIG
+    model_config = FrozenBoundaryAliasedModelConfig
 
     data: list[_Resource] = Field(default_factory=list)
 
@@ -113,7 +112,7 @@ _TracksRelation.model_rebuild()
 class AppleMusicPlaylist(BaseModel):
     """Result of fetching an Apple Music playlist/album/song."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     queries: list[NonEmptyStr]
     name: NonEmptyStr | None = None
@@ -203,9 +202,7 @@ class AppleMusicClient:
         return _CatalogResponse.model_validate_json(body)
 
     @staticmethod
-    def _extract_queries(
-        resource_type: AppleResourceType, catalog: _CatalogResponse
-    ) -> list[str]:
+    def _extract_queries(resource_type: AppleResourceType, catalog: _CatalogResponse) -> list[str]:
         if not catalog.data:
             return []
 

@@ -5,12 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from ....domain.music.entities import GuildPlaybackSession, Track
 from ....domain.music.enums import LoopMode, PlaybackState
 from ....domain.music.repository import SessionRepository
 from ....domain.shared.datetime_utils import UtcDateTime
+from ....domain.shared.model_config import FrozenModelConfig
 from ....domain.shared.types import UtcDatetimeField
 from ....utils.logging import get_logger
 from ..models import (
@@ -26,7 +27,7 @@ logger = get_logger(__name__)
 
 
 class _SessionMetadata(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = FrozenModelConfig
 
     state: PlaybackState
     loop_mode: LoopMode
