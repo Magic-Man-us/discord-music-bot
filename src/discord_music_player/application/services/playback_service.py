@@ -170,17 +170,15 @@ class PlaybackApplicationService:
         if track.stream_url:
             return track
 
+        # resolve() is a network boundary; its contract is Track | None, but defend
+        # against an implementation raising. A raise and a None both mean "no stream".
         try:
             resolved = await self._audio_resolver.resolve(track.webpage_url)
-            if resolved is None:
-                raise ValueError("Resolver returned None")
-
-            track = track.with_resolved(resolved)
-            session.set_current_track(track)
-            return track
-
         except Exception:
-            logger.exception("Failed to resolve stream URL")
+            logger.exception("Stream resolution failed for %s", track.webpage_url)
+            resolved = None
+
+        if resolved is None:
             session.set_current_track(None)
             await self._persist_playback_state(
                 guild_id,
@@ -188,6 +186,10 @@ class PlaybackApplicationService:
                 state=PlaybackState.IDLE,
             )
             return None
+
+        track = track.with_resolved(resolved)
+        session.set_current_track(track)
+        return track
 
     async def _start_voice_playback(
         self, session: GuildPlaybackSession, track: Track, guild_id: DiscordSnowflake
