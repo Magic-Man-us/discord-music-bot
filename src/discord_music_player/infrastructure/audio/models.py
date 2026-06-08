@@ -26,9 +26,9 @@ from ...domain.shared.types import (
     NonEmptyStr,
     NonNegativeFloat,
     NonNegativeInt,
+    OptionalHttpUrlStr,
     OptionalNonEmptyStr,
     PositiveInt,
-    coerce_empty_to_none,
 )
 
 # ── Annotated list types ──────────────────────────────────────────────
@@ -70,33 +70,19 @@ class YtDlpTrackInfo(BaseModel):
 
     model_config = FrozenBoundaryModelConfig
 
-    webpage_url: HttpUrlStr | None = None
-    url: NonEmptyStr | None = None
+    webpage_url: OptionalHttpUrlStr = None
+    url: OptionalNonEmptyStr = None
     title: NonEmptyStr = "Unknown Title"
     duration: NonNegativeInt | None = None
-    thumbnail: HttpUrlStr | None = None
-    artist: NonEmptyStr | None = None
-    creator: NonEmptyStr | None = None
-    uploader: NonEmptyStr | None = None
-    channel: NonEmptyStr | None = None
+    thumbnail: OptionalHttpUrlStr = None
+    artist: OptionalNonEmptyStr = None
+    creator: OptionalNonEmptyStr = None
+    uploader: OptionalNonEmptyStr = None
+    channel: OptionalNonEmptyStr = None
     like_count: NonNegativeInt | None = None
     view_count: NonNegativeInt | None = None
     formats: list[AudioFormatInfo] = Field(default_factory=list)
     http_headers: HttpHeaders | None = None
-
-    @field_validator(
-        "webpage_url",
-        "url",
-        "thumbnail",
-        "artist",
-        "creator",
-        "uploader",
-        "channel",
-        mode="before",
-    )
-    @classmethod
-    def _coerce_empty_to_none(cls, v: Any) -> str | None:
-        return coerce_empty_to_none(v)
 
     @field_validator("title", mode="before")
     @classmethod

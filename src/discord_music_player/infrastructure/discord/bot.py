@@ -243,24 +243,24 @@ class MusicBot(commands.Bot):
     # ------------------------------------------------------------------
 
     async def _load_cogs(self) -> None:
-        _COG_PKG = "discord_music_player.infrastructure.discord.cogs"
+        cog_pkg = "discord_music_player.infrastructure.discord.cogs"
         cogs = [
-            f"{_COG_PKG}.playback_cog",
-            f"{_COG_PKG}.queue_cog",
-            f"{_COG_PKG}.skip_cog",
-            f"{_COG_PKG}.now_playing_cog",
-            f"{_COG_PKG}.diagnostics_cog",
-            f"{_COG_PKG}.admin_cog",
-            f"{_COG_PKG}.health_cog",
-            f"{_COG_PKG}.info_cog",
-            f"{_COG_PKG}.event_cog",
-            f"{_COG_PKG}.analytics_cog",
-            f"{_COG_PKG}.favorites_cog",
-            f"{_COG_PKG}.saved_queue_cog",
+            f"{cog_pkg}.playback_cog",
+            f"{cog_pkg}.queue_cog",
+            f"{cog_pkg}.skip_cog",
+            f"{cog_pkg}.now_playing_cog",
+            f"{cog_pkg}.diagnostics_cog",
+            f"{cog_pkg}.admin_cog",
+            f"{cog_pkg}.health_cog",
+            f"{cog_pkg}.info_cog",
+            f"{cog_pkg}.event_cog",
+            f"{cog_pkg}.analytics_cog",
+            f"{cog_pkg}.favorites_cog",
+            f"{cog_pkg}.saved_queue_cog",
         ]
 
         if self.container.ai_enabled:
-            cogs.append(f"{_COG_PKG}.radio_cog")
+            cogs.append(f"{cog_pkg}.radio_cog")
         else:
             logger.info("AI disabled — skipping radio_cog")
 

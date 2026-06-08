@@ -13,20 +13,17 @@ its constraint and schema metadata (description / examples) in a single place::
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Any, Generic, TypeVar
+from typing import Annotated, Any
 
 from pydantic import BaseModel, BeforeValidator, Field
 
 from .enums import YtDlpPlayerClient
 from .model_config import FrozenModelConfig
 
-T = TypeVar("T")
-
-
 # ── Generic single-field wrapper ───────────────────────────────────
 
 
-class ValueWrapper(BaseModel, Generic[T]):
+class ValueWrapper[T](BaseModel):
     """Generic base for single-field frozen value objects.
 
     Construct with ``TrackId(value="abc")``.  Provides hashing, equality,
@@ -122,6 +119,9 @@ def coerce_empty_to_none(v: Any) -> str | None:
 
 OptionalNonEmptyStr = Annotated[NonEmptyStr | None, BeforeValidator(coerce_empty_to_none)]
 """Non-empty string that coerces empty / whitespace / non-string input to None."""
+
+OptionalHttpUrlStr = Annotated[HttpUrlStr | None, BeforeValidator(coerce_empty_to_none)]
+"""http(s) URL that coerces empty / whitespace / non-string input to None."""
 
 HttpHeaders = dict[NonEmptyStr, str]
 """HTTP request headers (e.g. yt-dlp's per-format headers) keyed by header name."""

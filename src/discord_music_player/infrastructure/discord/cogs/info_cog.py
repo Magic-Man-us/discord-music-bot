@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import discord
 from discord import app_commands
@@ -271,11 +271,10 @@ class InfoCog(BaseCog):
         embed.set_image(url=target.display_avatar.url)
 
         avatar = target.display_avatar
-        links = []
-        for fmt in ["png", "jpg", "webp"]:
-            links.append(f"[{fmt.upper()}]({avatar.with_format(fmt).url})")  # type: ignore
+        static_formats: tuple[Literal["png", "jpg", "webp"], ...] = ("png", "jpg", "webp")
+        links = [f"[{fmt.upper()}]({avatar.with_format(fmt).url})" for fmt in static_formats]
         if avatar.is_animated():
-            links.append(f"[GIF]({avatar.with_format('gif').url})")  # type: ignore
+            links.append(f"[GIF]({avatar.with_format('gif').url})")
 
         embed.description = " \u2022 ".join(links)
 

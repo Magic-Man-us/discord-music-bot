@@ -7,7 +7,6 @@ both paths honour ``start``, ``count``, and ``shuffle`` identically.
 from __future__ import annotations
 
 import random
-from typing import TypeVar
 
 from pydantic import BaseModel
 
@@ -18,8 +17,6 @@ from ..domain.shared.types import (
     PlaylistImportCount,
     PlaylistStartIndex,
 )
-
-T = TypeVar("T")
 
 
 class PlaylistSlice(BaseModel):
@@ -47,7 +44,7 @@ class PlaylistSlice(BaseModel):
         return max(0, remaining_after_start - self.kept)
 
 
-def select_playlist_items(
+def select_playlist_items[T](
     items: list[T],
     *,
     start: PlaylistStartIndex | None = None,
