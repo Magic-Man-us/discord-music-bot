@@ -455,8 +455,8 @@ class AdminCog(BaseCog):
         try:
             cleanup_job = self.container.cleanup_job
             await cleanup_job.stop()
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.debug("Failed to stop cleanup job during shutdown: %r", e)
 
         await self.bot.close()
 

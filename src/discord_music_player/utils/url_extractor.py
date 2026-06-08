@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import re
 
+from .logging import get_logger
+
+logger = get_logger(__name__)
+
 _SPOTIFY_TRACK_PATTERN = re.compile(
     r"https?://open\.spotify\.com/(?:intl-[a-z]+/)?track/([a-zA-Z0-9]+)"
 )
@@ -107,7 +111,7 @@ async def extract_search_query_from_url(url: str) -> str | None:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 # Read only the head section (first 16KB) to avoid downloading the whole page
                 html = resp.read(16384).decode("utf-8", errors="replace")
-        except Exception:
+        except OSError:
             return None
 
         # Try OG title first
@@ -125,6 +129,7 @@ async def extract_search_query_from_url(url: str) -> str | None:
     try:
         return await asyncio.to_thread(_fetch)
     except Exception:
+        logger.exception("Title extraction failed for %s", url)
         return None
 
 

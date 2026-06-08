@@ -14,6 +14,7 @@ from pydantic import (
     Field,
     Tag,
     TypeAdapter,
+    ValidationError,
     field_serializer,
     field_validator,
 )
@@ -130,7 +131,7 @@ class YtDlpExtractResult(BaseModel):
                 continue
             try:
                 parsed.append(YtDlpTrackInfo.model_validate(e))
-            except Exception:
+            except ValidationError:
                 continue
         return parsed
 

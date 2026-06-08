@@ -369,8 +369,8 @@ class MusicBot(commands.Bot):
         for vc in self.voice_clients:
             try:
                 await vc.disconnect(force=True)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to disconnect voice client during shutdown: %r", e)
 
         try:
             await self.container.shutdown()

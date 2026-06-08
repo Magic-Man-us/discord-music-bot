@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ..utils.logging import get_logger
+
 if TYPE_CHECKING:
     from discord.ext.commands import Bot
 
@@ -40,6 +42,9 @@ if TYPE_CHECKING:
         SQLiteSavedQueueRepository,
     )
     from .settings import Settings
+
+
+logger = get_logger(__name__)
 
 
 class Container:
@@ -397,14 +402,16 @@ class Container:
             if subscriber is not None:
                 try:
                     subscriber.stop()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(
+                        "Failed to stop %s during shutdown: %r", type(subscriber).__name__, e
+                    )
 
         if self._cleanup_job is not None:
             try:
                 await self._cleanup_job.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to stop cleanup job during shutdown: %r", e)
 
         if self._database is not None:
             await self._database.close()

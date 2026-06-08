@@ -62,7 +62,7 @@ def parse_timestamp(value: str) -> int | None:
 def extract_youtube_timestamp(url: str) -> int | None:
     try:
         parsed = urlparse(url)
-    except Exception:
+    except ValueError:
         return None
 
     host = (parsed.hostname or "").lower()
