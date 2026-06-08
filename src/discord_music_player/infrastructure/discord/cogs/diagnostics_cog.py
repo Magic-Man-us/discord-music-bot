@@ -7,16 +7,25 @@ for sanity-checking what the bot sees about voice / queue / activities.
 
 from __future__ import annotations
 
-from typing import Annotated, Final, Literal
+from typing import Final
 
 import discord
 from discord import app_commands
 from discord.ext import commands
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from ....domain.shared.model_config import FrozenModelConfig
-from ....domain.shared.types import DiscordSnowflake, NonEmptyStr, OptionalNonEmptyStr
+from ....domain.shared.types import NonEmptyStr, OptionalNonEmptyStr
 from ..services.activity import extract_listening_query, resolve_activity_member
+from ..services.activity_models import (
+    ActivityDetail,
+    ActivityInfo,
+    CustomDetail,
+    GenericDetail,
+    SpotifyDetail,
+    StreamingDetail,
+    UnknownDetail,
+)
 from .base_cog import BaseCog
 
 # Discord caps messages at 2000 chars; truncate diag dumps with headroom.
@@ -27,110 +36,27 @@ _PRESENCES_OFF_HINT: Final[str] = (
 )
 
 
-class _SpotifyDetail(BaseModel):
-    model_config = FrozenModelConfig
-
-    kind: Literal["spotify"] = "spotify"
-    title: OptionalNonEmptyStr = None
-    artist: OptionalNonEmptyStr = None
-    album: OptionalNonEmptyStr = None
-    track_id: OptionalNonEmptyStr = None
-
-
-class _CustomDetail(BaseModel):
-    model_config = FrozenModelConfig
-
-    kind: Literal["custom"] = "custom"
-    name: OptionalNonEmptyStr = None
-    emoji: OptionalNonEmptyStr = None
-
-
-class _StreamingDetail(BaseModel):
-    model_config = FrozenModelConfig
-
-    kind: Literal["streaming"] = "streaming"
-    name: OptionalNonEmptyStr = None
-    url: OptionalNonEmptyStr = None
-    platform: OptionalNonEmptyStr = None
-
-
-class _GenericDetail(BaseModel):
-    model_config = FrozenModelConfig
-
-    kind: Literal["generic"] = "generic"
-    name: OptionalNonEmptyStr = None
-    details: OptionalNonEmptyStr = None
-    state: OptionalNonEmptyStr = None
-    app_id: DiscordSnowflake | None = None
-
-
-class _UnknownDetail(BaseModel):
-    model_config = FrozenModelConfig
-
-    kind: Literal["unknown"] = "unknown"
-    repr: NonEmptyStr
-
-
-_ActivityDetail = Annotated[
-    _SpotifyDetail | _CustomDetail | _StreamingDetail | _GenericDetail | _UnknownDetail,
-    Field(discriminator="kind"),
-]
-
-
-def _format_detail(detail: _ActivityDetail) -> str:
+def _format_detail(detail: ActivityDetail) -> str:
     match detail:
-        case _SpotifyDetail():
+        case SpotifyDetail():
             return (
                 f"title=`{detail.title}` artist=`{detail.artist}` "
                 f"album=`{detail.album}` track_id=`{detail.track_id}`"
             )
-        case _CustomDetail():
+        case CustomDetail():
             return f"name=`{detail.name}` emoji=`{detail.emoji}`"
-        case _StreamingDetail():
+        case StreamingDetail():
             return f"name=`{detail.name}` url=`{detail.url}` platform=`{detail.platform}`"
-        case _GenericDetail():
+        case GenericDetail():
             return (
                 f"name=`{detail.name}` details=`{detail.details}` "
                 f"state=`{detail.state}` app_id=`{detail.app_id}`"
             )
-        case _UnknownDetail():
+        case UnknownDetail():
             return f"repr=`{detail.repr}`"
 
 
-class _ActivityInfo(BaseModel):
-    model_config = FrozenModelConfig
-
-    class_name: NonEmptyStr
-    type_name: NonEmptyStr
-    detail: _ActivityDetail
-
-    @classmethod
-    def from_activity(cls, act: discord.BaseActivity | discord.Spotify) -> _ActivityInfo:
-        # discord.py owns these classes; this boundary match is the only place we
-        # dispatch on them — past here every activity is a tagged _ActivityDetail.
-        detail: _ActivityDetail
-        match act:
-            case discord.Spotify():
-                detail = _SpotifyDetail(
-                    title=act.title, artist=act.artist, album=act.album, track_id=act.track_id
-                )
-            case discord.CustomActivity():
-                detail = _CustomDetail(name=act.name, emoji=str(act.emoji) if act.emoji else None)
-            case discord.Streaming():
-                detail = _StreamingDetail(name=act.name, url=act.url, platform=act.platform)
-            case discord.Activity():
-                detail = _GenericDetail(
-                    name=act.name,
-                    details=act.details,
-                    state=act.state,
-                    app_id=act.application_id,
-                )
-            case _:
-                detail = _UnknownDetail(repr=repr(act))
-        return cls(class_name=type(act).__name__, type_name=act.type.name, detail=detail)
-
-
-def _format_activity(info: _ActivityInfo) -> str:
+def _format_activity(info: ActivityInfo) -> str:
     return f"**{info.class_name}** (type=`{info.type_name}`)\n    {_format_detail(info.detail)}"
 
 
@@ -150,7 +76,7 @@ class _MemberPresence(BaseModel):
     status: _PresenceStatus
     presences_enabled: bool
     parser_query: OptionalNonEmptyStr = None
-    activities: tuple[_ActivityInfo, ...] = ()
+    activities: tuple[ActivityInfo, ...] = ()
 
     @classmethod
     def from_member(cls, member: discord.Member, *, presences_enabled: bool) -> _MemberPresence:
@@ -164,7 +90,7 @@ class _MemberPresence(BaseModel):
             ),
             presences_enabled=presences_enabled,
             parser_query=extract_listening_query(member),
-            activities=tuple(_ActivityInfo.from_activity(a) for a in member.activities),
+            activities=tuple(ActivityInfo.from_activity(a) for a in member.activities),
         )
 
     def render(self, *, label: str | None = None) -> str:

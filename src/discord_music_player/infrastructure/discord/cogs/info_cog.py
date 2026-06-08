@@ -142,21 +142,19 @@ class InfoCog(BaseCog):
         embed.add_field(name="Author", value=message.author.mention, inline=True)
 
         ch = message.channel
-        if isinstance(
-            ch,
-            (
-                discord.TextChannel,
-                discord.VoiceChannel,
-                discord.StageChannel,
-                discord.ForumChannel,
-                discord.Thread,
-            ),
-        ):
-            ch_value = ch.mention
-        elif isinstance(ch, discord.DMChannel):
-            ch_value = "DM"
-        else:
-            ch_value = f"#{ch}" if ch else "DM"
+        match ch:
+            case (
+                discord.TextChannel()
+                | discord.VoiceChannel()
+                | discord.StageChannel()
+                | discord.ForumChannel()
+                | discord.Thread()
+            ):
+                ch_value = ch.mention
+            case discord.DMChannel():
+                ch_value = "DM"
+            case _:
+                ch_value = f"#{ch}" if ch else "DM"
         embed.add_field(name="Channel", value=ch_value, inline=True)
 
         embed.add_field(

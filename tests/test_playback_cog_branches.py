@@ -1332,8 +1332,11 @@ class TestExtractListeningQuery:
 
     def test_extracts_from_spotify_typed_activity(self):
         spotify = MagicMock(spec=discord.Spotify)
+        spotify.type = discord.ActivityType.listening
         spotify.title = "Song Title"
         spotify.artist = "Artist Name"
+        spotify.album = "Album"
+        spotify.track_id = "track123"
 
         member = MagicMock(spec=discord.Member)
         member.activities = [spotify]
@@ -1424,9 +1427,15 @@ class TestExtractListeningQuery:
 
     def test_picks_first_recognised_among_many(self):
         custom = MagicMock(spec=discord.CustomActivity)
+        custom.type = discord.ActivityType.custom
+        custom.name = None
+        custom.emoji = None
         spotify = MagicMock(spec=discord.Spotify)
+        spotify.type = discord.ActivityType.listening
         spotify.title = "Spot Title"
         spotify.artist = "Spot Artist"
+        spotify.album = "Spot Album"
+        spotify.track_id = "spot123"
 
         member = MagicMock(spec=discord.Member)
         member.activities = [custom, spotify]

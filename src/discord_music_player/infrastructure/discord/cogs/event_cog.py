@@ -466,49 +466,49 @@ class EventCog(BaseCog):
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
-        if isinstance(error, commands.CommandOnCooldown):
-            retry_after = error.retry_after
-            time_str = (
-                f"{retry_after:.1f}s"
-                if retry_after >= 1
-                else f"{retry_after * UIConstants.MS_PER_SECOND:.0f}ms"
-            )
-            self.logger.debug(
-                "Cooldown triggered for command '%s' by %s (%.2fs remaining)",
-                ctx.command.qualified_name if ctx.command else "<unknown>",
-                ctx.author.id,
-                retry_after,
-            )
-            try:
-                await ctx.reply(
-                    f"Command on cooldown. Try again in {time_str}.",
-                    mention_author=False,
+        match error:
+            case commands.CommandOnCooldown():
+                retry_after = error.retry_after
+                time_str = (
+                    f"{retry_after:.1f}s"
+                    if retry_after >= 1
+                    else f"{retry_after * UIConstants.MS_PER_SECOND:.0f}ms"
                 )
-            except discord.HTTPException:
-                pass
-            return
+                self.logger.debug(
+                    "Cooldown triggered for command '%s' by %s (%.2fs remaining)",
+                    ctx.command.qualified_name if ctx.command else "<unknown>",
+                    ctx.author.id,
+                    retry_after,
+                )
+                try:
+                    await ctx.reply(
+                        f"Command on cooldown. Try again in {time_str}.",
+                        mention_author=False,
+                    )
+                except discord.HTTPException:
+                    pass
 
-        if isinstance(error, commands.MissingPermissions):
-            await ctx.reply("You don't have permission to use this command.", mention_author=False)
-            return
+            case commands.MissingPermissions():
+                await ctx.reply(
+                    "You don't have permission to use this command.", mention_author=False
+                )
 
-        if isinstance(error, commands.BotMissingPermissions):
-            missing = ", ".join(error.missing_permissions)
-            await ctx.reply(
-                f"I need these permissions: {missing}",
-                mention_author=False,
-            )
-            return
+            case commands.BotMissingPermissions():
+                missing = ", ".join(error.missing_permissions)
+                await ctx.reply(f"I need these permissions: {missing}", mention_author=False)
 
-        if isinstance(error, commands.CommandNotFound):
-            return
+            case commands.CommandNotFound():
+                return
 
-        original = error.original if isinstance(error, commands.CommandInvokeError) else error
-        self.logger.exception(
-            "Unhandled command error in '%s'",
-            ctx.command.qualified_name if ctx.command else "<unknown>",
-            exc_info=original,
-        )
+            case _:
+                original = (
+                    error.original if isinstance(error, commands.CommandInvokeError) else error
+                )
+                self.logger.exception(
+                    "Unhandled command error in '%s'",
+                    ctx.command.qualified_name if ctx.command else "<unknown>",
+                    exc_info=original,
+                )
 
 
 setup = EventCog.setup

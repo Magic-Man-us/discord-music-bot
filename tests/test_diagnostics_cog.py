@@ -9,9 +9,9 @@ import pytest
 
 from discord_music_player.infrastructure.discord.cogs.diagnostics_cog import (
     DiagnosticsCog,
-    _ActivityInfo,
     _MemberPresence,
 )
+from discord_music_player.infrastructure.discord.services.activity_models import ActivityInfo
 
 
 @pytest.fixture
@@ -101,7 +101,7 @@ def test_from_activity_narrows_to_tagged_detail(spec, attrs, expected_kind):
     for name, value in attrs.items():
         setattr(act, name, value)
 
-    info = _ActivityInfo.from_activity(act)
+    info = ActivityInfo.from_activity(act)
 
     assert info.detail.kind == expected_kind
 
@@ -156,9 +156,7 @@ async def test_diag_activities_reports_no_visible_activity(cog, interaction):
 
 
 @pytest.mark.asyncio
-async def test_diag_activities_compares_interaction_user_with_guild_cache(
-    cog, interaction
-):
+async def test_diag_activities_compares_interaction_user_with_guild_cache(cog, interaction):
     spotify = MagicMock(spec=discord.Activity)
     spotify.type = discord.ActivityType.listening
     spotify.application_id = None

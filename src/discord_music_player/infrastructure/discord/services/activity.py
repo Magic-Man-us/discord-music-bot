@@ -8,6 +8,7 @@ import discord
 
 from ....domain.shared.constants import LimitConstants
 from ....domain.shared.types import FollowTrackCount, NonEmptyStr
+from .activity_models import ActivityInfo, GenericDetail, SpotifyDetail
 
 if TYPE_CHECKING:
     from ....application.services.follow_mode import FollowMode
@@ -31,18 +32,23 @@ def _extract_listening_payload(
         return None
 
     for act in member.activities:
-        if isinstance(act, discord.Spotify):
-            query = _format_query(act.artist, act.title)
-            if query is not None:
-                return ("Spotify", query)
-            continue
-
-        if isinstance(act, discord.Activity) and act.type == discord.ActivityType.listening:
-            payload = _extract_generic_music_payload(act)
-            if payload is not None:
-                return payload
+        payload = _payload_from_activity(ActivityInfo.from_activity(act))
+        if payload is not None:
+            return payload
 
     return None
+
+
+def _payload_from_activity(info: ActivityInfo) -> tuple[str, NonEmptyStr] | None:
+    """Pull ``(source_label, query)`` off a tagged activity, or ``None`` if it isn't music."""
+    match info.detail:
+        case SpotifyDetail() as detail:
+            query = _format_query(detail.artist, detail.title)
+            return ("Spotify", query) if query is not None else None
+        case GenericDetail() as detail if info.type_name == discord.ActivityType.listening.name:
+            return _extract_generic_music_payload(detail)
+        case _:
+            return None
 
 
 def resolve_activity_member(
@@ -74,22 +80,21 @@ def extract_listening_query(
 
 
 def _extract_generic_music_payload(
-    act: discord.Activity,
+    detail: GenericDetail,
 ) -> tuple[str, NonEmptyStr] | None:
     """Extract ``(source_label, query)`` from generic music integrations."""
-    if not act.details or not act.state:
+    if not detail.details or not detail.state:
         return None
 
-    app_name = (act.name or "").casefold()
-    app_id = act.application_id
-    if app_id == SPOTIFY_APP_ID or app_name == "spotify":
+    app_name = (detail.name or "").casefold()
+    if detail.app_id == SPOTIFY_APP_ID or app_name == "spotify":
         source_label = "Spotify"
-    elif app_id == APPLE_MUSIC_APP_ID or app_name == "apple music":
+    elif detail.app_id == APPLE_MUSIC_APP_ID or app_name == "apple music":
         source_label = "Apple Music"
     else:
         return None
 
-    query = _format_query(act.state, act.details)
+    query = _format_query(detail.state, detail.details)
     if query is None:
         return None
     return (source_label, query)

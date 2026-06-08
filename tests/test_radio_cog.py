@@ -517,8 +517,11 @@ async def test_playmine_on_with_activity_enables_and_seeds(cog, interaction, moc
     import discord
 
     spotify = MagicMock(spec=discord.Spotify)
+    spotify.type = discord.ActivityType.listening
     spotify.title = "Song"
     spotify.artist = "Artist"
+    spotify.album = "Album"
+    spotify.track_id = "track123"
 
     interaction.user.activities = [spotify]
     interaction.client = MagicMock()
@@ -537,8 +540,11 @@ async def test_playmine_on_with_count_sets_max_tracks(cog, interaction, mock_con
     import discord
 
     spotify = MagicMock(spec=discord.Spotify)
+    spotify.type = discord.ActivityType.listening
     spotify.title = "Song"
     spotify.artist = "Artist"
+    spotify.album = "Album"
+    spotify.track_id = "track123"
 
     interaction.user.activities = [spotify]
     interaction.client = MagicMock()
@@ -558,8 +564,11 @@ async def test_playmine_on_without_count_defaults_max_tracks(cog, interaction, m
     from discord_music_player.domain.shared.constants import LimitConstants
 
     spotify = MagicMock(spec=discord.Spotify)
+    spotify.type = discord.ActivityType.listening
     spotify.title = "Song"
     spotify.artist = "Artist"
+    spotify.album = "Album"
+    spotify.track_id = "track123"
 
     interaction.user.activities = [spotify]
     interaction.client = MagicMock()
@@ -638,8 +647,11 @@ async def test_playmine_on_connects_voice_before_seeding(cog, interaction, mock_
     import discord
 
     spotify = MagicMock(spec=discord.Spotify)
+    spotify.type = discord.ActivityType.listening
     spotify.title = "Song"
     spotify.artist = "Artist"
+    spotify.album = "Album"
+    spotify.track_id = "track123"
 
     interaction.user.activities = [spotify]
     interaction.client = MagicMock()

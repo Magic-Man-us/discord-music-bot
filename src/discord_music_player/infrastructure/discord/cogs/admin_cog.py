@@ -84,21 +84,22 @@ class AdminCog(BaseCog):
             await ctx.send(content or "Done.")
 
     async def cog_command_error(self, ctx: commands.Context, error: Exception) -> None:
-        if isinstance(error, commands.CheckFailure):
-            await self._reply(ctx, "Requires owner or admin permissions.")
-            return
+        match error:
+            case commands.CheckFailure():
+                await self._reply(ctx, "Requires owner or admin permissions.")
 
-        if isinstance(error, commands.MissingRequiredArgument):
-            await self._reply(ctx, f"Missing argument: {error.param.name}")
-            return
+            case commands.MissingRequiredArgument():
+                await self._reply(ctx, f"Missing argument: {error.param.name}")
 
-        if isinstance(error, commands.BadArgument):
-            await self._reply(ctx, "Invalid argument.")
-            return
+            case commands.BadArgument():
+                await self._reply(ctx, "Invalid argument.")
 
-        original = error.original if isinstance(error, commands.CommandInvokeError) else error
-        self.logger.exception("Admin command failed", exc_info=original)
-        await self._reply(ctx, "Command failed. See logs.")
+            case _:
+                original = (
+                    error.original if isinstance(error, commands.CommandInvokeError) else error
+                )
+                self.logger.exception("Admin command failed", exc_info=original)
+                await self._reply(ctx, "Command failed. See logs.")
 
     # ─────────────────────────────────────────────────────────────────
     # Slash Command Sync
