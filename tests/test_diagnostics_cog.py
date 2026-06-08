@@ -9,7 +9,8 @@ import pytest
 
 from discord_music_player.infrastructure.discord.cogs.diagnostics_cog import (
     DiagnosticsCog,
-    _format_activities_message,
+    _ActivityInfo,
+    _MemberPresence,
 )
 
 
@@ -51,7 +52,7 @@ def interaction():
     return i
 
 
-def test_format_activities_message_includes_parser_query_for_generic_spotify():
+def test_member_presence_render_includes_parser_query_for_generic_spotify():
     member = MagicMock(spec=discord.Member)
     member.display_name = "TestUser"
 
@@ -64,12 +65,62 @@ def test_format_activities_message_includes_parser_query_for_generic_spotify():
 
     member.activities = [spotify]
 
-    message = _format_activities_message(member, presences_enabled=True)
+    message = _MemberPresence.from_member(member, presences_enabled=True).render()
 
     assert "parser query=`Artist Name - Song Title`" in message
     assert "Spotify" in message
     assert "Song Title" in message
     assert "Artist Name" in message
+
+
+@pytest.mark.parametrize(
+    ("spec", "attrs", "expected_kind"),
+    [
+        (
+            discord.Spotify,
+            {"title": "T", "artist": "A", "album": "Al", "track_id": "tid"},
+            "spotify",
+        ),
+        (discord.CustomActivity, {"name": "feeling good", "emoji": None}, "custom"),
+        (
+            discord.Streaming,
+            {"name": "stream", "url": "https://twitch.tv/x", "platform": "Twitch"},
+            "streaming",
+        ),
+        (
+            discord.Activity,
+            {"name": "RPG", "details": "d", "state": "s", "application_id": None},
+            "generic",
+        ),
+        (discord.Game, {}, "unknown"),
+    ],
+)
+def test_from_activity_narrows_to_tagged_detail(spec, attrs, expected_kind):
+    act = MagicMock(spec=spec)
+    act.type = discord.ActivityType.playing
+    for name, value in attrs.items():
+        setattr(act, name, value)
+
+    info = _ActivityInfo.from_activity(act)
+
+    assert info.detail.kind == expected_kind
+
+
+def test_member_presence_render_sources_status_from_typed_snapshot():
+    member = MagicMock(spec=discord.Member)
+    member.display_name = "U"
+    member.activities = []
+    member.status = "online"
+    member.desktop_status = "online"
+    member.mobile_status = "idle"
+    member.web_status = "offline"
+
+    message = _MemberPresence.from_member(member, presences_enabled=True).render()
+
+    assert "status=`online`" in message
+    assert "desktop=`online`" in message
+    assert "mobile=`idle`" in message
+    assert "web=`offline`" in message
 
 
 @pytest.mark.asyncio

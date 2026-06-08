@@ -7,84 +7,190 @@ for sanity-checking what the bot sees about voice / queue / activities.
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Annotated, Final, Literal
 
 import discord
 from discord import app_commands
 from discord.ext import commands
+from pydantic import BaseModel, Field
 
+from ....domain.shared.model_config import FrozenModelConfig
+from ....domain.shared.types import DiscordSnowflake, NonEmptyStr, OptionalNonEmptyStr
 from ..services.activity import extract_listening_query, resolve_activity_member
 from .base_cog import BaseCog
 
 # Discord caps messages at 2000 chars; truncate diag dumps with headroom.
 _MAX_DIAG_CHARS: Final[int] = 1900
+_PRESENCES_OFF_HINT: Final[str] = (
+    " *(bot's `presences` intent is OFF — Discord won't send activity data; "
+    "flip `intents.presences = True` in bot.py and restart.)*"
+)
 
 
-def _format_activities_message(
-    target: discord.Member,
-    *,
-    presences_enabled: bool,
-    label: str | None = None,
-) -> str:
-    """Return a compact dump of the activities visible for a member."""
-    activities = list(target.activities)
-    resolved_query = extract_listening_query(target)
-    header_prefix = f"**{label}**\n" if label else ""
-    status_line = (
-        f"status=`{target.status}` "
-        f"desktop=`{target.desktop_status}` "
-        f"mobile=`{target.mobile_status}` "
-        f"web=`{target.web_status}`"
-    )
+class _SpotifyDetail(BaseModel):
+    model_config = FrozenModelConfig
 
-    if not activities:
-        hint = ""
-        if not presences_enabled:
-            hint = (
-                " *(bot's `presences` intent is OFF — Discord won't send "
-                "activity data; flip `intents.presences = True` in bot.py "
-                "and restart.)*"
+    kind: Literal["spotify"] = "spotify"
+    title: OptionalNonEmptyStr = None
+    artist: OptionalNonEmptyStr = None
+    album: OptionalNonEmptyStr = None
+    track_id: OptionalNonEmptyStr = None
+
+
+class _CustomDetail(BaseModel):
+    model_config = FrozenModelConfig
+
+    kind: Literal["custom"] = "custom"
+    name: OptionalNonEmptyStr = None
+    emoji: OptionalNonEmptyStr = None
+
+
+class _StreamingDetail(BaseModel):
+    model_config = FrozenModelConfig
+
+    kind: Literal["streaming"] = "streaming"
+    name: OptionalNonEmptyStr = None
+    url: OptionalNonEmptyStr = None
+    platform: OptionalNonEmptyStr = None
+
+
+class _GenericDetail(BaseModel):
+    model_config = FrozenModelConfig
+
+    kind: Literal["generic"] = "generic"
+    name: OptionalNonEmptyStr = None
+    details: OptionalNonEmptyStr = None
+    state: OptionalNonEmptyStr = None
+    app_id: DiscordSnowflake | None = None
+
+
+class _UnknownDetail(BaseModel):
+    model_config = FrozenModelConfig
+
+    kind: Literal["unknown"] = "unknown"
+    repr: NonEmptyStr
+
+
+_ActivityDetail = Annotated[
+    _SpotifyDetail | _CustomDetail | _StreamingDetail | _GenericDetail | _UnknownDetail,
+    Field(discriminator="kind"),
+]
+
+
+def _format_detail(detail: _ActivityDetail) -> str:
+    match detail:
+        case _SpotifyDetail():
+            return (
+                f"title=`{detail.title}` artist=`{detail.artist}` "
+                f"album=`{detail.album}` track_id=`{detail.track_id}`"
             )
-        return (
-            f"{header_prefix}`{target.display_name}` has no Discord activities visible "
-            f"to the bot.{hint}\n"
-            f"{status_line}\n"
-            f"parser query=`{resolved_query or 'None'}`"
-        )[:_MAX_DIAG_CHARS]
+        case _CustomDetail():
+            return f"name=`{detail.name}` emoji=`{detail.emoji}`"
+        case _StreamingDetail():
+            return f"name=`{detail.name}` url=`{detail.url}` platform=`{detail.platform}`"
+        case _GenericDetail():
+            return (
+                f"name=`{detail.name}` details=`{detail.details}` "
+                f"state=`{detail.state}` app_id=`{detail.app_id}`"
+            )
+        case _UnknownDetail():
+            return f"repr=`{detail.repr}`"
 
-    lines = [
-        *([f"**{label}**"] if label else []),
-        f"**{target.display_name}** activities ({len(activities)}):",
-        status_line,
-        f"parser query=`{resolved_query or 'None'}`",
-    ]
-    for idx, act in enumerate(activities, start=1):
-        kind = type(act).__name__
-        type_name = act.type.name
-        line = f"`{idx}` **{kind}** (type=`{type_name}`)"
 
-        # discord.py's activity types aren't ours to tag, so dispatch with match/case.
+class _ActivityInfo(BaseModel):
+    model_config = FrozenModelConfig
+
+    class_name: NonEmptyStr
+    type_name: NonEmptyStr
+    detail: _ActivityDetail
+
+    @classmethod
+    def from_activity(cls, act: discord.BaseActivity | discord.Spotify) -> _ActivityInfo:
+        # discord.py owns these classes; this boundary match is the only place we
+        # dispatch on them — past here every activity is a tagged _ActivityDetail.
+        detail: _ActivityDetail
         match act:
             case discord.Spotify():
-                line += (
-                    f"\n    title=`{act.title}` artist=`{act.artist}` "
-                    f"album=`{act.album}` track_id=`{act.track_id}`"
+                detail = _SpotifyDetail(
+                    title=act.title, artist=act.artist, album=act.album, track_id=act.track_id
                 )
             case discord.CustomActivity():
-                line += f"\n    name=`{act.name}` emoji=`{act.emoji}`"
+                detail = _CustomDetail(name=act.name, emoji=str(act.emoji) if act.emoji else None)
             case discord.Streaming():
-                line += f"\n    name=`{act.name}` url=`{act.url}` platform=`{act.platform}`"
+                detail = _StreamingDetail(name=act.name, url=act.url, platform=act.platform)
             case discord.Activity():
-                line += (
-                    f"\n    name=`{act.name}` details=`{act.details}` state=`{act.state}` "
-                    f"app_id=`{act.application_id}`"
+                detail = _GenericDetail(
+                    name=act.name,
+                    details=act.details,
+                    state=act.state,
+                    app_id=act.application_id,
                 )
             case _:
-                line += f"\n    repr=`{act!r}`"
+                detail = _UnknownDetail(repr=repr(act))
+        return cls(class_name=type(act).__name__, type_name=act.type.name, detail=detail)
 
-        lines.append(line)
 
-    return "\n".join(lines)[:_MAX_DIAG_CHARS]
+def _format_activity(info: _ActivityInfo) -> str:
+    return f"**{info.class_name}** (type=`{info.type_name}`)\n    {_format_detail(info.detail)}"
+
+
+class _PresenceStatus(BaseModel):
+    model_config = FrozenModelConfig
+
+    overall: NonEmptyStr
+    desktop: NonEmptyStr
+    mobile: NonEmptyStr
+    web: NonEmptyStr
+
+
+class _MemberPresence(BaseModel):
+    model_config = FrozenModelConfig
+
+    display_name: NonEmptyStr
+    status: _PresenceStatus
+    presences_enabled: bool
+    parser_query: OptionalNonEmptyStr = None
+    activities: tuple[_ActivityInfo, ...] = ()
+
+    @classmethod
+    def from_member(cls, member: discord.Member, *, presences_enabled: bool) -> _MemberPresence:
+        return cls(
+            display_name=member.display_name,
+            status=_PresenceStatus(
+                overall=str(member.status),
+                desktop=str(member.desktop_status),
+                mobile=str(member.mobile_status),
+                web=str(member.web_status),
+            ),
+            presences_enabled=presences_enabled,
+            parser_query=extract_listening_query(member),
+            activities=tuple(_ActivityInfo.from_activity(a) for a in member.activities),
+        )
+
+    def render(self, *, label: str | None = None) -> str:
+        header = [f"**{label}**"] if label else []
+        status_line = (
+            f"status=`{self.status.overall}` desktop=`{self.status.desktop}` "
+            f"mobile=`{self.status.mobile}` web=`{self.status.web}`"
+        )
+        query_line = f"parser query=`{self.parser_query or 'None'}`"
+
+        if not self.activities:
+            hint = "" if self.presences_enabled else _PRESENCES_OFF_HINT
+            body = [
+                f"`{self.display_name}` has no Discord activities visible to the bot.{hint}",
+                status_line,
+                query_line,
+            ]
+            return "\n".join(header + body)[:_MAX_DIAG_CHARS]
+
+        body = [
+            f"**{self.display_name}** activities ({len(self.activities)}):",
+            status_line,
+            query_line,
+            *(f"`{idx}` {_format_activity(info)}" for idx, info in enumerate(self.activities, 1)),
+        ]
+        return "\n".join(header + body)[:_MAX_DIAG_CHARS]
 
 
 class DiagnosticsCog(BaseCog):
@@ -125,10 +231,10 @@ class DiagnosticsCog(BaseCog):
             return
         target = target_candidate
 
-        message = _format_activities_message(
+        message = _MemberPresence.from_member(
             target,
             presences_enabled=ctx.bot.intents.presences,
-        )
+        ).render()
         await ctx.reply(message, mention_author=False)
 
     @app_commands.command(
@@ -146,27 +252,23 @@ class DiagnosticsCog(BaseCog):
             )
             return
 
+        presences_enabled = interaction.client.intents.presences
         cached = resolve_activity_member(interaction.guild, user)
-        if cached is user:
-            message = _format_activities_message(
-                user,
-                presences_enabled=interaction.client.intents.presences,
-            )
-        else:
+        if isinstance(cached, discord.Member) and cached is not user:
             message = "\n\n".join(
                 [
-                    _format_activities_message(
-                        user,
-                        presences_enabled=interaction.client.intents.presences,
-                        label="interaction.user",
+                    _MemberPresence.from_member(user, presences_enabled=presences_enabled).render(
+                        label="interaction.user"
                     ),
-                    _format_activities_message(
-                        cached,
-                        presences_enabled=interaction.client.intents.presences,
-                        label="guild cache",
+                    _MemberPresence.from_member(cached, presences_enabled=presences_enabled).render(
+                        label="guild cache"
                     ),
                 ]
             )[:_MAX_DIAG_CHARS]
+        else:
+            message = _MemberPresence.from_member(
+                user, presences_enabled=presences_enabled
+            ).render()
         await interaction.response.send_message(message, ephemeral=True)
 
     @diag.command(name="state")
