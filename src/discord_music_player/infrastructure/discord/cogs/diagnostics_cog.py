@@ -7,12 +7,17 @@ for sanity-checking what the bot sees about voice / queue / activities.
 
 from __future__ import annotations
 
+from typing import Final
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from ..services.activity import extract_listening_query, resolve_activity_member
 from .base_cog import BaseCog
+
+# Discord caps messages at 2000 chars; truncate diag dumps with headroom.
+_MAX_DIAG_CHARS: Final[int] = 1900
 
 
 def _format_activities_message(
@@ -45,7 +50,7 @@ def _format_activities_message(
             f"to the bot.{hint}\n"
             f"{status_line}\n"
             f"parser query=`{resolved_query or 'None'}`"
-        )[:1900]
+        )[:_MAX_DIAG_CHARS]
 
     lines = [
         *([f"**{label}**"] if label else []),
@@ -58,26 +63,28 @@ def _format_activities_message(
         type_name = act.type.name
         line = f"`{idx}` **{kind}** (type=`{type_name}`)"
 
-        if isinstance(act, discord.Spotify):
-            line += (
-                f"\n    title=`{act.title}` artist=`{act.artist}` "
-                f"album=`{act.album}` track_id=`{act.track_id}`"
-            )
-        elif isinstance(act, discord.CustomActivity):
-            line += f"\n    name=`{act.name}` emoji=`{act.emoji}`"
-        elif isinstance(act, discord.Streaming):
-            line += f"\n    name=`{act.name}` url=`{act.url}` platform=`{act.platform}`"
-        elif isinstance(act, discord.Activity):
-            line += (
-                f"\n    name=`{act.name}` details=`{act.details}` state=`{act.state}` "
-                f"app_id=`{act.application_id}`"
-            )
-        else:
-            line += f"\n    repr=`{act!r}`"
+        # discord.py's activity types aren't ours to tag, so dispatch with match/case.
+        match act:
+            case discord.Spotify():
+                line += (
+                    f"\n    title=`{act.title}` artist=`{act.artist}` "
+                    f"album=`{act.album}` track_id=`{act.track_id}`"
+                )
+            case discord.CustomActivity():
+                line += f"\n    name=`{act.name}` emoji=`{act.emoji}`"
+            case discord.Streaming():
+                line += f"\n    name=`{act.name}` url=`{act.url}` platform=`{act.platform}`"
+            case discord.Activity():
+                line += (
+                    f"\n    name=`{act.name}` details=`{act.details}` state=`{act.state}` "
+                    f"app_id=`{act.application_id}`"
+                )
+            case _:
+                line += f"\n    repr=`{act!r}`"
 
         lines.append(line)
 
-    return "\n".join(lines)[:1900]
+    return "\n".join(lines)[:_MAX_DIAG_CHARS]
 
 
 class DiagnosticsCog(BaseCog):
@@ -159,7 +166,7 @@ class DiagnosticsCog(BaseCog):
                         label="guild cache",
                     ),
                 ]
-            )[:1900]
+            )[:_MAX_DIAG_CHARS]
         await interaction.response.send_message(message, ephemeral=True)
 
     @diag.command(name="state")
@@ -216,7 +223,7 @@ class DiagnosticsCog(BaseCog):
             member = ctx.guild.get_member(user_id)
             label = member.display_name if member else f"<unknown {user_id}>"
             lines.append(f"  - `{user_id}` {label}")
-        await ctx.reply("\n".join(lines)[:1900], mention_author=False)
+        await ctx.reply("\n".join(lines)[:_MAX_DIAG_CHARS], mention_author=False)
 
 
 setup = DiagnosticsCog.setup
