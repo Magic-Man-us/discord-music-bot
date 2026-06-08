@@ -285,24 +285,28 @@ class MusicBot(commands.Bot):
     async def _on_app_command_error(
         self, interaction: discord.Interaction, error: Exception
     ) -> None:
-        """Global slash-command error handler; sends ephemeral messages to avoid channel spam."""
-        original = (
-            error.original if isinstance(error, discord.app_commands.CommandInvokeError) else error
-        )
+        """Global slash-command error handler; replies ephemerally to avoid channel spam."""
+        cmd = interaction.command.name if interaction.command else "<unknown>"
 
-        logger.error(
-            "Slash command error in '%s': %s",
-            interaction.command.name if interaction.command else "<unknown>",
-            original,
-        )
-
-        error_msg = f"An error occurred: {original}"
+        if isinstance(error, discord.app_commands.CheckFailure):
+            # guild-only / permissions / cooldown / role — the message is user-facing.
+            logger.info("Slash command check failed in '%s': %s", cmd, error)
+            user_msg = str(error)
+        else:
+            # Unexpected (a bug, DB, voice). Log the traceback; don't leak it to the user.
+            original = (
+                error.original
+                if isinstance(error, discord.app_commands.CommandInvokeError)
+                else error
+            )
+            logger.exception("Slash command error in '%s'", cmd, exc_info=original)
+            user_msg = "Something went wrong running that command."
 
         try:
             if interaction.response.is_done():
-                await interaction.followup.send(error_msg, ephemeral=True)
+                await interaction.followup.send(user_msg, ephemeral=True)
             else:
-                await interaction.response.send_message(error_msg, ephemeral=True)
+                await interaction.response.send_message(user_msg, ephemeral=True)
         except discord.HTTPException:
             logger.warning("Failed to send error message to user")
 

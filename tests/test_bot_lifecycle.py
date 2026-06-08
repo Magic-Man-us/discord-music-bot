@@ -624,7 +624,8 @@ class TestAppCommandErrorHandler:
         interaction.response.send_message.assert_called_once()
         call_args = interaction.response.send_message.call_args
         assert call_args.kwargs["ephemeral"] is True
-        assert "Test error" in call_args.args[0]
+        # Unexpected errors get a generic message, not the raw exception text
+        assert "Test error" not in call_args.args[0]
 
     @pytest.mark.asyncio
     async def test_error_handler_uses_followup_when_responded(
@@ -649,10 +650,10 @@ class TestAppCommandErrorHandler:
         assert call_args.kwargs["ephemeral"] is True
 
     @pytest.mark.asyncio
-    async def test_error_handler_extracts_original_error(
+    async def test_error_handler_does_not_leak_wrapped_original(
         self, mock_container, mock_settings
     ):
-        """Should extract original error from wrapper."""
+        """Should unwrap CommandInvokeError to log the original, not show it to the user."""
         from discord_music_player.infrastructure.discord.bot import MusicBot
 
         bot = MusicBot(container=mock_container, settings=mock_settings)
@@ -662,7 +663,6 @@ class TestAppCommandErrorHandler:
         interaction.response.send_message = AsyncMock()
         interaction.command.name = "test_command"
 
-        # Wrapped error
         original = ValueError("Original error")
         wrapper = MagicMock(spec=discord.app_commands.CommandInvokeError)
         wrapper.original = original
@@ -670,7 +670,26 @@ class TestAppCommandErrorHandler:
         await bot._on_app_command_error(interaction, wrapper)
 
         call_args = interaction.response.send_message.call_args
-        assert "Original error" in call_args.args[0]
+        assert "Original error" not in call_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_error_handler_shows_check_failure_message(self, mock_container, mock_settings):
+        """A CheckFailure (guild-only/permissions/cooldown) shows its user-facing message."""
+        from discord_music_player.infrastructure.discord.bot import MusicBot
+
+        bot = MusicBot(container=mock_container, settings=mock_settings)
+
+        interaction = MagicMock()
+        interaction.response.is_done.return_value = False
+        interaction.response.send_message = AsyncMock()
+        interaction.command.name = "test_command"
+
+        error = discord.app_commands.NoPrivateMessage()
+
+        await bot._on_app_command_error(interaction, error)
+
+        sent = interaction.response.send_message.call_args.args[0]
+        assert "direct messages" in sent.lower()
 
     @pytest.mark.asyncio
     async def test_error_handler_handles_send_failure(
