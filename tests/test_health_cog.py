@@ -84,6 +84,7 @@ import discord
 import pytest
 from discord.ext import tasks
 
+from discord_music_player.domain.music.enums import PlaybackState
 from discord_music_player.domain.shared.constants import HealthConstants
 from discord_music_player.infrastructure.discord.cogs.health_cog import (
     BasicStats,
@@ -134,6 +135,11 @@ def mock_container():
         return_value=DatabaseStats(db_path=":memory:", initialized=True, file_size_mb=2.5)
     )
     container.database = database
+
+    # Mock session repository (drives the audio snapshot aggregate)
+    session_repository = MagicMock()
+    session_repository.get_all_active = AsyncMock(return_value=[])
+    container.session_repository = session_repository
 
     return container
 
@@ -356,12 +362,34 @@ class TestHelperMethods:
         result = health_cog._embed_color_for_latency(1000)
         assert result == discord.Color.red()
 
-    def test_audio_snapshot_returns_defaults(self, health_cog):
-        """Should return default audio snapshot."""
-        queue_len, current_title = health_cog._audio_snapshot()
+    async def test_audio_snapshot_returns_zero_without_sessions(self, health_cog):
+        """No active sessions -> (0 queued, 0 playing)."""
+        total_queued, guilds_playing = await health_cog._audio_snapshot()
 
-        assert queue_len == 0
-        assert current_title is None
+        assert total_queued == 0
+        assert guilds_playing == 0
+
+    async def test_audio_snapshot_aggregates_across_sessions(self, health_cog, mock_container):
+        """Sums queued tracks across sessions and counts only PLAYING guilds."""
+        playing = MagicMock(queue_length=3, state=PlaybackState.PLAYING)
+        paused = MagicMock(queue_length=2, state=PlaybackState.PAUSED)
+        idle = MagicMock(queue_length=0, state=PlaybackState.IDLE)
+        mock_container.session_repository.get_all_active = AsyncMock(
+            return_value=[playing, paused, idle]
+        )
+
+        total_queued, guilds_playing = await health_cog._audio_snapshot()
+
+        assert total_queued == 5
+        assert guilds_playing == 1
+
+    async def test_audio_snapshot_degrades_on_session_read_error(self, health_cog, mock_container):
+        """A session-store failure yields zeros, not a crashed heartbeat."""
+        mock_container.session_repository.get_all_active = AsyncMock(
+            side_effect=RuntimeError("db down")
+        )
+
+        assert await health_cog._audio_snapshot() == (0, 0)
 
     def test_atomic_write_creates_file(self, health_cog, tmp_path):
         """Should atomically write JSON to file."""
@@ -373,7 +401,7 @@ class TestHelperMethods:
             latency_ms=50.0,
             latency_human="50.0 ms",
             queue_len=0,
-            current=None,
+            guilds_playing=0,
             connected=True,
             status="online",
         )
@@ -396,7 +424,7 @@ class TestHelperMethods:
             latency_ms=0.0,
             latency_human="0.0 ms",
             queue_len=0,
-            current=None,
+            guilds_playing=0,
             connected=True,
             status="online",
         )
@@ -417,9 +445,9 @@ class TestHelperMethods:
 class TestBasicStatsCollection:
     """Tests for basic health statistics collection."""
 
-    def test_collect_basic_stats_structure(self, health_cog, mock_bot):
+    async def test_collect_basic_stats_structure(self, health_cog, mock_bot):
         """Should collect all required basic stats fields."""
-        stats = health_cog._collect_basic_stats()
+        stats = await health_cog._collect_basic_stats()
 
         assert isinstance(stats, BasicStats)
         assert stats.ts is not None
@@ -431,58 +459,58 @@ class TestBasicStatsCollection:
         assert stats.connected is not None
         assert stats.status is not None
 
-    def test_collect_basic_stats_timestamp_format(self, health_cog):
+    async def test_collect_basic_stats_timestamp_format(self, health_cog):
         """Should include ISO timestamp."""
-        stats = health_cog._collect_basic_stats()
+        stats = await health_cog._collect_basic_stats()
 
         # Should be ISO format
         assert "T" in stats.ts
         # Should be parseable
         datetime.fromisoformat(stats.ts)
 
-    def test_collect_basic_stats_uptime(self, health_cog):
+    async def test_collect_basic_stats_uptime(self, health_cog):
         """Should calculate uptime correctly."""
         # Simulate 5 seconds of uptime
         health_cog.started_at = time.monotonic() - 5
 
-        stats = health_cog._collect_basic_stats()
+        stats = await health_cog._collect_basic_stats()
 
         assert stats.uptime_s >= 4
         assert stats.uptime_s <= 6
 
-    def test_collect_basic_stats_latency(self, health_cog, mock_bot):
+    async def test_collect_basic_stats_latency(self, health_cog, mock_bot):
         """Should include latency in milliseconds."""
         mock_bot.latency = 0.075  # 75ms
 
-        stats = health_cog._collect_basic_stats()
+        stats = await health_cog._collect_basic_stats()
 
         assert stats.latency_ms == 75.0
         assert "75.0 ms" in stats.latency_human
 
-    def test_collect_basic_stats_connection_online(self, health_cog, mock_bot):
+    async def test_collect_basic_stats_connection_online(self, health_cog, mock_bot):
         """Should report online status when connected."""
         mock_bot.is_closed = MagicMock(return_value=False)
 
-        stats = health_cog._collect_basic_stats()
+        stats = await health_cog._collect_basic_stats()
 
         assert stats.connected is True
         assert stats.status == "online"
 
-    def test_collect_basic_stats_connection_offline(self, health_cog, mock_bot):
+    async def test_collect_basic_stats_connection_offline(self, health_cog, mock_bot):
         """Should report offline status when disconnected."""
         mock_bot.is_closed = MagicMock(return_value=True)
 
-        stats = health_cog._collect_basic_stats()
+        stats = await health_cog._collect_basic_stats()
 
         assert stats.connected is False
         assert stats.status == "offline"
 
-    def test_collect_basic_stats_queue_defaults(self, health_cog):
+    async def test_collect_basic_stats_queue_defaults(self, health_cog):
         """Should have default queue values."""
-        stats = health_cog._collect_basic_stats()
+        stats = await health_cog._collect_basic_stats()
 
         assert stats.queue_len == 0
-        assert stats.current is None
+        assert stats.guilds_playing == 0
 
 
 # =============================================================================
@@ -877,7 +905,7 @@ class TestEmbedBuilding:
             latency_ms=50.0,
             latency_human="50.0 ms",
             queue_len=0,
-            current=None,
+            guilds_playing=0,
             connected=True,
             status="online",
         )
@@ -897,7 +925,7 @@ class TestEmbedBuilding:
             latency_ms=50.0,
             latency_human="50.0 ms",
             queue_len=0,
-            current=None,
+            guilds_playing=0,
             connected=True,
             status="online",
             guild_count=5,
@@ -949,7 +977,7 @@ class TestEmbedBuilding:
             latency_ms=0.0,
             latency_human="0.0 ms",
             queue_len=0,
-            current=None,
+            guilds_playing=0,
             connected=True,
             status="online",
             rss_mb=100.5,
@@ -971,7 +999,7 @@ class TestEmbedBuilding:
             latency_ms=0.0,
             latency_human="0.0 ms",
             queue_len=0,
-            current=None,
+            guilds_playing=0,
             connected=True,
             status="online",
             rss_mb=100.5,
@@ -991,7 +1019,7 @@ class TestEmbedBuilding:
             latency_ms=0.0,
             latency_human="0.0 ms",
             queue_len=0,
-            current=None,
+            guilds_playing=0,
             connected=True,
             status="online",
         )

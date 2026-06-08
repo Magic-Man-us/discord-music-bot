@@ -11,6 +11,7 @@ import discord
 from discord.ext import commands, tasks
 from pydantic import BaseModel
 
+from ....domain.music.enums import PlaybackState
 from ....domain.shared.constants import HealthConstants, UIConstants
 from ....domain.shared.datetime_utils import UtcDateTime
 from ....domain.shared.enums import BotStatus
@@ -39,7 +40,7 @@ class BasicStats(BaseModel):
     latency_ms: NonNegativeFloat
     latency_human: NonEmptyStr
     queue_len: NonNegativeInt
-    current: NonEmptyStr | None
+    guilds_playing: NonNegativeInt
     connected: bool
     status: BotStatus
 
@@ -119,16 +120,18 @@ class HealthCog(BaseCog):
             return discord.Color.gold()
         return discord.Color.red()
 
-    def _audio_snapshot(self) -> tuple[int, str | None]:
-        queue_len = 0
-        current_title: str | None = None
-
+    async def _audio_snapshot(self) -> tuple[int, int]:
+        """Aggregate (total queued tracks, guilds currently playing) over active sessions."""
         try:
-            pass
+            sessions = await self.container.session_repository.get_all_active()
         except Exception:
-            pass
+            # Best-effort metric: a transient DB read failure must not abort the heartbeat.
+            self.logger.debug("Failed to read sessions for health snapshot")
+            return 0, 0
 
-        return queue_len, current_title
+        total_queued = sum(session.queue_length for session in sessions)
+        guilds_playing = sum(1 for session in sessions if session.state == PlaybackState.PLAYING)
+        return total_queued, guilds_playing
 
     def _atomic_write(self, path: Path, payload: BasicStats | DetailedStats) -> None:
         tmp = path.with_suffix(path.suffix + ".tmp")
@@ -140,10 +143,10 @@ class HealthCog(BaseCog):
     # Stats Collection
     # ─────────────────────────────────────────────────────────────────
 
-    def _collect_basic_stats(self) -> BasicStats:
+    async def _collect_basic_stats(self) -> BasicStats:
         uptime_s = int(time.monotonic() - self.started_at)
         lat_ms = self._latency_ms()
-        queue_len, current_title = self._audio_snapshot()
+        queue_len, guilds_playing = await self._audio_snapshot()
         connected = not self.bot.is_closed()
 
         return BasicStats(
@@ -153,13 +156,13 @@ class HealthCog(BaseCog):
             latency_ms=lat_ms,
             latency_human=f"{lat_ms:.1f} ms",
             queue_len=queue_len,
-            current=current_title,
+            guilds_playing=guilds_playing,
             connected=connected,
             status=BotStatus.ONLINE if connected else BotStatus.OFFLINE,
         )
 
     async def _collect_detailed_stats(self) -> DetailedStats:
-        basic = self._collect_basic_stats()
+        basic = await self._collect_basic_stats()
         payload = DetailedStats(
             **basic.model_dump(),
             guild_count=len(self.bot.guilds),
@@ -197,7 +200,7 @@ class HealthCog(BaseCog):
     @tasks.loop(seconds=HealthConstants.DEFAULT_FAST_INTERVAL, reconnect=True)
     async def heartbeat_fast(self) -> None:
         try:
-            payload = self._collect_basic_stats()
+            payload = await self._collect_basic_stats()
             self._atomic_write(self.heartbeat_file, payload)
 
             # Latency warning logic
@@ -304,8 +307,8 @@ class HealthCog(BaseCog):
             )
 
     def _add_audio_fields(self, embed: discord.Embed, payload: DetailedStats) -> None:
-        embed.add_field(name="Queue Length", value=str(payload.queue_len), inline=True)
-        embed.add_field(name="Now Playing", value=payload.current or "Nothing", inline=False)
+        embed.add_field(name="Tracks Queued", value=str(payload.queue_len), inline=True)
+        embed.add_field(name="Guilds Playing", value=str(payload.guilds_playing), inline=True)
 
     def _add_admin_fields(self, embed: discord.Embed, payload: DetailedStats) -> None:
         mem_parts = self._format_memory_stats(payload)
