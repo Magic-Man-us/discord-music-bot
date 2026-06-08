@@ -9,7 +9,9 @@ import threading
 import time
 from typing import Any, Final, cast
 
+from pydantic import ValidationError
 from yt_dlp import YoutubeDL
+from yt_dlp.utils import YoutubeDLError
 
 from ...application.interfaces.audio_resolver import AudioResolver
 from ...application.interfaces.stream_probe import StreamProbe
@@ -189,8 +191,8 @@ class YtDlpResolver(AudioResolver):
                 like_count=info.like_count,
                 view_count=info.view_count,
             )
-        except Exception:
-            logger.exception("Failed to convert info to track")
+        except ValidationError as e:
+            logger.warning("Failed to convert info to track: %s", e)
             return None
 
     def _extract_webpage_url(self, info: YtDlpTrackInfo) -> str | None:
@@ -220,7 +222,7 @@ class YtDlpResolver(AudioResolver):
         """
         try:
             result = YTDLP_RESULT_ADAPTER.validate_python(data)
-        except Exception:
+        except ValidationError:
             return None
         match result:
             case YtDlpExtractResult():
@@ -253,8 +255,8 @@ class YtDlpResolver(AudioResolver):
                         self._evict_cache(now)
 
                 return result
-        except Exception:
-            logger.exception("Failed to extract info from %s", url)
+        except YoutubeDLError as e:
+            logger.warning("Failed to extract info from %s: %s", url, e)
             return None
 
     @staticmethod
@@ -289,8 +291,8 @@ class YtDlpResolver(AudioResolver):
             with YoutubeDL(params=cast(Any, self._base_opts.model_dump())) as ydl:
                 data = ydl.extract_info(search_query, download=False)
                 return self._parse_extract_result(data).entries
-        except Exception:
-            logger.exception("Failed to search for %r", query)
+        except YoutubeDLError as e:
+            logger.warning("Failed to search for %r: %s", query, e)
             return []
 
     def _extract_playlist_sync(self, url: HttpUrlStr) -> YtDlpExtractResult:
@@ -298,8 +300,8 @@ class YtDlpResolver(AudioResolver):
             with YoutubeDL(params=cast(Any, self._get_playlist_opts().model_dump())) as ydl:
                 data = ydl.extract_info(url, download=False)
                 return self._parse_extract_result(data)
-        except Exception:
-            logger.exception("Failed to extract playlist from %s", url)
+        except YoutubeDLError as e:
+            logger.warning("Failed to extract playlist from %s: %s", url, e)
             return YtDlpExtractResult(entries=[], title=None)
 
     async def resolve(self, query: NonEmptyStr) -> Track | None:
@@ -366,8 +368,8 @@ class YtDlpResolver(AudioResolver):
         except TimeoutError:
             logger.error("yt-dlp search timed out after %ds for %r", EXTRACT_TIMEOUT, query)
             return []
-        except Exception as e:
-            logger.error("Search failed for %r: %s", query, e)
+        except Exception:
+            logger.exception("Search failed for %r", query)
             return []
 
     async def extract_playlist(self, url: HttpUrlStr) -> list[Track]:
@@ -391,8 +393,8 @@ class YtDlpResolver(AudioResolver):
                 "yt-dlp playlist extraction timed out after %ds for %s", EXTRACT_TIMEOUT, url
             )
             return []
-        except Exception as e:
-            logger.error("Playlist extraction failed for %s: %s", url, e)
+        except Exception:
+            logger.exception("Playlist extraction failed for %s", url)
             return []
 
     async def preview_playlist(self, url: HttpUrlStr) -> PlaylistPreview:
@@ -417,8 +419,8 @@ class YtDlpResolver(AudioResolver):
         except TimeoutError:
             logger.error("yt-dlp playlist preview timed out after %ds for %s", EXTRACT_TIMEOUT, url)
             return PlaylistPreview(entries=[], title=None)
-        except Exception as e:
-            logger.error("Playlist preview failed for %s: %s", url, e)
+        except Exception:
+            logger.exception("Playlist preview failed for %s", url)
             return PlaylistPreview(entries=[], title=None)
 
     def is_url(self, query: NonEmptyStr) -> bool:

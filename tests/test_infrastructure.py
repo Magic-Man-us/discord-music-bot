@@ -95,17 +95,18 @@ class TestYtDlpResolver:
 
     def test_info_to_track_missing_url(self, resolver):
         """Test info conversion fails when URL is missing."""
-        info = {"title": "Test"}
+        from discord_music_player.infrastructure.audio.models import YtDlpTrackInfo
+
+        info = YtDlpTrackInfo(title="Test")  # no webpage_url/url
         track = resolver._info_to_track(info)
         assert track is None
 
     def test_info_to_track_missing_stream(self, resolver):
         """Test info conversion fails when stream URL is missing."""
-        info = {
-            "title": "Test Song",
-            "webpage_url": "https://youtube.com/watch?v=test",
-            # No 'url' or 'formats' for stream
-        }
+        from discord_music_player.infrastructure.audio.models import YtDlpTrackInfo
+
+        # No url/formats -> no playable stream
+        info = YtDlpTrackInfo(title="Test Song", webpage_url="https://youtube.com/watch?v=test")
         track = resolver._info_to_track(info)
         assert track is None
 

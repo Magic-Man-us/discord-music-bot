@@ -18,6 +18,7 @@ import time
 from unittest.mock import patch
 
 import pytest
+from yt_dlp.utils import YoutubeDLError
 
 from discord_music_player.application.interfaces.stream_probe import StreamProbe
 from discord_music_player.config.settings import AudioSettings
@@ -249,19 +250,14 @@ class TestInfoToTrack:
         assert track.view_count is None
 
     def test_info_to_track_with_exception_during_construction(self, resolver):
-        """Should return None when Track construction raises exception."""
+        """Should return None when Track validation fails (title exceeds 500 chars)."""
         info = YtDlpTrackInfo(
             webpage_url="https://youtube.com/watch?v=abc",
-            title="Test",
+            title="x" * 600,  # YtDlpTrackInfo allows it; Track.title (max 500) rejects it
             url="https://example.com/stream.m4a",
         )
 
-        # Mock Track to raise an exception during construction
-        with patch(
-            "discord_music_player.infrastructure.audio.ytdlp_resolver.Track",
-            side_effect=Exception("Validation error"),
-        ):
-            track = resolver._info_to_track(info)
+        track = resolver._info_to_track(info)
 
         assert track is None
 
@@ -670,7 +666,7 @@ class TestPlaylistExtraction:
         with patch(
             "discord_music_player.infrastructure.audio.ytdlp_resolver.YoutubeDL"
         ) as mock_ydl:
-            mock_ydl.return_value.__enter__.return_value.extract_info.side_effect = Exception(
+            mock_ydl.return_value.__enter__.return_value.extract_info.side_effect = YoutubeDLError(
                 "Playlist error"
             )
             result = resolver._extract_playlist_sync(url)
@@ -767,7 +763,7 @@ class TestCaching:
         with patch(
             "discord_music_player.infrastructure.audio.ytdlp_resolver.YoutubeDL"
         ) as mock_ydl:
-            mock_ydl.return_value.__enter__.return_value.extract_info.side_effect = Exception(
+            mock_ydl.return_value.__enter__.return_value.extract_info.side_effect = YoutubeDLError(
                 "Network error"
             )
             result = resolver._extract_info_sync(url)
@@ -779,7 +775,7 @@ class TestCaching:
         with patch(
             "discord_music_player.infrastructure.audio.ytdlp_resolver.YoutubeDL"
         ) as mock_ydl:
-            mock_ydl.return_value.__enter__.return_value.extract_info.side_effect = Exception(
+            mock_ydl.return_value.__enter__.return_value.extract_info.side_effect = YoutubeDLError(
                 "Search error"
             )
             result = resolver._search_sync("test query")
