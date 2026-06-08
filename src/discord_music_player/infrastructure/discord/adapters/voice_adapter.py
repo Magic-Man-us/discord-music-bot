@@ -226,8 +226,8 @@ class DiscordVoiceAdapter(VoiceAdapter):
             logger.info("Started playing '%s' in guild %s", track.title, guild_id)
             return True
 
-        except Exception as e:
-            logger.error("Failed to start playback in guild %s: %r", guild_id, e)
+        except Exception:
+            logger.exception("Failed to start playback in guild %s", guild_id)
             return False
 
     async def stop(self, guild_id: int) -> bool:
@@ -317,8 +317,8 @@ class DiscordVoiceAdapter(VoiceAdapter):
             logger.debug("Calling track end callback for guild %s", guild_id)
             try:
                 await self._on_track_end(guild_id)
-            except Exception as e:
-                logger.error("Error in track end callback for guild %s: %s", guild_id, e)
+            except Exception:
+                logger.exception("Error in track end callback for guild %s", guild_id)
         else:
             logger.warning("No track end callback set for guild %s", guild_id)
 
@@ -343,8 +343,8 @@ class DiscordVoiceAdapter(VoiceAdapter):
         try:
             connected = await self.ensure_connected(guild_id, channel_id)
             yield connected
-        except Exception as e:
-            logger.exception("Error in voice connection context:", extra={"exception": e})
+        except Exception:
+            logger.exception("Error in voice connection context")
             raise
         finally:
             if connected:
@@ -352,4 +352,4 @@ class DiscordVoiceAdapter(VoiceAdapter):
                     await self.disconnect(guild_id)
                     logger.debug("Cleaned up voice connection for guild %s", guild_id)
                 except Exception:
-                    logger.error("Error during voice cleanup")
+                    logger.exception("Error during voice cleanup")
