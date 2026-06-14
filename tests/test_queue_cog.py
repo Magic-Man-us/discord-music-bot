@@ -39,8 +39,12 @@ def mock_container():
     container.history_repository = MagicMock()
     container.history_repository.get_recent = AsyncMock()
 
+    container.session_repository = MagicMock()
+    container.session_repository.get = AsyncMock(return_value=None)
+
     container.message_state_manager = MagicMock()
     container.message_state_manager.reset = AsyncMock()
+    container.message_state_manager.update_next_up = AsyncMock()
 
     return container
 
@@ -271,6 +275,10 @@ def _stub_container(
     message_state_manager = MagicMock()
     message_state_manager.reset = AsyncMock()
     message_state_manager.reserve_now_playing = MagicMock()
+    message_state_manager.update_next_up = AsyncMock()
+
+    session_repository = MagicMock()
+    session_repository.get = AsyncMock(return_value=None)
 
     playback_service = MagicMock()
     playback_service.start_playback = AsyncMock()
@@ -282,6 +290,7 @@ def _stub_container(
         history_repository=history_repository,
         settings=settings,
         message_state_manager=message_state_manager,
+        session_repository=session_repository,
         playback_service=playback_service,
     )
 
@@ -373,6 +382,7 @@ class TestShuffleResultMessages:
         cog = _make_cog(_stub_container(shuffle_returns=True))
         await cog.shuffle.callback(cog, i)
         assert i.response.send_message.call_args.args[0] == "Shuffled the queue."
+        cog.container.message_state_manager.update_next_up.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_shuffle_not_enough_tracks_message(self):
@@ -440,6 +450,7 @@ class TestRemoveOutcomes:
         cog = _make_cog(_stub_container(remove_returns=_real_track("rm")))
         await cog.remove.callback(cog, i, position=1)
         assert "Removed" in i.response.send_message.call_args.args[0]
+        cog.container.message_state_manager.update_next_up.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_position_not_found(self):
@@ -459,6 +470,7 @@ class TestMoveOutcomes:
         cog = _make_cog(_stub_container(move_returns=True))
         await cog.move.callback(cog, i, from_position=2, to_position=5)
         assert "Moved track from position 2 to 5" in i.response.send_message.call_args.args[0]
+        cog.container.message_state_manager.update_next_up.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_invalid_positions(self):
@@ -485,7 +497,10 @@ class TestClearOutcomes:
         cog = _make_cog(_stub_container(clear_returns=3))
         await cog.clear.callback(cog, i)
         assert "Cleared 3" in i.response.send_message.call_args.args[0]
-        cog.container.message_state_manager.reset.assert_awaited_once()
+        # The current song keeps playing — its embed must NOT be deleted; only the
+        # "Next Up" field is refreshed.
+        cog.container.message_state_manager.reset.assert_not_awaited()
+        cog.container.message_state_manager.update_next_up.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_already_empty_message(self):

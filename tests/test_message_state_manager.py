@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -297,12 +298,10 @@ class TestEditMessage:
         mock_partial.edit.assert_awaited_once_with(content=None, embed=embed, view=None)
 
     @pytest.mark.asyncio
-    async def test_edit_to_embed_returns_none_on_http_error(
+    async def test_edit_to_embed_returns_none_when_channel_uncached(
         self, manager: MessageStateManager, mock_bot: MagicMock
     ) -> None:
-        self._setup_partial_channel(
-            mock_bot, edit_side_effect=discord.HTTPException(MagicMock(), "Forbidden")
-        )
+        mock_bot.get_channel.return_value = None
 
         tracked = TrackedMessage(
             channel_id=CHANNEL_ID,
@@ -311,6 +310,24 @@ class TestEditMessage:
         )
         result = await manager.edit_message_to_embed(tracked, embed=discord.Embed(), view=None)
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_edit_to_embed_propagates_http_error(
+        self, manager: MessageStateManager, mock_bot: MagicMock
+    ) -> None:
+        # The caller distinguishes gone (NotFound/Forbidden) from transient by the
+        # exception type, so the edit helper must not swallow it.
+        self._setup_partial_channel(
+            mock_bot, edit_side_effect=discord.HTTPException(MagicMock(), "Server error")
+        )
+
+        tracked = TrackedMessage(
+            channel_id=CHANNEL_ID,
+            message_id=MESSAGE_ID_1,
+            track_key=TrackKey(track_id="t1"),
+        )
+        with pytest.raises(discord.HTTPException):
+            await manager.edit_message_to_embed(tracked, embed=discord.Embed(), view=None)
 
 
 # ============================================================================
@@ -608,10 +625,10 @@ class TestPromoteNextTrack:
         await manager.promote_next_track(GUILD_ID, track_b)
 
     @pytest.mark.asyncio
-    async def test_now_playing_edit_fails_clears_state_for_auto_poster(
+    async def test_now_playing_gone_clears_state_for_auto_poster(
         self, manager: MessageStateManager, mock_bot: MagicMock, track_a: Track, track_b: Track
     ) -> None:
-        """When now_playing edit fails, now_playing is cleared so the auto-poster can send a fresh embed."""
+        """When the now_playing message is gone (NotFound), clear so the auto-poster reposts."""
         manager.track_now_playing(
             guild_id=GUILD_ID, track=track_a, channel_id=CHANNEL_ID, message_id=MESSAGE_ID_1
         )
@@ -623,7 +640,7 @@ class TestPromoteNextTrack:
         self._setup_channel(
             mock_bot,
             mock_msg_fail,
-            edit_side_effect=discord.HTTPException(MagicMock(), "err"),
+            edit_side_effect=discord.NotFound(MagicMock(), "gone"),
         )
 
         await manager.promote_next_track(GUILD_ID, track_b)
@@ -632,6 +649,31 @@ class TestPromoteNextTrack:
         # now_playing cleared so auto-poster can send a fresh embed
         assert state.now_playing is None
         assert len(state.queued) == 0
+
+    @pytest.mark.asyncio
+    async def test_now_playing_transient_edit_failure_keeps_message(
+        self, manager: MessageStateManager, mock_bot: MagicMock, track_a: Track, track_b: Track
+    ) -> None:
+        """A transient edit error must NOT orphan the message — keep tracking it so the
+        next track edits it rather than the auto-poster posting a second now-playing embed."""
+        manager.track_now_playing(
+            guild_id=GUILD_ID, track=track_a, channel_id=CHANNEL_ID, message_id=MESSAGE_ID_1
+        )
+
+        mock_msg_fail = MagicMock(spec=discord.Message)
+        self._setup_channel(
+            mock_bot,
+            mock_msg_fail,
+            edit_side_effect=discord.DiscordServerError(MagicMock(), "503"),
+        )
+
+        await manager.promote_next_track(GUILD_ID, track_b)
+
+        state = manager.get_state(GUILD_ID)
+        assert state.now_playing is not None
+        # Still the original message, not re-pointed — we never confirmed the edit.
+        assert state.now_playing.message_id == MESSAGE_ID_1
+        assert state.now_playing.track_key.track_id == "track-a"
 
     @pytest.mark.asyncio
     async def test_promotes_queued_when_no_now_playing_and_edit_fails(
@@ -673,15 +715,12 @@ class TestPromoteNextTrack:
             "discord_music_player.infrastructure.discord.views.now_playing_view.NowPlayingView"
         ) as mock_view_cls:
             mock_view = MagicMock()
-            mock_view_cls.return_value = mock_view
+            mock_view_cls.for_track.return_value = mock_view
 
             await manager.promote_next_track(GUILD_ID, track_b, container=mock_container)
 
-            mock_view_cls.assert_called_once_with(
-                webpage_url=track_b.webpage_url,
-                title=track_b.title,
-                guild_id=GUILD_ID,
-                container=mock_container,
+            mock_view_cls.for_track.assert_called_once_with(
+                track_b, guild_id=GUILD_ID, container=mock_container
             )
             mock_view.set_message.assert_called_once_with(mock_message)
 
@@ -727,6 +766,90 @@ class TestPromoteNextTrack:
             mock_build.return_value = discord.Embed(title="NP")
             await manager.promote_next_track(GUILD_ID, track_b, upcoming_track=track_a)
             mock_build.assert_called_once_with(track_b, next_track=track_a)
+
+
+# ============================================================================
+# Post Now-Playing If Absent — lock-guarded first post
+# ============================================================================
+
+
+class TestPostNowPlayingIfAbsent:
+    @staticmethod
+    def _channel(message_id: int = MESSAGE_ID_1) -> MagicMock:
+        sent = MagicMock(spec=discord.Message)
+        sent.id = message_id
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = CHANNEL_ID
+        channel.send = AsyncMock(return_value=sent)
+        return channel
+
+    @pytest.mark.asyncio
+    async def test_posts_and_tracks_when_absent(
+        self, manager: MessageStateManager, track_a: Track
+    ) -> None:
+        channel = self._channel()
+        view = MagicMock()
+
+        posted = await manager.post_now_playing_if_absent(
+            GUILD_ID, track=track_a, channel=channel, embed=discord.Embed(), view=view
+        )
+
+        assert posted is True
+        channel.send.assert_awaited_once()
+        view.set_message.assert_called_once()
+        state = manager.get_state(GUILD_ID)
+        assert state.now_playing is not None
+        assert state.now_playing.channel_id == CHANNEL_ID
+        assert state.now_playing.message_id == MESSAGE_ID_1
+
+    @pytest.mark.asyncio
+    async def test_skips_when_already_present(
+        self, manager: MessageStateManager, track_a: Track, track_b: Track
+    ) -> None:
+        manager.track_now_playing(
+            guild_id=GUILD_ID, track=track_a, channel_id=CHANNEL_ID, message_id=MESSAGE_ID_1
+        )
+        channel = self._channel(message_id=MESSAGE_ID_2)
+
+        posted = await manager.post_now_playing_if_absent(
+            GUILD_ID, track=track_b, channel=channel, embed=discord.Embed(), view=MagicMock()
+        )
+
+        assert posted is False
+        channel.send.assert_not_awaited()
+        # Existing message left untouched.
+        assert manager.get_state(GUILD_ID).now_playing.message_id == MESSAGE_ID_1
+
+    @pytest.mark.asyncio
+    async def test_concurrent_calls_post_exactly_once(
+        self, manager: MessageStateManager, track_a: Track
+    ) -> None:
+        # Two TrackStartedPlaying handlers racing the empty now-playing slot must not
+        # both post — the per-guild lock + recheck makes the second a no-op.
+        send_calls: list[int] = []
+
+        async def slow_send(*, embed: discord.Embed, view: object) -> MagicMock:
+            send_calls.append(1)
+            await asyncio.sleep(0)  # yield so the other call interleaves
+            sent = MagicMock(spec=discord.Message)
+            sent.id = MESSAGE_ID_1
+            return sent
+
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = CHANNEL_ID
+        channel.send = AsyncMock(side_effect=slow_send)
+
+        results = await asyncio.gather(
+            manager.post_now_playing_if_absent(
+                GUILD_ID, track=track_a, channel=channel, embed=discord.Embed(), view=MagicMock()
+            ),
+            manager.post_now_playing_if_absent(
+                GUILD_ID, track=track_a, channel=channel, embed=discord.Embed(), view=MagicMock()
+            ),
+        )
+
+        assert sorted(results) == [False, True]
+        assert len(send_calls) == 1
 
 
 # ============================================================================

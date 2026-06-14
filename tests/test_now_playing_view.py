@@ -38,6 +38,8 @@ def _make_container(*, ai_enabled: bool = True):
     container.radio_service = MagicMock()
     container.radio_service.is_enabled = MagicMock(return_value=False)
     container.radio_service.toggle_radio = AsyncMock()
+    container.message_state_manager = MagicMock()
+    container.message_state_manager.update_next_up = AsyncMock()
     return container
 
 
@@ -175,6 +177,21 @@ class TestNowPlayingViewInit:
         assert len(interactive_buttons) == 0
 
 
+class TestForTrack:
+    def test_builds_view_from_track_fields(self):
+        from discord_music_player.infrastructure.discord.views.now_playing_view import (
+            NowPlayingView,
+        )
+
+        track = _make_track(title="X", webpage_url="https://youtube.com/watch?v=zzz")
+        container = _make_container()
+        view = NowPlayingView.for_track(track, guild_id=7, container=container)
+        assert view.title == "X"
+        assert view.webpage_url == "https://youtube.com/watch?v=zzz"
+        assert view.guild_id == 7
+        assert view._container is container
+
+
 # =============================================================================
 # Guild Lock Tests
 # =============================================================================
@@ -186,23 +203,22 @@ class TestGuildLock:
             NowPlayingView,
         )
 
-        lock1 = NowPlayingView._get_lock(999)
-        lock2 = NowPlayingView._get_lock(999)
+        lock1 = NowPlayingView._lock_registry.get(999)
+        lock2 = NowPlayingView._lock_registry.get(999)
         assert lock1 is lock2
         # Cleanup
-        NowPlayingView._guild_locks.pop(999, None)
+        NowPlayingView._lock_registry.clear()
 
     def test_get_lock_returns_different_lock_for_different_guild(self):
         from discord_music_player.infrastructure.discord.views.now_playing_view import (
             NowPlayingView,
         )
 
-        lock1 = NowPlayingView._get_lock(997)
-        lock2 = NowPlayingView._get_lock(998)
+        lock1 = NowPlayingView._lock_registry.get(997)
+        lock2 = NowPlayingView._lock_registry.get(998)
         assert lock1 is not lock2
         # Cleanup
-        NowPlayingView._guild_locks.pop(997, None)
-        NowPlayingView._guild_locks.pop(998, None)
+        NowPlayingView._lock_registry.clear()
 
 
 # =============================================================================
@@ -256,7 +272,7 @@ class TestSimilarButton:
             NowPlayingView,
         )
 
-        lock = NowPlayingView._get_lock(500)
+        lock = NowPlayingView._lock_registry.get(500)
         await lock.acquire()
 
         try:
@@ -267,7 +283,7 @@ class TestSimilarButton:
             )
         finally:
             lock.release()
-            NowPlayingView._guild_locks.pop(500, None)
+            NowPlayingView._lock_registry.clear()
 
     @pytest.mark.asyncio
     async def test_similar_no_session_sends_nothing_playing(self):
@@ -288,7 +304,7 @@ class TestSimilarButton:
                 "Nothing is playing.", ephemeral=True
             )
         finally:
-            NowPlayingView._guild_locks.pop(501, None)
+            NowPlayingView._lock_registry.clear()
 
     @pytest.mark.asyncio
     async def test_similar_session_no_current_track_sends_nothing_playing(self):
@@ -310,7 +326,7 @@ class TestSimilarButton:
                 "Nothing is playing.", ephemeral=True
             )
         finally:
-            NowPlayingView._guild_locks.pop(502, None)
+            NowPlayingView._lock_registry.clear()
 
     @pytest.mark.asyncio
     async def test_similar_no_recommendations_sends_error(self):
@@ -333,7 +349,7 @@ class TestSimilarButton:
                 "Could not generate a recommendation. Try again later.", ephemeral=True
             )
         finally:
-            NowPlayingView._guild_locks.pop(503, None)
+            NowPlayingView._lock_registry.clear()
 
     @pytest.mark.asyncio
     async def test_similar_track_not_resolved_sends_not_found(self):
@@ -363,7 +379,7 @@ class TestSimilarButton:
                 ephemeral=True,
             )
         finally:
-            NowPlayingView._guild_locks.pop(504, None)
+            NowPlayingView._lock_registry.clear()
 
     @pytest.mark.asyncio
     async def test_similar_enqueue_fails_sends_result_message(self):
@@ -397,7 +413,7 @@ class TestSimilarButton:
 
             interaction.followup.send.assert_awaited_once_with("Queue is full", ephemeral=True)
         finally:
-            NowPlayingView._guild_locks.pop(505, None)
+            NowPlayingView._lock_registry.clear()
 
     @pytest.mark.asyncio
     async def test_similar_success_sends_confirmation(self):
@@ -432,7 +448,7 @@ class TestSimilarButton:
             msg = interaction.followup.send.call_args[0][0]
             assert "Shuffled Song" in msg
         finally:
-            NowPlayingView._guild_locks.pop(506, None)
+            NowPlayingView._lock_registry.clear()
 
     @pytest.mark.asyncio
     async def test_similar_success_updates_embed_when_message_set(self):
@@ -466,10 +482,12 @@ class TestSimilarButton:
         try:
             await view.similar_button.callback(interaction)
 
-            # Message should have been edited (button disable + embed update)
+            # Button re-enabled on the message, and "Next Up" refreshed via the
+            # centralized lock-guarded path (not a direct stale-embed edit).
             assert message.edit.await_count >= 1
+            container.message_state_manager.update_next_up.assert_awaited_once()
         finally:
-            NowPlayingView._guild_locks.pop(507, None)
+            NowPlayingView._lock_registry.clear()
 
     @pytest.mark.asyncio
     async def test_similar_exception_sends_error_and_restores_button(self):
@@ -503,7 +521,7 @@ class TestSimilarButton:
             assert len(shuffle_btn) == 1
             assert shuffle_btn[0].disabled is False
         finally:
-            NowPlayingView._guild_locks.pop(508, None)
+            NowPlayingView._lock_registry.clear()
 
     @pytest.mark.asyncio
     async def test_similar_uses_result_track_over_resolved(self):
@@ -539,7 +557,7 @@ class TestSimilarButton:
             msg = interaction.followup.send.call_args[0][0]
             assert "Result Title" in msg
         finally:
-            NowPlayingView._guild_locks.pop(509, None)
+            NowPlayingView._lock_registry.clear()
 
     @pytest.mark.asyncio
     async def test_similar_falls_back_to_resolved_track_when_result_track_none(self):
@@ -574,7 +592,7 @@ class TestSimilarButton:
             msg = interaction.followup.send.call_args[0][0]
             assert "Fallback Title" in msg
         finally:
-            NowPlayingView._guild_locks.pop(510, None)
+            NowPlayingView._lock_registry.clear()
 
 
 # =============================================================================

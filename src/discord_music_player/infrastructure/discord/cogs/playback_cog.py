@@ -637,12 +637,7 @@ class PlaybackCog(BaseCog):
 
         from ..views.now_playing_view import NowPlayingView
 
-        view = NowPlayingView(
-            webpage_url=track.webpage_url,
-            title=track.title,
-            guild_id=guild_id,
-            container=self.container,
-        )
+        view = NowPlayingView.for_track(track, guild_id=guild_id, container=self.container)
         sent = await interaction.followup.send(embed=embed, view=view, wait=True)
         view.set_message(sent)
 
@@ -684,10 +679,7 @@ class PlaybackCog(BaseCog):
                     message_id=sent.id,
                 )
 
-        session = await self.container.session_repository.get(guild_id)
-        upcoming = session.peek() if session else None
-        current = session.current_track if session else None
-        await msm.update_next_up(guild_id, current_track=current, next_track=upcoming)
+        await self._refresh_next_up(guild_id)
 
     # ─────────────────────────────────────────────────────────────────
     # Seek
@@ -777,6 +769,8 @@ class PlaybackCog(BaseCog):
             sent = await interaction.followup.send(f"Up next: **{title}**", wait=True)
             if sent is not None:
                 await sent.delete(delay=UIConstants.QUEUED_DELETE_AFTER)
+
+            await self._refresh_next_up(interaction.guild.id)
 
         except Exception:
             self.logger.exception("Error in playnext command")
@@ -914,7 +908,10 @@ class PlaybackCog(BaseCog):
             await msm.promote_next_track(
                 guild_id, track, container=self.container, upcoming_track=upcoming
             )
-            return
+            # promote_next_track clears now_playing when the message is gone
+            # (deleted externally); only then fall through to repost a fresh one.
+            if msm.get_state(guild_id).now_playing is not None:
+                return
 
         # A reservation means the /play command is about to post its own embed.
         if msm.reservation_active(guild_id):
@@ -929,24 +926,22 @@ class PlaybackCog(BaseCog):
 
         from ..views.now_playing_view import NowPlayingView
 
-        view = NowPlayingView(
-            webpage_url=track.webpage_url,
-            title=track.title,
-            guild_id=guild_id,
-            container=self.container,
-        )
+        view = NowPlayingView.for_track(track, guild_id=guild_id, container=self.container)
 
         try:
-            sent = await channel.send(embed=embed, view=view)
-            view.set_message(sent)
-            msm.track_now_playing(
-                guild_id=guild_id,
-                track=track,
-                channel_id=channel.id,
-                message_id=sent.id,
+            posted = await msm.post_now_playing_if_absent(
+                guild_id, track=track, channel=channel, embed=embed, view=view
             )
         except Exception:
             self.logger.debug("Failed to auto-post now-playing for guild %s", guild_id)
+            return
+
+        # A concurrent TrackStartedPlaying handler posted first — update that
+        # message in place instead of leaving a duplicate.
+        if not posted:
+            await msm.promote_next_track(
+                guild_id, track, container=self.container, upcoming_track=upcoming
+            )
 
     def _find_auto_post_channel(self, guild_id: DiscordSnowflake) -> discord.TextChannel | None:
         guild = self.bot.get_guild(guild_id)
@@ -1030,12 +1025,7 @@ class PlaybackCog(BaseCog):
         self, guild_id: DiscordSnowflake, track: Track
     ) -> None:
         """Refresh the visible Next Up field after /playmine queues behind current."""
-        session = await self.container.session_repository.get(guild_id)
-        current = session.current_track if session else None
-        upcoming = session.peek() if session else None
-        await self.container.message_state_manager.update_next_up(
-            guild_id, current_track=current, next_track=upcoming
-        )
+        await self._refresh_next_up(guild_id)
 
     async def _on_track_finished(self, guild_id: DiscordSnowflake, track: Track) -> None:
         # Post the auto-deleting "Finished playing" line. The now-playing embed itself

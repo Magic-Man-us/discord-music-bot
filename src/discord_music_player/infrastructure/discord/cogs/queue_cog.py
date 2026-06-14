@@ -94,6 +94,7 @@ class QueueCog(BaseCog):
 
         if shuffled:
             await interaction.response.send_message("Shuffled the queue.", ephemeral=True)
+            await self._refresh_next_up(interaction.guild.id)
         else:
             await interaction.response.send_message("Not enough tracks to shuffle.", ephemeral=True)
 
@@ -229,6 +230,7 @@ class QueueCog(BaseCog):
                 f"Removed: **{track.title}**",
                 ephemeral=True,
             )
+            await self._refresh_next_up(interaction.guild.id)
         else:
             await interaction.response.send_message(
                 f"No track at position {position}.",
@@ -264,6 +266,7 @@ class QueueCog(BaseCog):
                 f"Moved track from position {from_position} to {to_position}.",
                 ephemeral=True,
             )
+            await self._refresh_next_up(interaction.guild.id)
         else:
             await interaction.response.send_message(
                 "Invalid position(s). Check the queue with `/queue`.",
@@ -290,10 +293,12 @@ class QueueCog(BaseCog):
         count = await queue_service.clear(interaction.guild.id)
 
         if count > 0:
-            await self.container.message_state_manager.reset(interaction.guild.id)
+            # The current song keeps playing — keep its embed and just empty the
+            # "Next Up" field rather than deleting it (reset() is for /stop).
             await interaction.response.send_message(
                 f"Cleared {count} tracks from the queue.", ephemeral=True
             )
+            await self._refresh_next_up(interaction.guild.id)
         else:
             await interaction.response.send_message("Queue is already empty.", ephemeral=True)
 

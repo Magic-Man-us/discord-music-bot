@@ -139,6 +139,7 @@ def _container(**overrides) -> FakeContainer:
     msm.reserve_now_playing = MagicMock()
     msm.clear_now_playing_reservation = MagicMock()
     msm.track_now_playing = MagicMock()
+    msm.post_now_playing_if_absent = AsyncMock(return_value=True)
     msm.on_track_finished = AsyncMock()
     msm.promote_next_track = AsyncMock()
     msm.update_next_up = AsyncMock()
@@ -473,9 +474,20 @@ class TestOnTrackStartedAutoPost:
         cog = _make_cog(container, bot=bot)
         await cog._on_track_started_auto_post(self._event(track_title="Matching"))
 
-    @pytest.mark.asyncio
-    async def test_swallows_send_exception(self):
-        container = _container()
+    @staticmethod
+    def _writable_guild_bot() -> MagicMock:
+        bot = MagicMock()
+        guild = MagicMock(spec=discord.Guild)
+        guild.me = MagicMock()
+        guild.voice_client = None
+        guild.system_channel = None
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.permissions_for = MagicMock(return_value=MagicMock(send_messages=True))
+        guild.text_channels = [channel]
+        bot.get_guild = MagicMock(return_value=guild)
+        return bot
+
+    def _matching_session(self) -> MagicMock:
         session = MagicMock()
         session.current_track = Track(
             id=TrackId(value="abc"),
@@ -484,24 +496,54 @@ class TestOnTrackStartedAutoPost:
             duration_seconds=180,
         )
         session.peek = MagicMock(return_value=None)
-        container.session_repository.get = AsyncMock(return_value=session)
+        return session
 
-        # Construct a writable channel
-        bot = MagicMock()
-        guild = MagicMock(spec=discord.Guild)
-        guild.me = MagicMock()
-        guild.voice_client = None
-        guild.system_channel = None
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.permissions_for = MagicMock(return_value=MagicMock(send_messages=True))
-        channel.send = AsyncMock(side_effect=RuntimeError("boom"))
-        guild.text_channels = [channel]
-        bot.get_guild = MagicMock(return_value=guild)
+    @pytest.mark.asyncio
+    async def test_swallows_post_exception(self):
+        container = _container()
+        container.message_state_manager.post_now_playing_if_absent = AsyncMock(
+            side_effect=RuntimeError("boom")
+        )
+        container.session_repository.get = AsyncMock(return_value=self._matching_session())
 
-        cog = _make_cog(container, bot=bot)
+        cog = _make_cog(container, bot=self._writable_guild_bot())
         cog.logger = MagicMock()
-        # Must not raise
+        # Must not raise; failure is swallowed and no in-place promote follows.
         await cog._on_track_started_auto_post(self._event(track_title="Matching"))
+        container.message_state_manager.promote_next_track.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_reposts_when_promote_finds_message_gone(self):
+        # The existing now-playing message was deleted externally: promote_next_track
+        # clears it, so the auto-poster must repost rather than leave no embed.
+        container = _container()
+        state = container.message_state_manager.get_state.return_value
+        state.now_playing = MagicMock()
+
+        async def _clear(*_args, **_kwargs):
+            state.now_playing = None
+
+        container.message_state_manager.promote_next_track = AsyncMock(side_effect=_clear)
+        container.message_state_manager.post_now_playing_if_absent = AsyncMock(return_value=True)
+        container.session_repository.get = AsyncMock(return_value=self._matching_session())
+
+        cog = _make_cog(container, bot=self._writable_guild_bot())
+        await cog._on_track_started_auto_post(self._event(track_title="Matching"))
+
+        container.message_state_manager.promote_next_track.assert_awaited_once()
+        container.message_state_manager.post_now_playing_if_absent.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_promotes_when_concurrent_handler_posted_first(self):
+        # post_now_playing_if_absent returns False → a concurrent handler already posted;
+        # update that message in place instead of leaving a duplicate.
+        container = _container()
+        container.message_state_manager.post_now_playing_if_absent = AsyncMock(return_value=False)
+        container.session_repository.get = AsyncMock(return_value=self._matching_session())
+
+        cog = _make_cog(container, bot=self._writable_guild_bot())
+        await cog._on_track_started_auto_post(self._event(track_title="Matching"))
+        container.message_state_manager.promote_next_track.assert_awaited_once()
 
 
 # =============================================================================
@@ -732,6 +774,8 @@ class TestPlaynextCommand:
         # First positional is the "Up next:" message
         first_call_args = interaction.followup.send.call_args_list[0].args
         assert "Up next" in first_call_args[0]
+        # /playnext changes what plays next, so the now-playing "Next Up" must refresh.
+        container.message_state_manager.update_next_up.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_swallows_resolver_exception(self):

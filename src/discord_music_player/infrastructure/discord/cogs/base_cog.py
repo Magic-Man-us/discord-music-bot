@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from ....application.services.queue_models import BatchEnqueueResult
     from ....config.container import Container
     from ....domain.music.entities import Track
+    from ....domain.shared.types import DiscordSnowflake
 
 
 @runtime_checkable
@@ -50,7 +51,24 @@ class BaseCog(commands.Cog):
             # ephemeral summary), so let the TrackStartedPlaying auto-poster
             # publish the now-playing embed — do NOT reserve here.
             await self.container.playback_service.start_playback(interaction.guild.id)
+        else:
+            # Added behind an already-playing track — refresh the now-playing
+            # embed's "Next Up" so it reflects the enlarged queue.
+            await self._refresh_next_up(interaction.guild.id)
         return result
+
+    async def _refresh_next_up(self, guild_id: DiscordSnowflake) -> None:
+        """Refresh the now-playing embed's "Next Up" field from the live queue.
+
+        A no-op when nothing is playing or no embed is tracked (``update_next_up``
+        guards both), so it is safe to call after any queue mutation.
+        """
+        session = await self.container.session_repository.get(guild_id)
+        current = session.current_track if session else None
+        upcoming = session.peek() if session else None
+        await self.container.message_state_manager.update_next_up(
+            guild_id, current_track=current, next_track=upcoming
+        )
 
     @classmethod
     async def setup(cls, bot: commands.Bot) -> None:

@@ -41,11 +41,8 @@ class NowPlayingCog(BaseCog):
 
         from ..views.now_playing_view import NowPlayingView
 
-        view = NowPlayingView(
-            webpage_url=track.webpage_url,
-            title=track.title,
-            guild_id=interaction.guild.id,
-            container=self.container,
+        view = NowPlayingView.for_track(
+            track, guild_id=interaction.guild.id, container=self.container
         )
 
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)

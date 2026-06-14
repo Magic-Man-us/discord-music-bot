@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import TYPE_CHECKING, ClassVar
 
 import discord
@@ -15,7 +14,7 @@ from ....utils.reply import truncate
 from ..guards.voice_guards import (
     check_user_in_voice,
 )
-from ..services.embed_builder import build_now_playing_embed
+from ..services.guild_lock_registry import GuildLockRegistry
 from .base_view import (
     BaseInteractiveView,
 )
@@ -34,8 +33,9 @@ logger = get_logger(__name__)
 class NowPlayingView(BaseInteractiveView):
     """YouTube/Download links plus AI-powered '+1 Similar' and 'Radio' buttons."""
 
-    _MAX_GUILD_LOCKS: ClassVar[int] = 256
-    _guild_locks: ClassVar[dict[DiscordSnowflake, asyncio.Lock]] = {}
+    # Shared across all view instances: a fresh view is created per message, but
+    # the +1 Similar lock must serialize by guild, not by view object.
+    _lock_registry: ClassVar[GuildLockRegistry] = GuildLockRegistry()
 
     def __init__(
         self,
@@ -59,14 +59,16 @@ class NowPlayingView(BaseInteractiveView):
             self.remove_item(self.radio_button)
 
     @classmethod
-    def _get_lock(cls, guild_id: DiscordSnowflake) -> asyncio.Lock:
-        if guild_id not in cls._guild_locks:
-            if len(cls._guild_locks) >= cls._MAX_GUILD_LOCKS:
-                unlocked = [gid for gid, lk in cls._guild_locks.items() if not lk.locked()]
-                for gid in unlocked:
-                    del cls._guild_locks[gid]
-            cls._guild_locks[guild_id] = asyncio.Lock()
-        return cls._guild_locks[guild_id]
+    def for_track(
+        cls, track: Track, *, guild_id: DiscordSnowflake, container: Container
+    ) -> NowPlayingView:
+        """Build a now-playing view from a track's link/title."""
+        return cls(
+            webpage_url=track.webpage_url,
+            title=track.title,
+            guild_id=guild_id,
+            container=container,
+        )
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return await check_user_in_voice(interaction, self.guild_id)
@@ -77,7 +79,7 @@ class NowPlayingView(BaseInteractiveView):
     async def similar_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[NowPlayingView]
     ) -> None:
-        lock = self._get_lock(self.guild_id)
+        lock = self._lock_registry.get(self.guild_id)
 
         if lock.locked():
             await interaction.response.send_message(
@@ -149,9 +151,17 @@ class NowPlayingView(BaseInteractiveView):
 
                 button.disabled = False
                 button.label = "+1 Similar"
-                if self._message:
-                    embed = build_now_playing_embed(current, next_track=resolved_track)
-                    await self._try_edit_message(embed=embed)
+                await self._try_edit_message()
+                # Refresh "Next Up" through the centralized, lock-guarded path. Its
+                # consistency guard drops the write if the track advanced during the
+                # AI/resolve round-trip, so we never roll the embed back to a stale track.
+                session = await self._container.session_repository.get(self.guild_id)
+                if session is not None and session.current_track is not None:
+                    await self._container.message_state_manager.update_next_up(
+                        self.guild_id,
+                        current_track=session.current_track,
+                        next_track=session.peek(),
+                    )
                 succeeded = True
 
             except Exception:

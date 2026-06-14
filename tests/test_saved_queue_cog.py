@@ -64,6 +64,8 @@ def _make_container() -> MagicMock:
     container.queue_service.enqueue_batch = AsyncMock()
     container.playback_service = MagicMock()
     container.playback_service.start_playback = AsyncMock()
+    container.message_state_manager = MagicMock()
+    container.message_state_manager.update_next_up = AsyncMock()
     return container
 
 
