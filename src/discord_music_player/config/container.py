@@ -367,6 +367,7 @@ class Container:
                 audio_resolver=self.audio_resolver,
                 queue_service=self.queue_service,
                 playback_service=self.playback_service,
+                voice_adapter=self.voice_adapter,
             )
         return self._follow_mode
 

@@ -76,15 +76,24 @@ def playback_service() -> MagicMock:
 
 
 @pytest.fixture
+def voice_adapter() -> MagicMock:
+    va = MagicMock()
+    va.is_connected = MagicMock(return_value=True)
+    return va
+
+
+@pytest.fixture
 def follow_mode(
     audio_resolver: MagicMock,
     queue_service: MagicMock,
     playback_service: MagicMock,
+    voice_adapter: MagicMock,
 ) -> FollowMode:
     return FollowMode(
         audio_resolver=audio_resolver,
         queue_service=queue_service,
         playback_service=playback_service,
+        voice_adapter=voice_adapter,
     )
 
 
@@ -194,6 +203,22 @@ class TestSeedCurrent:
         result = await follow_mode.seed_current(GUILD_ID, USER_ID, "Artist - Track")
         assert result is False
         queue_service.enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_disables_and_skips_when_bot_not_connected(
+        self,
+        follow_mode: FollowMode,
+        queue_service: MagicMock,
+        voice_adapter: MagicMock,
+    ) -> None:
+        voice_adapter.is_connected = MagicMock(return_value=False)
+        follow_mode.enable(guild_id=GUILD_ID, user_id=USER_ID, user_name=USER_NAME)
+
+        result = await follow_mode.seed_current(GUILD_ID, USER_ID, "Artist - Track")
+
+        assert result is False
+        queue_service.enqueue.assert_not_awaited()
+        assert follow_mode.is_enabled(GUILD_ID) is False
 
 
 # ============================================================================

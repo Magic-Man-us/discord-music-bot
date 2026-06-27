@@ -51,6 +51,10 @@ def setup_logging(log_level: str = "INFO") -> None:
         if name.startswith("discord_music_player"):
             logging.getLogger(name).setLevel(resolved_level)
 
+    from .utils.log_filters import install_reconnect_filter
+
+    install_reconnect_filter()
+
 
 def _acquire_pid_lock(logger: logging.Logger) -> int | None:
     """Acquire an exclusive lock via bot.pid. Returns the fd or None on failure."""

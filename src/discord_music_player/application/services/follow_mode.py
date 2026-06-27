@@ -40,6 +40,7 @@ from .queue_models import EnqueueFailure
 if TYPE_CHECKING:
     from ...domain.music.entities import Track
     from ..interfaces.audio_resolver import AudioResolver
+    from ..interfaces.voice_adapter import VoiceAdapter
     from .playback_service import PlaybackApplicationService
     from .queue_service import QueueApplicationService
 
@@ -74,10 +75,12 @@ class FollowMode:
         audio_resolver: AudioResolver,
         queue_service: QueueApplicationService,
         playback_service: PlaybackApplicationService,
+        voice_adapter: VoiceAdapter,
     ) -> None:
         self._audio_resolver = audio_resolver
         self._queue_service = queue_service
         self._playback_service = playback_service
+        self._voice_adapter = voice_adapter
         self._bus = get_event_bus()
         self._started = False
         self._states: dict[DiscordSnowflake, FollowState] = {}
@@ -249,6 +252,17 @@ class FollowMode:
         self, state: FollowState, guild_id: DiscordSnowflake, query: NonEmptyStr
     ) -> bool:
         """Resolve and append the track; start playback only if idle (buffer)."""
+        # The mirror only makes sense while the bot is in voice. If it lost the
+        # connection, stop following (symmetric with the followed user leaving)
+        # rather than looping failed enqueues into a dead voice client.
+        if not self._voice_adapter.is_connected(guild_id):
+            logger.info(
+                "FollowMode: bot not connected to voice in guild %s; disabling mirror",
+                guild_id,
+            )
+            self.disable(guild_id)
+            return False
+
         # Budget = tracks already kept + tracks still in flight. Skips drop out
         # of pending without counting, which is what frees a slot.
         if state.kept_count + len(state.pending_track_ids) >= state.max_tracks:
