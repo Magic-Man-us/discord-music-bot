@@ -600,10 +600,17 @@ class PlaybackCog(BaseCog):
         threshold = VotingDomainService.calculate_threshold(len(listeners))
         channel = self.bot.get_channel(interaction.channel_id)
         if isinstance(channel, discord.abc.Messageable):
-            vote_msg = await channel.send(
-                embed=view.build_vote_embed(0, 0, threshold, len(listeners)),
-                view=view,
-            )
+            try:
+                vote_msg = await channel.send(
+                    embed=view.build_vote_embed(0, 0, threshold, len(listeners)),
+                    view=view,
+                )
+            except discord.Forbidden:
+                await interaction.followup.send(
+                    f"I don't have permission to play in <#{interaction.channel_id}>.",
+                    ephemeral=True,
+                )
+                return True
             view.set_message(vote_msg)
             await interaction.followup.send(
                 "Started vote for long track: "
