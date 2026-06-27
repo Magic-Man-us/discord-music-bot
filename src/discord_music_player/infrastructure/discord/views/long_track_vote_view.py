@@ -1,7 +1,14 @@
-"""View for voting on whether to accept long tracks (>6 minutes) into the queue."""
+"""Public prompt for voting on whether to accept long tracks (>6 minutes).
+
+The message shows a live tally embed plus a ``Vote`` button (and an admin
+``Override``). Clicking ``Vote`` opens a private per-user panel
+(:class:`PersonalVotePanel`); Discord buttons on a shared message are global,
+so per-user state lives on each voter's own ephemeral message.
+"""
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 import discord
@@ -12,7 +19,7 @@ from ....domain.shared.types import DiscordSnowflake
 from ....domain.voting.services import VotingDomainService
 from ....utils.logging import get_logger
 from ....utils.reply import format_duration, truncate
-from ..guards.voice_guards import check_user_in_voice
+from ..guards.voice_guards import can_force_skip, check_user_in_voice
 from .base_view import BaseInteractiveView
 
 if TYPE_CHECKING:
@@ -22,8 +29,13 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+class VoteChoice(StrEnum):
+    ACCEPT = "accept"
+    REJECT = "reject"
+
+
 class LongTrackVoteView(BaseInteractiveView):
-    """Prompts for a vote to accept/reject a long track."""
+    """Public prompt for a long-track vote: tally embed + Vote/Override buttons."""
 
     def __init__(
         self,
@@ -49,14 +61,10 @@ class LongTrackVoteView(BaseInteractiveView):
     def build_vote_embed(
         self, accept_count: int, reject_count: int, threshold: int, listener_count: int
     ) -> discord.Embed:
-        """Build the live vote embed showing the running tally and what's needed to pass."""
         reject_needed = max(1, listener_count - threshold + 1)
         embed = discord.Embed(
             title="Long Track Vote",
-            description=(
-                f"{self._track_line()}\n"
-                f"Requested by: <@{self._requester_id}>"
-            ),
+            description=(f"{self._track_line()}\nRequested by: <@{self._requester_id}>"),
             color=discord.Color.blurple(),
         )
         if self._track.thumbnail_url:
@@ -66,41 +74,64 @@ class LongTrackVoteView(BaseInteractiveView):
         )
         embed.add_field(name="✅ Accept", value=f"**{accept_count}/{threshold}**", inline=True)
         embed.add_field(name="❌ Reject", value=f"**{reject_count}/{reject_needed}**", inline=True)
-        embed.set_footer(text=f"{listener_count} listening · majority decides")
+        embed.set_footer(text=f"{listener_count} listening · majority decides · press Vote")
         return embed
 
     def _result_embed(self, title: str, color: discord.Color) -> discord.Embed:
         return discord.Embed(title=title, description=self._track_line(), color=color)
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        return await check_user_in_voice(interaction, self._guild_id)
-
-    @discord.ui.button(label="Accept", style=discord.ButtonStyle.green)
-    async def accept_button(
-        self, interaction: discord.Interaction, _button: discord.ui.Button[LongTrackVoteView]
-    ) -> None:
-        user_id = interaction.user.id
-
+    def record_accept(self, user_id: int) -> None:
         self._votes_reject.discard(user_id)
         self._votes_accept.add(user_id)
 
-        await interaction.response.send_message("✅ Counted your vote to **accept**.", ephemeral=True)
-        await self._check_vote_result()
-
-    @discord.ui.button(label="Reject", style=discord.ButtonStyle.red)
-    async def reject_button(
-        self, interaction: discord.Interaction, _button: discord.ui.Button[LongTrackVoteView]
-    ) -> None:
-        user_id = interaction.user.id
-
+    def record_reject(self, user_id: int) -> None:
         self._votes_accept.discard(user_id)
         self._votes_reject.add(user_id)
 
-        await interaction.response.send_message("❌ Counted your vote to **reject**.", ephemeral=True)
-        await self._check_vote_result()
+    def vote_of(self, user_id: int) -> VoteChoice | None:
+        if user_id in self._votes_accept:
+            return VoteChoice.ACCEPT
+        if user_id in self._votes_reject:
+            return VoteChoice.REJECT
+        return None
 
-    async def _check_vote_result(self) -> None:
-        """Tally live votes, refresh the embed, and resolve if a threshold is crossed."""
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await check_user_in_voice(interaction, self._guild_id)
+
+    @discord.ui.button(label="Vote", style=discord.ButtonStyle.blurple)
+    async def vote_button(
+        self, interaction: discord.Interaction, _button: discord.ui.Button[LongTrackVoteView]
+    ) -> None:
+        from .personal_vote_panel import PersonalVotePanel
+
+        panel = PersonalVotePanel(parent=self, user_id=interaction.user.id)
+        await interaction.response.send_message(
+            content=panel.panel_text(), view=panel, ephemeral=True
+        )
+
+    @discord.ui.button(label="Override", style=discord.ButtonStyle.secondary)
+    async def override_button(
+        self, interaction: discord.Interaction, _button: discord.ui.Button[LongTrackVoteView]
+    ) -> None:
+        user = interaction.user
+        if not isinstance(user, discord.Member) or not can_force_skip(
+            user, self._container.settings.discord.owner_ids
+        ):
+            await interaction.response.send_message(
+                "Only admins can override the vote.", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "Override accepted — queueing the track.", ephemeral=True
+        )
+        await self._accept_track()
+
+    async def refresh_tally(self) -> None:
+        """Recount live votes, refresh the public embed, and resolve if a threshold is crossed."""
+        if self._resolved:
+            return
+
         voice_adapter = self._container.voice_adapter
         listeners = await voice_adapter.get_listeners(self._guild_id)
         listener_count = len(listeners)
@@ -120,14 +151,11 @@ class LongTrackVoteView(BaseInteractiveView):
 
         if self._message:
             await self._message.edit(
-                embed=self.build_vote_embed(
-                    accept_count, reject_count, threshold, listener_count
-                ),
+                embed=self.build_vote_embed(accept_count, reject_count, threshold, listener_count),
                 view=self,
             )
 
     async def _accept_track(self) -> None:
-        """Accept the track into the queue."""
         if not self._finish_view():
             return
 
@@ -144,12 +172,11 @@ class LongTrackVoteView(BaseInteractiveView):
         if isinstance(result, EnqueueOk) and result.should_start:
             await playback_service.start_playback(self._guild_id)
 
-        # Vote passed: drop the vote message. Now Playing posts itself when the
-        # track starts; if it only queued, the prompt simply clears.
+        # Now Playing posts itself on start; a queued-behind track has no post,
+        # so just clear the prompt rather than leaving a stale "passed" embed.
         await self._delete_message()
 
     async def _reject_track(self) -> None:
-        """Reject the track."""
         if not self._finish_view():
             return
 

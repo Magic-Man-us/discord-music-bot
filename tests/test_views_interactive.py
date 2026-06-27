@@ -282,19 +282,23 @@ def _make_vote_view(listener_count: int = 1, voter_id: int = 42):
     return view, container, track
 
 
+def _vote_panel(view, user_id: int = 42):
+    from discord_music_player.infrastructure.discord.views.personal_vote_panel import (
+        PersonalVotePanel,
+    )
+
+    return PersonalVotePanel(parent=view, user_id=user_id)
+
+
 class TestLongTrackVoteView:
     @pytest.mark.asyncio
     async def test_accept_vote_triggers_accept(self):
-        view, container, track = _make_vote_view(listener_count=1)
+        view, container, _ = _make_vote_view(listener_count=1)
         message = AsyncMock()
         view.set_message(message)
-
-        interaction = AsyncMock()
-        interaction.user.id = 42
-
         container.queue_service.enqueue = AsyncMock(return_value=_enqueue_ok(should_start=True))
 
-        await view.accept_button.callback(interaction)
+        await _vote_panel(view).accept_action.callback(AsyncMock())
 
         container.queue_service.enqueue.assert_awaited_once()
         container.playback_service.start_playback.assert_awaited_once_with(1)
@@ -303,14 +307,11 @@ class TestLongTrackVoteView:
     @pytest.mark.asyncio
     async def test_reject_vote_triggers_reject(self):
         # 1 listener → threshold=1, so 1 reject > 1-1=0 triggers reject
-        view, container, track = _make_vote_view(listener_count=1)
+        view, container, _ = _make_vote_view(listener_count=1)
         message = AsyncMock()
         view.set_message(message)
 
-        interaction = AsyncMock()
-        interaction.user.id = 42
-
-        await view.reject_button.callback(interaction)
+        await _vote_panel(view).reject_action.callback(AsyncMock())
 
         container.queue_service.enqueue.assert_not_called()
         embed = message.edit.call_args[1]["embed"]
@@ -318,23 +319,18 @@ class TestLongTrackVoteView:
 
     @pytest.mark.asyncio
     async def test_accept_enqueues_without_start_when_not_should_start(self):
-        view, container, track = _make_vote_view(listener_count=1)
-        message = AsyncMock()
-        view.set_message(message)
-
-        interaction = AsyncMock()
-        interaction.user.id = 42
-
+        view, container, _ = _make_vote_view(listener_count=1)
+        view.set_message(AsyncMock())
         container.queue_service.enqueue = AsyncMock(return_value=_enqueue_ok(should_start=False))
 
-        await view.accept_button.callback(interaction)
+        await _vote_panel(view).accept_action.callback(AsyncMock())
 
         container.queue_service.enqueue.assert_awaited_once()
         container.playback_service.start_playback.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_on_timeout_auto_rejects(self):
-        view, container, track = _make_vote_view()
+        view, _, _ = _make_vote_view()
         message = AsyncMock()
         view.set_message(message)
 
@@ -343,34 +339,72 @@ class TestLongTrackVoteView:
         message.delete.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_buttons_disabled_after_accept(self):
+    async def test_public_buttons_disabled_after_accept(self):
         view, container, _ = _make_vote_view(listener_count=1)
         view.set_message(AsyncMock())
-
-        interaction = AsyncMock()
-        interaction.user.id = 42
-
         container.queue_service.enqueue = AsyncMock(return_value=_enqueue_ok(should_start=False))
 
-        await view.accept_button.callback(interaction)
+        await _vote_panel(view).accept_action.callback(AsyncMock())
 
         for item in view.children:
             assert item.disabled is True
 
     @pytest.mark.asyncio
-    async def test_vote_switch_accept_to_reject(self):
-        # 2 listeners → threshold=1; 1 accept then switch to reject
-        view, container, _ = _make_vote_view(listener_count=2)
+    async def test_panel_greys_choice_and_relabels_other(self):
+        # 3 listeners → threshold=2, so a single accept doesn't resolve the vote
+        view, _, _ = _make_vote_view(listener_count=3)
         view.set_message(AsyncMock())
+        panel = _vote_panel(view)
 
+        await panel.accept_action.callback(AsyncMock())
+
+        assert panel.accept_action.disabled is True
+        assert panel.reject_action.label == "Change my vote"
+
+    @pytest.mark.asyncio
+    async def test_vote_switch_accept_to_reject(self):
+        view, _, _ = _make_vote_view(listener_count=3)
+        view.set_message(AsyncMock())
+        panel = _vote_panel(view)
+
+        await panel.accept_action.callback(AsyncMock())
+        await panel.reject_action.callback(AsyncMock())
+
+        assert 42 in view._votes_reject
+        assert 42 not in view._votes_accept
+
+    @pytest.mark.asyncio
+    async def test_override_by_admin_accepts(self):
+        view, container, _ = _make_vote_view()
+        view.set_message(AsyncMock())
+        container.settings.discord.owner_ids = []
+        container.queue_service.enqueue = AsyncMock(return_value=_enqueue_ok(should_start=False))
+
+        member = MagicMock(spec=discord.Member)
+        member.id = 7
+        member.guild_permissions.administrator = True
         interaction = AsyncMock()
-        interaction.user.id = 42
+        interaction.user = member
 
-        # First accept — not enough to trigger (no second voter)
-        await view.accept_button.callback(interaction)
-        # switch to reject — 1 reject > 2-1=1 is False, so won't trigger yet
-        # but the accept should be removed
-        assert 42 in view._votes_accept or 42 in view._votes_reject
+        await view.override_button.callback(interaction)
+
+        container.queue_service.enqueue.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_override_rejected_for_non_admin(self):
+        view, container, _ = _make_vote_view()
+        view.set_message(AsyncMock())
+        container.settings.discord.owner_ids = []
+
+        member = MagicMock(spec=discord.Member)
+        member.id = 7
+        member.guild_permissions.administrator = False
+        interaction = AsyncMock()
+        interaction.user = member
+
+        await view.override_button.callback(interaction)
+
+        container.queue_service.enqueue.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_timeout_value(self):
