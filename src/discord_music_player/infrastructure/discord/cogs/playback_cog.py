@@ -566,6 +566,7 @@ class PlaybackCog(BaseCog):
         start a community vote. Returns True if a vote was initiated (caller should return).
         """
         from ....domain.shared.constants import LimitConstants
+        from ....domain.voting.services import VotingDomainService
 
         assert interaction.guild is not None
 
@@ -596,15 +597,11 @@ class PlaybackCog(BaseCog):
             container=self.container,
         )
 
+        threshold = VotingDomainService.calculate_threshold(len(listeners))
         channel = self.bot.get_channel(interaction.channel_id)
         if isinstance(channel, discord.abc.Messageable):
             vote_msg = await channel.send(
-                (
-                    f"**{user.display_name}** wants to queue a long track "
-                    f"({format_duration(track.duration_seconds)}): "
-                    f"**{truncate(track.title, UIConstants.TITLE_TRUNCATION)}**\n"
-                    "Vote to accept or reject:"
-                ),
+                embed=view.build_vote_embed(0, 0, threshold, len(listeners)),
                 view=view,
             )
             view.set_message(vote_msg)

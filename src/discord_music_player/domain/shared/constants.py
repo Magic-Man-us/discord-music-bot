@@ -162,6 +162,7 @@ class LimitConstants:
     # Long track voting
     LONG_TRACK_THRESHOLD_SECONDS = 360  # 6 minutes
     LONG_TRACK_VOTE_BYPASS_LISTENERS = 4  # skip vote when <= this many listeners
+    LONG_TRACK_VOTE_TIMEOUT_SECONDS = 60.0
 
     # /dj follow — default number of distinct tracks to mirror before auto-stop
     MAX_FOLLOW_TRACKS = 5

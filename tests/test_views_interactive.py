@@ -10,6 +10,7 @@ import discord
 import pytest
 
 from discord_music_player.application.services.queue_models import EnqueueOk
+from discord_music_player.domain.shared.constants import LimitConstants
 
 
 def _enqueue_ok(*, should_start: bool) -> EnqueueOk:
@@ -297,8 +298,7 @@ class TestLongTrackVoteView:
 
         container.queue_service.enqueue.assert_awaited_once()
         container.playback_service.start_playback.assert_awaited_once_with(1)
-        msg = message.edit.call_args[1]["content"]
-        assert "Vote passed" in msg
+        message.delete.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_reject_vote_triggers_reject(self):
@@ -313,8 +313,8 @@ class TestLongTrackVoteView:
         await view.reject_button.callback(interaction)
 
         container.queue_service.enqueue.assert_not_called()
-        msg = message.edit.call_args[1]["content"]
-        assert "Rejected" in msg
+        embed = message.edit.call_args[1]["embed"]
+        assert "rejected" in embed.title.lower()
 
     @pytest.mark.asyncio
     async def test_accept_enqueues_without_start_when_not_should_start(self):
@@ -375,7 +375,7 @@ class TestLongTrackVoteView:
     @pytest.mark.asyncio
     async def test_timeout_value(self):
         view, _, _ = _make_vote_view()
-        assert view.timeout == 30.0
+        assert view.timeout == LimitConstants.LONG_TRACK_VOTE_TIMEOUT_SECONDS
 
 
 # =============================================================================
