@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from discord_music_player.domain.shared.constants import TimeConstants
+
 
 @pytest.mark.asyncio
 async def test_connect_joins_self_deafened(monkeypatch):
@@ -82,7 +84,7 @@ async def test_move_to_reapplies_self_deaf(monkeypatch):
 
     ok = await adapter.move_to(guild_id=123, channel_id=456)
     assert ok is True
-    vc.move_to.assert_awaited_once_with(channel)
+    vc.move_to.assert_awaited_once_with(channel, timeout=TimeConstants.VOICE_CONNECT_TIMEOUT)
     guild.change_voice_state.assert_awaited_once()
     await_args = guild.change_voice_state.await_args
     assert await_args is not None

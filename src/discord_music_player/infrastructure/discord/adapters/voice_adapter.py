@@ -13,6 +13,7 @@ import discord
 from ....application.interfaces.voice_adapter import VoiceAdapter
 from ....config.settings import AudioSettings
 from ....domain.shared.constants import AudioConstants, TimeConstants
+from ....domain.shared.types import DiscordSnowflake
 from ....utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -61,7 +62,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
             else AudioConstants.WEB_USER_AGENT
         )
 
-    def _get_voice_client(self, guild_id: int) -> discord.VoiceClient | None:
+    def _get_voice_client(self, guild_id: DiscordSnowflake) -> discord.VoiceClient | None:
         guild = self._bot.get_guild(guild_id)
         if not guild:
             return None
@@ -69,10 +70,10 @@ class DiscordVoiceAdapter(VoiceAdapter):
         vc = guild.voice_client
         return vc if isinstance(vc, discord.VoiceClient) else None
 
-    def _get_guild(self, guild_id: int) -> discord.Guild | None:
+    def _get_guild(self, guild_id: DiscordSnowflake) -> discord.Guild | None:
         return self._bot.get_guild(guild_id)
 
-    async def connect(self, guild_id: int, channel_id: int) -> bool:
+    async def connect(self, guild_id: DiscordSnowflake, channel_id: DiscordSnowflake) -> bool:
         guild = self._get_guild(guild_id)
         if not guild:
             logger.warning("Guild %s not found", guild_id)
@@ -84,8 +85,12 @@ class DiscordVoiceAdapter(VoiceAdapter):
             return False
 
         async def _do() -> bool:
-            async with asyncio.timeout(TimeConstants.VOICE_CONNECT_TIMEOUT):
-                await channel.connect(self_deaf=True)
+            # Timeout must be discord.py's own: an external asyncio.timeout cancels
+            # connect() mid-handshake, skipping its cleanup and leaving a stale
+            # voice client registered that wedges every later connect attempt.
+            await channel.connect(
+                timeout=TimeConstants.VOICE_CONNECT_TIMEOUT, self_deaf=True
+            )
             logger.info("Connected to voice channel %s in %s", channel.name, guild.name)
             return True
 
@@ -104,7 +109,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
         except Exception as exc:
             logger.debug("Failed to self-deafen in guild %s: %r", guild.id, exc)
 
-    async def disconnect(self, guild_id: int) -> bool:
+    async def disconnect(self, guild_id: DiscordSnowflake) -> bool:
         vc = self._get_voice_client(guild_id)
         if not vc:
             return True  # Not connected
@@ -117,7 +122,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
         return await _safe_voice_op(f"disconnect from guild {guild_id}", _do())
 
-    async def ensure_connected(self, guild_id: int, channel_id: int) -> bool:
+    async def ensure_connected(self, guild_id: DiscordSnowflake, channel_id: DiscordSnowflake) -> bool:
         """Connect if not connected, move if in a different channel."""
         vc = self._get_voice_client(guild_id)
 
@@ -133,7 +138,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
         return await self.connect(guild_id, channel_id)
 
-    async def move_to(self, guild_id: int, channel_id: int) -> bool:
+    async def move_to(self, guild_id: DiscordSnowflake, channel_id: DiscordSnowflake) -> bool:
         vc = self._get_voice_client(guild_id)
         if not vc:
             return await self.connect(guild_id, channel_id)
@@ -148,8 +153,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
             return False
 
         async def _do() -> bool:
-            async with asyncio.timeout(TimeConstants.VOICE_CONNECT_TIMEOUT):
-                await vc.move_to(channel)
+            await vc.move_to(channel, timeout=TimeConstants.VOICE_CONNECT_TIMEOUT)
             await self._ensure_self_deaf(guild, channel)
             logger.info("Moved to voice channel %s", channel.name)
             return True
@@ -158,7 +162,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
     async def play(
         self,
-        guild_id: int,
+        guild_id: DiscordSnowflake,
         track: Track,
         *,
         start_seconds: StartSeconds | None = None,
@@ -230,7 +234,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
             logger.exception("Failed to start playback in guild %s", guild_id)
             return False
 
-    async def stop(self, guild_id: int) -> bool:
+    async def stop(self, guild_id: DiscordSnowflake) -> bool:
         vc = self._get_voice_client(guild_id)
         if not vc:
             return True
@@ -243,7 +247,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
         return True
 
-    async def pause(self, guild_id: int) -> bool:
+    async def pause(self, guild_id: DiscordSnowflake) -> bool:
         vc = self._get_voice_client(guild_id)
         if not vc:
             return False
@@ -255,7 +259,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
         return False
 
-    async def resume(self, guild_id: int) -> bool:
+    async def resume(self, guild_id: DiscordSnowflake) -> bool:
         vc = self._get_voice_client(guild_id)
         if not vc:
             return False
@@ -267,19 +271,19 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
         return False
 
-    def is_connected(self, guild_id: int) -> bool:
+    def is_connected(self, guild_id: DiscordSnowflake) -> bool:
         vc = self._get_voice_client(guild_id)
         return vc is not None and vc.is_connected()
 
-    def is_playing(self, guild_id: int) -> bool:
+    def is_playing(self, guild_id: DiscordSnowflake) -> bool:
         vc = self._get_voice_client(guild_id)
         return vc is not None and vc.is_playing()
 
-    def is_paused(self, guild_id: int) -> bool:
+    def is_paused(self, guild_id: DiscordSnowflake) -> bool:
         vc = self._get_voice_client(guild_id)
         return vc is not None and vc.is_paused()
 
-    async def get_listeners(self, guild_id: int) -> list[int]:
+    async def get_listeners(self, guild_id: DiscordSnowflake) -> list[int]:
         """Return user IDs of non-bot, non-deafened members in the voice channel."""
         vc = self._get_voice_client(guild_id)
         if not vc or not vc.channel:
@@ -297,7 +301,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
         return listeners
 
-    def get_current_channel_id(self, guild_id: int) -> int | None:
+    def get_current_channel_id(self, guild_id: DiscordSnowflake) -> int | None:
         vc = self._get_voice_client(guild_id)
         if vc and vc.channel:
             return vc.channel.id
@@ -309,7 +313,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
     ) -> None:
         self._on_track_end = callback
 
-    async def _handle_track_end(self, guild_id: int) -> None:
+    async def _handle_track_end(self, guild_id: DiscordSnowflake) -> None:
         """Called from the FFmpeg thread via run_coroutine_threadsafe for thread-safe cleanup."""
         self._current_track.pop(guild_id, None)
 
@@ -322,10 +326,10 @@ class DiscordVoiceAdapter(VoiceAdapter):
         else:
             logger.warning("No track end callback set for guild %s", guild_id)
 
-    def get_current_track(self, guild_id: int) -> Track | None:
+    def get_current_track(self, guild_id: DiscordSnowflake) -> Track | None:
         return self._current_track.get(guild_id)
 
-    def set_volume(self, guild_id: int, volume: float) -> bool:
+    def set_volume(self, guild_id: DiscordSnowflake, volume: float) -> bool:
         vc = self._get_voice_client(guild_id)
         if not vc or not vc.source:
             return False
@@ -337,7 +341,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
         return False
 
     @asynccontextmanager
-    async def voice_connection(self, guild_id: int, channel_id: int) -> AsyncIterator[bool]:
+    async def voice_connection(self, guild_id: DiscordSnowflake, channel_id: DiscordSnowflake) -> AsyncIterator[bool]:
         """Context manager that connects on enter and disconnects on exit."""
         connected = False
         try:

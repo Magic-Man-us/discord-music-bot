@@ -8,6 +8,7 @@ import discord
 
 from ....domain.shared.constants import LimitConstants
 from ....domain.shared.types import FollowTrackCount, NonEmptyStr
+from ..guards.voice_guards import send_ephemeral
 from .activity_models import ActivityInfo, GenericDetail, SpotifyDetail
 
 if TYPE_CHECKING:
@@ -112,9 +113,7 @@ async def enable_live_mirror(
 
     user = interaction.user
     if not isinstance(user, discord.Member):
-        await interaction.response.send_message(
-            "Live mirror needs a Member context.", ephemeral=True
-        )
+        await send_ephemeral(interaction, "Live mirror needs a Member context.")
         return
 
     activity_member = resolve_activity_member(interaction.guild, user)
@@ -124,11 +123,11 @@ async def enable_live_mirror(
         hint = ""
         if not presences_enabled:
             hint = " *(bot's `presences` intent is OFF — check Developer Portal + bot.py.)*"
-        await interaction.response.send_message(
+        await send_ephemeral(
+            interaction,
             "I can't see what you're listening to. Make sure Spotify or "
             "Apple Music is open and **Activity Privacy → Display "
             f"current activity as a status message** is on.{hint}",
-            ephemeral=True,
         )
         return
 
@@ -138,7 +137,8 @@ async def enable_live_mirror(
         user_name=user.display_name,
         max_tracks=max_tracks,
     )
-    await interaction.response.defer(ephemeral=True)
+    if not interaction.response.is_done():
+        await interaction.response.defer(ephemeral=True)
 
     seeded = await follow_mode.seed_current(
         guild_id=interaction.guild.id,

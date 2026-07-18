@@ -94,7 +94,8 @@ class FavoritesCog(BaseCog):
             return
 
         assert interaction.guild is not None
-        await interaction.response.defer(ephemeral=True)
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
 
         repo = self.container.favorites_repository
         tracks = await repo.get_all(interaction.user.id)

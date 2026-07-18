@@ -78,7 +78,8 @@ class SavedQueueCog(BaseCog):
             return
 
         assert interaction.guild is not None
-        await interaction.response.defer(ephemeral=True)
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
 
         repo = self.container.saved_queue_repository
         saved = await repo.get(interaction.guild.id, name.strip().lower())

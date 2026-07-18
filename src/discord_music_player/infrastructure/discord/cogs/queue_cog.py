@@ -8,6 +8,7 @@ import discord
 from discord import app_commands
 
 from ....domain.shared.constants import UIConstants
+from ....domain.shared.types import DiscordSnowflake
 
 if TYPE_CHECKING:
     from ....domain.music.entities import Track
@@ -113,7 +114,8 @@ class QueueCog(BaseCog):
             return
 
         assert interaction.guild is not None
-        await interaction.response.defer(ephemeral=True)
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
 
         unique_tracks = await self._fetch_unique_history(interaction.guild.id, limit)
         if not unique_tracks:
@@ -154,7 +156,8 @@ class QueueCog(BaseCog):
             return
 
         assert interaction.guild is not None
-        await interaction.response.defer(ephemeral=True)
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
 
         unique_tracks = await self._fetch_unique_user_history(interaction.guild.id, user.id, limit)
         if not unique_tracks:
@@ -176,14 +179,14 @@ class QueueCog(BaseCog):
         )
 
     async def _fetch_unique_user_history(
-        self, guild_id: int, user_id: int, limit: int
+        self, guild_id: DiscordSnowflake, user_id: DiscordSnowflake, limit: int
     ) -> list[Track]:
         tracks = await self.container.history_repository.get_recent_by_user(
             guild_id, user_id, limit=limit
         )
         return deduplicate_tracks(tracks)
 
-    async def _fetch_unique_history(self, guild_id: int, limit: int) -> list[Track]:
+    async def _fetch_unique_history(self, guild_id: DiscordSnowflake, limit: int) -> list[Track]:
         tracks = await self.container.history_repository.get_recent(guild_id, limit=limit)
         return deduplicate_tracks(tracks)
 

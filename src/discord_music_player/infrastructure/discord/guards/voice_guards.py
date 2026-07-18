@@ -116,6 +116,10 @@ async def ensure_voice(
     channel_id = member.voice.channel.id
 
     if not voice_adapter.is_connected(interaction.guild.id):
+        # Connecting can outlive the 3s interaction window; defer so the
+        # eventual reply (success or failure) can still reach the user.
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
         success = await voice_adapter.ensure_connected(interaction.guild.id, channel_id)
         if not success:
             await send_ephemeral(interaction, "I couldn't join your voice channel.")
