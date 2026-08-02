@@ -112,7 +112,10 @@ class TestMainFunction:
         mock_settings.discord = mock_discord
         mock_settings.log_level = "INFO"
 
-        with patch("discord_music_player.config.settings.get_settings", return_value=mock_settings):
+        with (
+            patch("discord_music_player.config.settings.get_settings", return_value=mock_settings),
+            patch("discord_music_player.main.setup_logging"),
+        ):
             exit_code = main()
 
         assert exit_code == 1

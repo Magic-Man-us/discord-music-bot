@@ -1,8 +1,36 @@
+import logging
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
 import pytest_asyncio
+
+PRODUCTION_LOG = Path(__file__).resolve().parents[1] / "logs" / "music_bot.log"
+
+
+def _iter_loggers():
+    yield logging.getLogger()
+    for name in list(logging.Logger.manager.loggerDict):
+        yield logging.getLogger(name)
+
+
+@pytest.fixture(autouse=True)
+def strip_production_log_handlers():
+    """Keep test output out of the bot's real log file.
+
+    Logging is process-global, so a single test that runs the real setup_logging()
+    installs a RotatingFileHandler on logs/music_bot.log for every test after it.
+    """
+    yield
+    for logger in _iter_loggers():
+        for handler in list(getattr(logger, "handlers", [])):
+            if (
+                isinstance(handler, logging.FileHandler)
+                and Path(handler.baseFilename) == PRODUCTION_LOG
+            ):
+                logger.removeHandler(handler)
+                handler.close()
 
 
 # ============================================================================
@@ -274,6 +302,7 @@ def make_bot_with_container(container):
     bot = MagicMock()
     bot.container = container
     return bot
+
 
 # ============================================================================
 # Database Fixtures
