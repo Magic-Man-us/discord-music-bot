@@ -17,7 +17,7 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ..domain.shared.constants import HealthConstants
+from ..domain.shared.constants import AudioConstants, HealthConstants
 from ..domain.shared.enums import EnvironmentType, LogLevel, YtDlpPlayerClient
 from ..domain.shared.model_config import FrozenStrictModelConfig, SettingsSubModelConfig
 from ..domain.shared.types import (
@@ -28,6 +28,7 @@ from ..domain.shared.types import (
     DiscordSnowflake,
     DiscordSnowflakeTuple,
     FfmpegOptions,
+    FrameCount,
     HttpUrlStr,
     MaxQueueSize,
     MaxTokens,
@@ -36,6 +37,9 @@ from ..domain.shared.types import (
     PlayerClientList,
     PoolSize,
     PositiveInt,
+    PrebufferSeconds,
+    PrefillSeconds,
+    PrefillTimeoutSeconds,
     RadioBatchSize,
     RadioCount,
     RadioMaxTracks,
@@ -125,18 +129,56 @@ class DiscordSettings(BaseModel):
         return v
 
 
+class PrebufferSettings(BaseModel):
+    """Decoupling buffer between FFmpeg's pipe and discord.py's 20 ms send loop.
+
+    Without it the only slack is the 64 KB OS pipe plus an 8 KB BufferedReader — about
+    384 ms of PCM — and any upstream stall longer than that is an audible gap.
+    """
+
+    model_config = SettingsSubModelConfig
+
+    enabled: bool = True
+    buffer_seconds: PrebufferSeconds = 5.0
+    prefill_seconds: PrefillSeconds = 2.0
+
+    @staticmethod
+    def _to_frames(seconds: float) -> FrameCount:
+        frames_per_second = AudioConstants.PCM_BYTES_PER_SECOND / AudioConstants.PCM_FRAME_BYTES
+        return max(1, round(seconds * frames_per_second))
+
+    @computed_field
+    @property
+    def buffer_frames(self) -> FrameCount:
+        return self._to_frames(self.buffer_seconds)
+
+    @computed_field
+    @property
+    def prefill_frames(self) -> FrameCount:
+        return self._to_frames(self.prefill_seconds)
+
+    @computed_field
+    @property
+    def prefill_timeout(self) -> PrefillTimeoutSeconds:
+        """Upper bound on the first read()'s wait, so a dead stream can't hang playback."""
+        return self.prefill_seconds + AudioConstants.PREFILL_GRACE_SECONDS
+
+
 class AudioSettings(BaseModel):
     model_config = SettingsSubModelConfig
 
     default_volume: VolumeFloat = 0.5
     max_queue_size: MaxQueueSize = 50
+    prebuffer: PrebufferSettings = Field(default_factory=PrebufferSettings)
     ffmpeg_options: FfmpegOptions = Field(
         default_factory=lambda: {
+            # A reconnect stalls the pipe for its full delay, so keep the ceiling tight.
             "before_options": (
-                "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 3"
+                "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 1"
                 " -analyzeduration 0 -probesize 32768 -thread_queue_size 8192"
             ),
-            "options": "-vn -bufsize 256k",
+            # -bufsize is encoder rate control; this output is raw PCM with no encoder.
+            "options": "-vn",
         }
     )
     ytdlp_format: NonEmptyStr = "bestaudio/best"
@@ -158,7 +200,7 @@ class AudioSettings(BaseModel):
     )
     normalize_audio: bool = Field(
         default=True,
-        description="Apply EBU R128 loudnorm filter to normalize audio volume across tracks.",
+        description="Apply the dynaudnorm filter to even out volume across tracks.",
     )
 
 

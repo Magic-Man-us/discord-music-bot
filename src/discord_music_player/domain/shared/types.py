@@ -83,6 +83,40 @@ VolumeFloat = Annotated[
     Field(ge=0.0, le=2.0, description="Audio volume multiplier in [0.0, 2.0].", examples=[1.0]),
 ]
 
+PrebufferSeconds = Annotated[
+    float,
+    Field(
+        ge=0.5,
+        le=30.0,
+        description="Seconds of decoded audio held ahead of the send loop.",
+        examples=[5.0],
+    ),
+]
+
+PrefillSeconds = Annotated[
+    float,
+    Field(
+        ge=0.0,
+        le=30.0,
+        description="Seconds buffered before the first frame is handed to the send loop.",
+        examples=[2.0],
+    ),
+]
+
+FrameCount = Annotated[
+    int,
+    Field(gt=0, description="Count of 20 ms PCM audio frames.", examples=[250]),
+]
+
+PrefillTimeoutSeconds = Annotated[
+    float,
+    Field(
+        gt=0.0,
+        description="Upper bound on the first read()'s wait for the prebuffer to prime.",
+        examples=[7.0],
+    ),
+]
+
 
 # ── String constraints ──────────────────────────────────────────────
 

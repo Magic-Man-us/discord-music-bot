@@ -15,6 +15,7 @@ from ....config.settings import AudioSettings
 from ....domain.shared.constants import AudioConstants, TimeConstants
 from ....domain.shared.types import DiscordSnowflake
 from ....utils.logging import get_logger
+from .buffered_source import BufferedAudioSource
 
 if TYPE_CHECKING:
     from ....domain.music.entities import Track
@@ -54,6 +55,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
         self._current_track: dict[int, Track] = {}
         self._ffmpeg_options = self._settings.ffmpeg_options
         self._normalize_audio = self._settings.normalize_audio
+        self._prebuffer = self._settings.prebuffer
         # Resolve User-Agent from primary player_client
         primary_client = self._settings.player_client[0] if self._settings.player_client else "web"
         self._user_agent = (
@@ -88,9 +90,7 @@ class DiscordVoiceAdapter(VoiceAdapter):
             # Timeout must be discord.py's own: an external asyncio.timeout cancels
             # connect() mid-handshake, skipping its cleanup and leaving a stale
             # voice client registered that wedges every later connect attempt.
-            await channel.connect(
-                timeout=TimeConstants.VOICE_CONNECT_TIMEOUT, self_deaf=True
-            )
+            await channel.connect(timeout=TimeConstants.VOICE_CONNECT_TIMEOUT, self_deaf=True)
             logger.info("Connected to voice channel %s in %s", channel.name, guild.name)
             return True
 
@@ -122,7 +122,9 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
         return await _safe_voice_op(f"disconnect from guild {guild_id}", _do())
 
-    async def ensure_connected(self, guild_id: DiscordSnowflake, channel_id: DiscordSnowflake) -> bool:
+    async def ensure_connected(
+        self, guild_id: DiscordSnowflake, channel_id: DiscordSnowflake
+    ) -> bool:
         """Connect if not connected, move if in a different channel."""
         vc = self._get_voice_client(guild_id)
 
@@ -197,14 +199,16 @@ class DiscordVoiceAdapter(VoiceAdapter):
 
             af_filters = [f"afade=t=in:ss=0:d={AudioConstants.FADE_IN_SECONDS}"]
             if self._normalize_audio:
-                af_filters.append(AudioConstants.LOUDNORM_FILTER)
+                af_filters.append(AudioConstants.DYNAUDNORM_FILTER)
             fade_opts = f'{base_opts} -af "{",".join(af_filters)}"'
 
-            source = discord.FFmpegPCMAudio(
+            source: discord.AudioSource = discord.FFmpegPCMAudio(
                 track.stream_url,
                 before_options=before_opts,
                 options=fade_opts,
             )
+            if self._prebuffer.enabled:
+                source = BufferedAudioSource(source, self._prebuffer)
 
             volume_source = discord.PCMVolumeTransformer(source, volume=self._volume)
             self._current_track[guild_id] = track
@@ -341,7 +345,9 @@ class DiscordVoiceAdapter(VoiceAdapter):
         return False
 
     @asynccontextmanager
-    async def voice_connection(self, guild_id: DiscordSnowflake, channel_id: DiscordSnowflake) -> AsyncIterator[bool]:
+    async def voice_connection(
+        self, guild_id: DiscordSnowflake, channel_id: DiscordSnowflake
+    ) -> AsyncIterator[bool]:
         """Context manager that connects on enter and disconnects on exit."""
         connected = False
         try:

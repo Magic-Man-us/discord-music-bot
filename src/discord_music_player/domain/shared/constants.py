@@ -74,8 +74,14 @@ class AudioConstants:
     # Timestamp / seek limits
     MAX_SEEK_SECONDS = 86_400  # 24 hours
 
-    # Audio normalization (EBU R128 loudnorm)
-    LOUDNORM_FILTER = "loudnorm=I=-16:TP=-1.5:LRA=11"
+    # Audio normalization. dynaudnorm runs at the stream's own rate; loudnorm forces the
+    # graph to 192 kHz double-precision and back, which starves the 20 ms send loop.
+    DYNAUDNORM_FILTER = "dynaudnorm=f=250:g=15:p=0.9"
+
+    # PCM frame math for the playback prebuffer: 48 kHz, stereo, s16le, 20 ms per frame.
+    PCM_FRAME_BYTES = 3840
+    PCM_BYTES_PER_SECOND = 192_000
+    PREFILL_GRACE_SECONDS = 5.0
 
 
 class TimeConstants:

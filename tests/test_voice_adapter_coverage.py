@@ -14,6 +14,9 @@ import pytest
 
 from discord_music_player.domain.music.entities import Track
 from discord_music_player.domain.music.wrappers import StartSeconds, TrackId
+from discord_music_player.infrastructure.discord.adapters.buffered_source import (
+    BufferedAudioSource,
+)
 from discord_music_player.infrastructure.discord.adapters.voice_adapter import DiscordVoiceAdapter
 
 
@@ -235,6 +238,15 @@ class TestVoiceAdapterErrorHandling:
                 self.before_options = before_options
                 self.options = options
 
+            def read(self) -> bytes:
+                return b""
+
+            def is_opus(self) -> bool:
+                return False
+
+            def cleanup(self) -> None:
+                return None
+
         class FakeVolumeTransformer:
             def __init__(self, source: FakeAudioSource, *, volume: float) -> None:
                 self.source = source
@@ -279,10 +291,14 @@ class TestVoiceAdapterErrorHandling:
         source = captured_play["source"]
         assert isinstance(source, FakeVolumeTransformer)
         assert source.volume == adapter._volume
-        assert source.source.url == sample_track.stream_url
-        assert "-ss 12" in source.source.before_options
-        assert "User-Agent:" in source.source.before_options
-        assert "afade=t=in:ss=0:d=0.5" in source.source.options
+
+        # FFmpeg output now feeds the prebuffer, which the transformer wraps in turn.
+        assert isinstance(source.source, BufferedAudioSource)
+        ffmpeg = source.source._source
+        assert ffmpeg.url == sample_track.stream_url
+        assert "-ss 12" in ffmpeg.before_options
+        assert "User-Agent:" in ffmpeg.before_options
+        assert "afade=t=in:ss=0:d=0.5" in ffmpeg.options
 
         after = captured_play["after"]
         assert callable(after)
