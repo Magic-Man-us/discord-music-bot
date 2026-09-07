@@ -31,3 +31,13 @@ pyrightconfig.json
 migration-*.tar
 migration-*.tar.sha256
 restore_migration.sh
+
+# >>> AgentForge managed gitignore (do not edit between markers) >>>
+**/.agentforge/audit.jsonl
+**/.agentforge/backups/
+**/.agentforge/tombstones/
+**/.agentforge/logs/
+**/.agentforge/sessions/
+**/.agentforge/diagnostics/
+**/.agentforge/cache/
+# <<< AgentForge managed gitignore <<<
