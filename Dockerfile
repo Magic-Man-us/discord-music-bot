@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 # System dependencies for PyNaCl (voice) and ffmpeg (audio playback)
 RUN apt-get update && apt-get install -y --no-install-recommends \
